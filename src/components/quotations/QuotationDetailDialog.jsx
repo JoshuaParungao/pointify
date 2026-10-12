@@ -1,0 +1,472 @@
+import { useEffect, useMemo } from "react"
+import { createPortal } from "react-dom"
+import { Download, FileText, Printer, X } from "lucide-react"
+import { exportCustomerQuotationPdf, groupQuotationItems, printCustomerQuotation } from "../../utils/businessDocumentExport"
+import { parseQuotationSettlement } from "../../utils/quotationSettlement"
+
+function formatMoney(value) {
+  const amount = Number(value || 0)
+  return amount.toLocaleString("en-PH", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+}
+
+function formatDate(value) {
+  if (!value) return "—"
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return "—"
+  return date.toLocaleDateString("en-PH", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  }).toUpperCase()
+}
+
+export default function QuotationDetailDialog({
+  quotation,
+  onClose,
+  isPreview = false,
+  installmentCalculation = null,
+  onConvertToSale = null,
+  onSaveQuotation = null,
+  isSavingQuotation = false,
+}) {
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") onClose()
+    }
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [onClose])
+
+  const branch = quotation?.branch || {}
+  const customer = quotation?.customer || {}
+  // Resolve installment calculation: use prop first, or parse from quotation.notes
+  const parsedSettlement = useMemo(() => {
+    return parseQuotationSettlement(quotation?.notes)
+  }, [quotation?.notes])
+
+  const salesman =
+    quotation?.salesman ||
+    parsedSettlement?.salesmanName ||
+    quotation?.preparedBy?.fullName ||
+    quotation?.preparedBy?.username ||
+    quotation?.cashier?.fullName ||
+    quotation?.cashier?.username ||
+    "—"
+
+  const branchAddress =
+    branch.address ||
+    "Kingspire Business Centre, Km.71, Mac Arthur Highway, San Isidro, City of San Fernando, Pampanga"
+  const branchContact = branch.contactNo || "0961-873-5798 / 045-404-0673"
+
+  const rawCode = String(quotation?.quotationCode || quotation?.code || (isPreview ? "PREVIEW" : "—")).trim()
+  const numericMatch = rawCode.match(/\d+$/)
+  const displayCode = isPreview ? "PREVIEW" : (numericMatch ? numericMatch[0].padStart(5, "0") : rawCode)
+
+  const effectiveInstallmentCalculation = useMemo(() => {
+    if (installmentCalculation) return installmentCalculation
+    return parsedSettlement?.installmentCalculation || null
+  }, [installmentCalculation, parsedSettlement])
+
+  const isAR = Boolean(effectiveInstallmentCalculation)
+
+  const cashPromoTotal = useMemo(() => {
+    return Number(quotation?.grandTotal || quotation?.subtotal || 0)
+  }, [quotation])
+
+  const defaultTermRate = Number(
+    effectiveInstallmentCalculation?.rate ||
+      effectiveInstallmentCalculation?.termBasis ||
+      0.875
+  )
+  const termRate = Number(
+    effectiveInstallmentCalculation?.rate ||
+      effectiveInstallmentCalculation?.termBasis ||
+      defaultTermRate
+  )
+
+  const srpTotal = useMemo(() => {
+    return Math.round((cashPromoTotal / 0.96) * 100) / 100
+  }, [cashPromoTotal])
+
+  const baseRegularPrice = useMemo(() => {
+    return Math.round((cashPromoTotal / 0.875) * 100) / 100
+  }, [cashPromoTotal])
+
+  const financedTotal = useMemo(() => {
+    if (effectiveInstallmentCalculation?.regularPriceTotalAmount) {
+      return Number(effectiveInstallmentCalculation.regularPriceTotalAmount)
+    }
+    const rate = termRate > 0 && termRate < 1 ? termRate : 0.875
+    return Math.round((cashPromoTotal / rate) * 100) / 100
+  }, [cashPromoTotal, termRate, effectiveInstallmentCalculation])
+
+  const groupedItems = useMemo(() => {
+    return groupQuotationItems(quotation?.items || [], { termRate })
+  }, [quotation?.items, termRate])
+
+  const quoteDate = quotation?.createdAt || quotation?.quotationDate || new Date()
+  const isPcBuild = quotation?.isPcBuild || false
+
+  return createPortal(
+    <div
+      aria-labelledby="quotation-detail-title"
+      aria-modal="true"
+      className="quotation-dialog-overlay fixed inset-0 z-50 overflow-y-auto bg-slate-950/60 p-2 sm:p-6"
+      role="dialog"
+    >
+      <div className="quotation-dialog-shell mx-auto min-h-full max-w-4xl py-2 sm:py-6">
+        <section className="quotation-dialog-document overflow-hidden rounded-2xl border border-slate-300 bg-white text-slate-900 shadow-2xl">
+          {/* Top Bar for Dialog Controls */}
+          <header className="quotation-dialog-actions flex items-center justify-between gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1 rounded-md bg-[#002060] px-2.5 py-1 text-xs font-bold text-white">
+                <FileText size={14} /> QUOTATION
+              </span>
+              {isPcBuild ? (
+                <span className="rounded-md bg-slate-800 px-2 py-1 text-xs font-bold text-white">
+                  🖥️ PC Build / Set
+                </span>
+              ) : null}
+              {isPreview ? (
+                <span className="rounded-md bg-amber-500 px-2 py-1 text-xs font-bold text-white">
+                  Draft Preview
+                </span>
+              ) : null}
+            </div>
+
+            <div className="flex items-center gap-2">
+              {isPreview && onSaveQuotation ? (
+                <button
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-soft transition hover:bg-emerald-700 disabled:opacity-50"
+                  disabled={isSavingQuotation}
+                  onClick={onSaveQuotation}
+                  type="button"
+                >
+                  <FileText size={15} />
+                  {isSavingQuotation ? "Saving Quote…" : "Save Quotation"}
+                </button>
+              ) : null}
+
+              {onConvertToSale && !isPreview && !["CONVERTED", "CANCELLED"].includes(quotation.status) ? (
+                <button
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white shadow-xs transition hover:bg-emerald-700"
+                  onClick={() => {
+                    onClose()
+                    onConvertToSale(quotation)
+                  }}
+                  type="button"
+                >
+                  Convert to Sale
+                </button>
+              ) : null}
+
+              <button
+                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-xs transition hover:bg-slate-100"
+                onClick={() => exportCustomerQuotationPdf(quotation, { installmentCalculation: effectiveInstallmentCalculation })}
+                title="Export as PDF file"
+                type="button"
+              >
+                <Download size={15} /> Export PDF
+              </button>
+
+              <button
+                className="inline-flex items-center gap-1.5 rounded-xl bg-[#002060] px-3.5 py-2 text-xs font-bold text-white shadow-soft transition hover:bg-[#001740]"
+                onClick={() => printCustomerQuotation(quotation, { installmentCalculation: effectiveInstallmentCalculation })}
+                title="Print quotation"
+                type="button"
+              >
+                <Printer size={15} /> Print
+              </button>
+
+              <button
+                aria-label="Close quotation details"
+                className="rounded-xl border border-slate-300 p-2 text-slate-500 transition hover:bg-slate-100"
+                onClick={onClose}
+                type="button"
+              >
+                <X size={18} />
+              </button>
+            </div>
+          </header>
+
+          <div className="p-6 sm:p-8 space-y-6">
+            {/* Quotation Body Matching QUOTATION-FOR-NEW-SYSTEM (4).xlsx */}
+            <div className="border border-slate-300 p-5 rounded-xl bg-white shadow-xs font-sans text-xs text-slate-900">
+              {/* Header Grid: Left = Store info, Right = Customer & Sales Meta */}
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-4 pb-4 border-b border-slate-200">
+                {/* Left Store Info */}
+                <div className="md:col-span-6 space-y-1">
+                  <h1 className="text-sm font-black tracking-tight text-slate-950 uppercase leading-snug">
+                    ARUNAFELTZ COMPUTER PARTS AND ACCESSORIES SHOP
+                  </h1>
+                  <p className="text-[11px] text-slate-700 leading-normal">
+                    {branchAddress}
+                  </p>
+                  <p className="text-[11px] font-semibold text-slate-800">
+                    {branchContact}
+                  </p>
+                </div>
+
+                {/* Right Customer & Sales Meta */}
+                <div className="md:col-span-6 grid grid-cols-3 gap-y-1 text-[11px]">
+                  <span className="font-bold text-slate-600">Date:</span>
+                  <span className="col-span-2 font-bold uppercase">{formatDate(quoteDate)}</span>
+
+                  <span className="font-bold text-slate-600">Customer Name:</span>
+                  <span className="col-span-2 font-bold uppercase">{customer.fullName || "WALK-IN CUSTOMER"}</span>
+
+                  <span className="font-bold text-slate-600">Address:</span>
+                  <span className="col-span-2">{customer.address || "—"}</span>
+
+                  <span className="font-bold text-slate-600">Contact No.:</span>
+                  <span className="col-span-2">{customer.mobileNumber || customer.email || "—"}</span>
+
+                  <span className="font-bold text-slate-600">Salesman:</span>
+                  <span className="col-span-2 font-bold uppercase">{salesman}</span>
+
+                  <span className="font-bold text-slate-600">TERMS:</span>
+                  <span className={`col-span-2 font-bold uppercase ${isAR ? "text-[#002060]" : "text-slate-700"}`}>
+                    {isAR
+                      ? `${effectiveInstallmentCalculation?.months || 24} MONTHS (AR / INSTALLMENT)`
+                      : "CASH DISCOUNTED PRICE"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Banner: EXACT ORIGINAL "QUOTATION" (Navy Blue Bold Italic) & Number */}
+              <div className="py-2.5 my-1 flex items-center justify-between">
+                <div className="flex-1 text-center pl-12">
+                  <h2 className="text-base font-bold italic tracking-wide text-[#002060] uppercase leading-none">
+                    QUOTATION
+                  </h2>
+                </div>
+                <div className="flex items-center gap-1.5 text-right text-xs">
+                  <span className="font-bold italic text-[#002060]">No.</span>
+                  <span className="font-mono font-bold text-[#002060] text-sm border-b border-[#002060] pb-0.5">
+                    {displayCode}
+                  </span>
+                </div>
+              </div>
+
+              {/* Items Table with Dual-Pricing: Description, Qty, Regular Price/Amount, Cash Promo/Amount */}
+              <div className="overflow-x-auto my-2">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-t-2 border-b-2 border-slate-900 text-slate-900 font-bold uppercase text-[10.5px]">
+                      <th className="py-2 px-2 w-[13%]">ITEM CODE</th>
+                      <th className="py-2 px-2 w-[29%]">ITEM DESCRIPTION</th>
+                      <th className="py-2 px-1 text-center w-[7%]">QTY.</th>
+                      <th className="py-2 px-1 text-center w-[9%] print:hidden text-[#002060]">
+                        AVAIL. STOCK
+                      </th>
+                      <th className={`py-2 px-2 text-right w-[10.5%] ${isAR ? "text-[#002060] font-black" : "text-slate-400 font-semibold"}`}>
+                        REGULAR PRICE
+                      </th>
+                      <th className={`py-2 px-2 text-right w-[10.5%] ${isAR ? "text-[#002060] font-black" : "text-slate-400 font-semibold"}`}>
+                        REGULAR AMOUNT
+                      </th>
+                      <th className={`py-2 px-2 text-right w-[10.5%] ${!isAR ? "text-[var(--color-maroon)] font-black" : "text-slate-400 font-semibold"}`}>
+                        CASH PROMO
+                      </th>
+                      <th className={`py-2 px-2 text-right w-[10.5%] ${!isAR ? "text-[var(--color-maroon)] font-black" : "text-slate-400 font-semibold"}`}>
+                        CASH AMOUNT
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-sans">
+                    {groupedItems.map((item) => (
+                      <tr className="hover:bg-slate-50/50" key={item.id}>
+                        <td className="py-2 px-2 font-mono font-semibold text-slate-700 align-top">
+                          {item.itemCode}
+                        </td>
+                        <td className="py-2 px-2 align-top space-y-0.5">
+                          <p className="font-medium text-slate-900">
+                            {item.description}
+                            {item.warrantyBadge ? ` | ${item.warrantyBadge}` : ""}
+                          </p>
+                          {item.serialNumbers?.length > 0 ? (
+                            <p className="text-[11px] font-mono text-slate-600">
+                              S/N: <strong className="text-slate-800">{item.serialNumbers.join(", ")}</strong>
+                            </p>
+                          ) : null}
+                        </td>
+                        <td className="py-2 px-1 text-center font-bold align-top">
+                          {item.quantity}
+                        </td>
+                        <td className="py-2 px-1 text-center align-top print:hidden">
+                          {item.availableStock !== null && item.availableStock !== undefined ? (
+                            item.availableStock >= Number(item.quantity || 1) ? (
+                              <span className="inline-flex items-center justify-center rounded px-1.5 py-0.5 text-[10.5px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                {item.availableStock}
+                              </span>
+                            ) : item.availableStock > 0 ? (
+                              <span
+                                className="inline-flex items-center justify-center rounded px-1.5 py-0.5 text-[10.5px] font-bold bg-amber-50 text-amber-800 border border-amber-300"
+                                title={`Insufficient stock: only ${item.availableStock} available for ${item.quantity} requested`}
+                              >
+                                {item.availableStock} (Low)
+                              </span>
+                            ) : (
+                              <span
+                                className="inline-flex items-center justify-center rounded px-1.5 py-0.5 text-[10.5px] font-bold bg-rose-50 text-rose-700 border border-rose-200"
+                                title="0 Available in branch"
+                              >
+                                0 (Out)
+                              </span>
+                            )
+                          ) : (
+                            <span className="text-slate-400 font-normal">—</span>
+                          )}
+                        </td>
+                        <td className={`py-2 px-2 text-right align-top font-mono ${isAR ? "text-slate-800 font-semibold" : "text-slate-400"}`}>
+                          {formatMoney(item.regUnit)}
+                        </td>
+                        <td className={`py-2 px-2 text-right align-top font-mono ${isAR ? "text-[#002060] font-bold" : "text-slate-400"}`}>
+                          {formatMoney(item.regTotal)}
+                        </td>
+                        <td className={`py-2 px-2 text-right align-top font-mono ${!isAR ? "text-slate-800 font-semibold" : "text-slate-400"}`}>
+                          {formatMoney(item.cashUnit)}
+                        </td>
+                        <td className={`py-2 px-2 text-right align-top font-mono ${!isAR ? "text-slate-900 font-bold" : "text-slate-400"}`}>
+                          {formatMoney(item.cashTotal)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Double Border Separator */}
+              <div className="border-t-2 border-b border-slate-900 my-1 pt-0.5" />
+
+              {/* Summary Bar: Total Amount with Regular vs Cash Promo side-by-side (Dynamic Highlighting) */}
+              <div className="flex flex-wrap items-center justify-between gap-3 py-2.5 px-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                <span className="font-black uppercase tracking-wider text-slate-900 text-xs">
+                  TOTAL AMOUNT:
+                </span>
+                <div className="flex items-center gap-6">
+                  {isAR ? (
+                    <>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-slate-400 font-bold uppercase text-[10px]">CASH PROMO:</span>
+                        <span className="font-mono text-slate-500 text-xs font-semibold">
+                          {formatMoney(cashPromoTotal)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[#002060] font-black uppercase text-xs">
+                          TOTAL FINANCED BALANCE:
+                        </span>
+                        <span className="font-mono text-[#002060] text-base font-black">
+                          {formatMoney(financedTotal)}
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-slate-400 font-bold uppercase text-[10px]">REGULAR PRICE:</span>
+                        <span className="font-mono text-slate-500 text-xs font-semibold">
+                          {formatMoney(baseRegularPrice)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[var(--color-maroon)] font-black uppercase text-xs">CASH PROMO:</span>
+                        <span className="font-mono text-[var(--color-maroon)] text-base font-black">
+                          {formatMoney(cashPromoTotal)}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Pricing Breakdown & Disclaimers matching QUOTATION-FOR-NEW-SYSTEM (4).xlsx and Sales Receipt */}
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 py-3 items-start">
+                <div className="sm:col-span-7 space-y-1.5">
+                  {isPcBuild ? (
+                    <div className="space-y-0.5 pb-1">
+                      <p className="font-bold text-[11px] text-slate-900">
+                        (FREE PC BUILD, CABLE MANAGEMENT &amp; ESSENTIAL APP INSTALLATION)
+                      </p>
+                      <p className="text-[10px] text-slate-600">
+                        Exclusive to complete PC builds purchased from us. Not applicable to individual component purchases.
+                      </p>
+                    </div>
+                  ) : null}
+                  <p className="font-bold text-[11px] text-slate-900">
+                    ONE (1) YEAR WARRANTY ON MAJOR PARTS &amp; ONE (1) MONTH ON ACCESSORIES
+                  </p>
+                  <p className="text-[10px] text-slate-600">
+                    COMPLETE BOX &amp; INCLUSIONS (7 DAYS OUTRIGHT REPLACEMENT EXCEPT FOR PRINTERS)
+                  </p>
+                  <p className="font-bold text-[11px] text-red-700">
+                    CASH DISCOUNTED PRICE APPLIES ONLY FOR CASH, GCASH, BANK TRANSFER
+                  </p>
+                </div>
+
+                <div className="sm:col-span-5 space-y-1.5 text-xs text-right">
+                  {isAR ? (
+                    <>
+                      <div className="flex justify-between text-slate-600 text-[11px]">
+                        <span>ORIGINAL CASH PROMO</span>
+                        <span className="font-mono">{formatMoney(cashPromoTotal)}</span>
+                      </div>
+                      <div className="flex justify-between text-slate-600 text-[11px]">
+                        <span>REGULAR PRICE</span>
+                        <span className="font-mono">{formatMoney(baseRegularPrice)}</span>
+                      </div>
+                      <div className="flex justify-between font-bold text-slate-900 border-t border-slate-200 pt-1 text-xs">
+                        <span>TOTAL FINANCED BALANCE</span>
+                        <span className="font-mono text-sm">{formatMoney(financedTotal)}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex justify-between font-black text-slate-900 text-xs">
+                        <span>TOTAL CASH DISCOUNTED PRICE</span>
+                        <span className="font-mono">{formatMoney(cashPromoTotal)}</span>
+                      </div>
+                      <div className="flex justify-between text-slate-500 text-[11px]">
+                        <span>SUGGESTED RETAIL PRICE (SRP)</span>
+                        <span className="font-mono">{formatMoney(srpTotal)}</span>
+                      </div>
+                      <div className="flex justify-between text-slate-500 text-[11px]">
+                        <span>REGULAR PRICE</span>
+                        <span className="font-mono">{formatMoney(baseRegularPrice)}</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Signatures Section: Prepared by & Conforme matching Excel Rows 56-59 */}
+              <div className="mt-8 pt-4 border-t border-slate-200">
+                <div className="grid grid-cols-2 gap-8 text-center text-xs">
+                  <div className="space-y-6">
+                    <p className="text-left font-bold text-slate-600 text-[11px]">Prepared by:</p>
+                    <div className="border-b border-slate-400 pt-2 font-semibold text-[11px] uppercase">
+                      {salesman}
+                    </div>
+                  </div>
+
+                  <div className="space-y-6">
+                    <p className="text-left font-bold text-slate-600 text-[11px]">CONFORME:</p>
+                    <div className="border-b border-slate-400 pt-2 text-[10px] text-slate-500">
+                      Signature over Printed Name/ Date
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>,
+    document.body
+  )
+}

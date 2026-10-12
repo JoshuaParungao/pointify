@@ -1,0 +1,1669 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import {
+  BarChart3,
+  Boxes,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  LoaderCircle,
+  PackageCheck,
+  PackagePlus,
+  Plus,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  Trash2,
+  Truck,
+  X,
+} from "lucide-react"
+
+import { getItems } from "../../features/items/items.api"
+import { getPurchaseOrderById, getPurchaseOrders } from "../../features/purchase-orders/purchaseOrders.api"
+import PurchasesReportView from "../purchase-orders/PurchasesReportView"
+import {
+  createPurchaseReceiving,
+  getPurchaseReceivingById,
+  getPurchaseReceivings,
+  updatePurchaseReceiving,
+  updatePurchaseReceivingStatus,
+} from "../../features/purchase-receivings/purchaseReceivings.api"
+import { getSuppliers } from "../../features/suppliers/suppliers.api"
+import {
+  getWarrantyClaims,
+  resolveSupplierRma,
+} from "../../features/warranty-claims/warrantyClaims.api"
+
+import {
+  exportReceivingPdf,
+  exportReportExcel,
+  printReceiving,
+} from "../../utils/businessDocumentExport"
+import ExportExcelButton from "../../components/common/ExportExcelButton"
+const EMPTY_LINE = { itemId: "", purchaseOrderItemId: "", description: "", quantityReceived: "1", unitCost: "0", discountAmount: "0", batchCode: "", expiryDate: "", serialText: "" }
+
+function apiError(error, fallback) {
+  const details = error?.response?.data?.details
+  const message = error?.response?.data?.error?.message || error?.response?.data?.message || fallback
+  return Array.isArray(details) && details.length ? `${message}: ${details.join(", ")}` : message
+}
+
+function money(value) {
+  const amount = Number(value || 0)
+
+  return new Intl.NumberFormat("en-PH", {
+    style: "currency",
+    currency: "PHP",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number.isFinite(amount) ? amount : 0)
+}
+
+function dateOnly(value) {
+  if (!value) return "—"
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleDateString("en-PH")
+}
+
+function toDateInput(value) {
+  if (!value) return ""
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10)
+}
+
+function formatStatus(value) {
+  if (!value) return "—"
+  return String(value)
+    .replace(/_/g, " ")
+    .toLowerCase()
+    .split(" ")
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ")
+}
+
+function Status({ value }) {
+  const classes =
+    value === "POSTED"
+      ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300"
+      : value === "CANCELLED"
+        ? "bg-rose-100 dark:bg-rose-900/40 text-rose-800 dark:text-rose-300"
+        : "bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300"
+  return <span className={`rounded-full px-2.5 py-1 text-xs font-black ${classes}`}>{formatStatus(value)}</span>
+}
+
+function parseSerials(value) {
+  return String(value || "").split(/[\n,]+/).map((entry) => entry.trim()).filter(Boolean)
+}
+
+function ReceivingItemLookup({
+  catalogItems,
+  disabled,
+  itemId,
+  onSelect,
+}) {
+  const selectedItem = catalogItems.find((entry) => entry.id === itemId)
+
+  const itemLabel = (item) => {
+    if (!item) return ""
+
+    return [
+      item.itemCode,
+      item.itemName,
+      item.barcode ? `Barcode: ${item.barcode}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ")
+  }
+
+  const [query, setQuery] = useState(() => itemLabel(selectedItem))
+  const [isOpen, setIsOpen] = useState(false)
+  const normalizedQuery = query.trim().toLowerCase()
+
+  const matches = useMemo(() => {
+    if (!normalizedQuery) {
+      return catalogItems.slice(0, 12)
+    }
+
+    return catalogItems
+      .filter((item) => {
+        const values = [
+          item.itemCode,
+          item.barcode,
+          item.itemName,
+          item.brand,
+          item.modelName,
+        ]
+
+        return values.some((value) =>
+          String(value || "")
+            .toLowerCase()
+            .includes(normalizedQuery),
+        )
+      })
+      .slice(0, 12)
+  }, [catalogItems, normalizedQuery])
+
+  const selectItem = (item) => {
+    if (!item) return
+
+    setQuery(itemLabel(item))
+    setIsOpen(false)
+    onSelect(item.id)
+  }
+
+  const handleEnter = () => {
+    const raw = query.trim()
+
+    if (!raw) return
+
+    const exactItem = catalogItems.find(
+      (item) =>
+        String(item.barcode || "").toLowerCase() === raw.toLowerCase() ||
+        String(item.itemCode || "").toLowerCase() === raw.toLowerCase(),
+    )
+
+    if (exactItem) {
+      selectItem(exactItem)
+      return
+    }
+
+    if (matches.length === 1) {
+      selectItem(matches[0])
+    }
+  }
+
+  if (disabled) {
+    return (
+      <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+        <p className="font-mono font-bold text-slate-900">
+          {selectedItem?.itemCode || "PO item"}
+        </p>
+
+        <p className="mt-0.5 text-[11px] text-slate-600 truncate">
+          {selectedItem?.itemName || "Item loaded from Purchase Order"}
+        </p>
+
+        {selectedItem?.barcode ? (
+          <p className="text-[10px] text-slate-400">
+            Barcode: {selectedItem.barcode}
+          </p>
+        ) : null}
+      </div>
+    )
+  }
+
+  return (
+    <div className="relative">
+      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 block">
+        Item / Barcode
+      </span>
+
+      <input
+        autoComplete="off"
+        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 outline-none transition focus:border-[var(--color-maroon)] focus:ring-1 focus:ring-[var(--color-maroon)] placeholder:text-slate-400"
+        onBlur={() => {
+          window.setTimeout(() => setIsOpen(false), 150)
+        }}
+        onChange={(event) => {
+          const value = event.target.value
+
+          setQuery(value)
+          setIsOpen(true)
+
+          if (!value.trim()) {
+            onSelect("")
+          }
+        }}
+        onFocus={() => setIsOpen(true)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault()
+            handleEnter()
+          }
+
+          if (event.key === "Escape") {
+            setIsOpen(false)
+          }
+        }}
+        placeholder="Scan barcode / search item code / name…"
+        value={query}
+      />
+
+      {isOpen ? (
+        <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-50 max-h-60 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+          {matches.length > 0 ? (
+            matches.map((item) => (
+              <button
+                className="block w-full rounded-lg px-2.5 py-2 text-left transition hover:bg-slate-50 text-xs"
+                key={item.id}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => selectItem(item)}
+                type="button"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-bold text-slate-900 truncate">
+                      {item.itemName}
+                    </p>
+
+                    <p className="font-mono text-[10px] font-bold text-[var(--color-maroon)]">
+                      {item.itemCode}
+                    </p>
+
+                    <p className="text-[10px] text-slate-500">
+                      {item.barcode
+                        ? `Barcode: ${item.barcode}`
+                        : "No barcode"}
+                    </p>
+                  </div>
+
+                  {item.isSerialized ? (
+                    <span className="shrink-0 rounded-md bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                      Serialized
+                    </span>
+                  ) : null}
+                </div>
+              </button>
+            ))
+          ) : (
+            <div className="p-3 text-center">
+              <p className="text-xs font-bold text-slate-800">
+                No matching catalog item
+              </p>
+
+              <p className="mt-0.5 text-[11px] leading-4 text-slate-500">
+                Create the new product in Item Catalog first so Item Code,
+                Barcode, inventory, and serial tracking stay under one master
+                record.
+              </p>
+            </div>
+          )}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function ReceivingForm({ initial, suppliers, purchaseOrders, catalogItems, isSaving, onClose, onSave }) {
+  const [form, setForm] = useState(() => {
+    const po = initial?.purchaseOrderId
+      ? purchaseOrders.find((order) => order.id === initial.purchaseOrderId)
+      : null
+
+    const initialItems = initial?.items?.length
+      ? initial.items.map((line) => ({
+          itemId: line.itemId,
+          purchaseOrderItemId: line.purchaseOrderItemId || "",
+          description: line.description,
+          quantityReceived: String(line.quantityReceived),
+          unitCost: String(line.unitCost),
+          discountAmount: String(line.discountAmount || 0),
+          batchCode: line.batchCode || "",
+          expiryDate: toDateInput(line.expiryDate),
+          serialText: (line.serials || []).map((serial) => serial.serialNumber).join("\n"),
+        }))
+      : po
+        ? po.items
+            .filter((line) => Number(line.quantity) > Number(line.receivedQuantity))
+            .map((line) => ({
+              itemId: line.itemId || "",
+              purchaseOrderItemId: line.id,
+              description: line.description,
+              quantityReceived: String(Number(line.quantity) - Number(line.receivedQuantity)),
+              unitCost: String(line.unitCost),
+              discountAmount: "0",
+              batchCode: "",
+              expiryDate: "",
+              serialText: "",
+            }))
+        : [{ ...EMPTY_LINE }]
+
+    return {
+      receivingCode: initial?.receivingCode || "",
+      supplierId: initial?.supplierId || po?.supplierId || "",
+      purchaseOrderId: initial?.purchaseOrderId || "",
+      supplierDeliveryNo: initial?.supplierDeliveryNo || "",
+      supplierInvoiceNo: initial?.supplierInvoiceNo || "",
+      referenceNo: initial?.referenceNo || "",
+      notes: initial?.notes || "",
+      internalNotes: initial?.internalNotes || "",
+      items: initialItems.length ? initialItems : [{ ...EMPTY_LINE }],
+    }
+  })
+  const selectedPo = purchaseOrders.find((order) => order.id === form.purchaseOrderId)
+  const [serialScanInputs, setSerialScanInputs] = useState({})
+  const [serialScanMessages, setSerialScanMessages] = useState({})
+
+  const unaddedPoLines = useMemo(() => {
+    if (!selectedPo?.items) return []
+    return selectedPo.items.filter(
+      (poLine) =>
+        Number(poLine.quantity) > Number(poLine.receivedQuantity) &&
+        !form.items.some((line) => line.purchaseOrderItemId === poLine.id)
+    )
+  }, [selectedPo, form.items])
+
+  const addPoLine = (poLineId) => {
+    const poLine = selectedPo?.items?.find((p) => p.id === poLineId)
+    if (!poLine) return
+    setForm((current) => ({
+      ...current,
+      items: [
+        ...current.items.filter((l) => l.itemId || l.description),
+        {
+          itemId: poLine.itemId || "",
+          purchaseOrderItemId: poLine.id,
+          description: poLine.description,
+          quantityReceived: String(Number(poLine.quantity) - Number(poLine.receivedQuantity)),
+          unitCost: String(poLine.unitCost),
+          discountAmount: "0",
+          batchCode: "",
+          expiryDate: "",
+          serialText: "",
+        },
+      ],
+    }))
+  }
+
+  const totals = useMemo(() => form.items.reduce((sum, line) => ({ subtotal: sum.subtotal + Number(line.quantityReceived || 0) * Number(line.unitCost || 0), discount: sum.discount + Number(line.discountAmount || 0) }), { subtotal: 0, discount: 0 }), [form.items])
+
+  const updateLine = (index, patch) => setForm((current) => ({
+    ...current,
+    items: current.items.map((line, lineIndex) =>
+      lineIndex === index ? { ...line, ...patch } : line
+    ),
+  }))
+
+  const addScannedSerial = (index) => {
+    const rawValue = serialScanInputs[index] || ""
+    const serialNumber = rawValue.trim()
+
+    if (!serialNumber) return
+
+    const line = form.items[index]
+    const existingSerials = parseSerials(line?.serialText)
+
+    const duplicate = existingSerials.some(
+      (existing) => existing.toUpperCase() === serialNumber.toUpperCase(),
+    )
+
+    if (duplicate) {
+      setSerialScanMessages((current) => ({
+        ...current,
+        [index]: `Serial ${serialNumber} is already added.`,
+      }))
+      return
+    }
+
+    const quantity = Number(line?.quantityReceived || 0)
+
+    if (quantity > 0 && existingSerials.length >= quantity) {
+      setSerialScanMessages((current) => ({
+        ...current,
+        [index]: `Serial count already matches quantity received (${quantity}).`,
+      }))
+      return
+    }
+
+    updateLine(index, {
+      serialText: [...existingSerials, serialNumber].join("\n"),
+    })
+
+    setSerialScanInputs((current) => ({
+      ...current,
+      [index]: "",
+    }))
+
+    setSerialScanMessages((current) => ({
+      ...current,
+      [index]: "",
+    }))
+  }
+
+  const removeSerial = (index, serialNumber) => {
+    const line = form.items[index]
+
+    const remaining = parseSerials(line?.serialText).filter(
+      (serial) => serial !== serialNumber,
+    )
+
+    updateLine(index, {
+      serialText: remaining.join("\n"),
+    })
+
+    setSerialScanMessages((current) => ({
+      ...current,
+      [index]: "",
+    }))
+  }
+  const chooseItem = (index, itemId) => { const item = catalogItems.find((entry) => entry.id === itemId); updateLine(index, { itemId, purchaseOrderItemId: "", ...(item ? { description: `${item.itemCode} · ${item.itemName}` } : {}) }) }
+  const choosePo = (purchaseOrderId) => {
+    const order = purchaseOrders.find((entry) => entry.id === purchaseOrderId)
+    setForm((current) => ({ ...current, purchaseOrderId, supplierId: order?.supplierId || current.supplierId, items: order ? order.items.filter((line) => Number(line.quantity) > Number(line.receivedQuantity)).map((line) => ({ itemId: line.itemId || "", purchaseOrderItemId: line.id, description: line.description, quantityReceived: String(Number(line.quantity) - Number(line.receivedQuantity)), unitCost: String(line.unitCost), discountAmount: "0", batchCode: "", expiryDate: "", serialText: "" })) : current.items }))
+  }
+
+  const inputClass =
+    "mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 outline-none transition focus:border-[var(--color-maroon)] focus:ring-1 focus:ring-[var(--color-maroon)] hover:border-slate-300 placeholder:text-slate-400 placeholder:font-normal"
+  const labelClass = "text-[11px] font-bold uppercase tracking-wider text-slate-600 block"
+
+  return (
+    <form onSubmit={(event) => { event.preventDefault(); onSave(form) }}>
+      <div className="max-h-[75vh] overflow-y-auto p-5 space-y-4">
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+          <label className={labelClass}>
+            Receiving Code
+            <input className={`${inputClass} font-mono`} onChange={(event) => setForm((current) => ({ ...current, receivingCode: event.target.value }))} placeholder="Auto-generated if blank" value={form.receivingCode} />
+          </label>
+          <label className={labelClass}>
+            Purchase Order
+            <select className={inputClass} disabled={Boolean(initial?.id)} onChange={(event) => choosePo(event.target.value)} value={form.purchaseOrderId}>
+              <option value="">Standalone receiving</option>
+              {purchaseOrders.map((order) => <option key={order.id} value={order.id}>{order.poCode} · {order.supplierNameSnapshot}</option>)}
+            </select>
+          </label>
+          <label className={labelClass}>
+            Supplier <span className="text-red-600">*</span>
+            <select className={inputClass} disabled={Boolean(initial?.id || selectedPo)} onChange={(event) => setForm((current) => ({ ...current, supplierId: event.target.value }))} required value={form.supplierId}>
+              <option value="">Select supplier</option>
+              {suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.supplierCode} · {supplier.name}</option>)}
+            </select>
+          </label>
+          <label className={labelClass}>
+            Delivery Number
+            <input className={inputClass} onChange={(event) => setForm((current) => ({ ...current, supplierDeliveryNo: event.target.value }))} placeholder="e.g. DR #12345" value={form.supplierDeliveryNo} />
+          </label>
+          <label className={labelClass}>
+            Invoice Number
+            <input className={inputClass} onChange={(event) => setForm((current) => ({ ...current, supplierInvoiceNo: event.target.value }))} placeholder="e.g. SI #67890" value={form.supplierInvoiceNo} />
+          </label>
+          <label className={labelClass}>
+            Reference / Waybill
+            <input className={inputClass} onChange={(event) => setForm((current) => ({ ...current, referenceNo: event.target.value }))} placeholder="Tracking / Waybill Ref" value={form.referenceNo} />
+          </label>
+        </div>
+
+        <section className="space-y-2.5">
+          <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-wider text-[var(--color-maroon)]">Received Items</h3>
+              <p className="text-[11px] text-slate-500">Every line needs a batch code before posting. Serialized items require matching serial numbers.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {unaddedPoLines.length > 0 ? (
+                <select
+                  className="rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 outline-none hover:bg-slate-50 transition"
+                  defaultValue=""
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      addPoLine(e.target.value)
+                      e.target.value = ""
+                    }
+                  }}
+                >
+                  <option value="" disabled>+ Restore removed PO line…</option>
+                  {unaddedPoLines.map((poLine) => (
+                    <option key={poLine.id} value={poLine.id}>
+                      {poLine.description} (Rem: {Number(poLine.quantity) - Number(poLine.receivedQuantity)})
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+              {!selectedPo ? (
+                <button className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition" onClick={() => setForm((current) => ({ ...current, items: [...current.items, { ...EMPTY_LINE }] }))} type="button">
+                  <Plus size={13} /> Add Line
+                </button>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {form.items.map((line, index) => {
+              const item = catalogItems.find((entry) => entry.id === line.itemId)
+              const remainingPo = selectedPo?.items?.find((entry) => entry.id === line.purchaseOrderItemId)
+              return (
+                <article className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/50 p-3" key={`${index}-${line.purchaseOrderItemId || line.itemId}`}>
+                  <div className="grid gap-2.5 lg:grid-cols-[1.2fr_1.2fr_90px_110px_110px_38px]">
+                    <ReceivingItemLookup
+                      catalogItems={catalogItems}
+                      disabled={Boolean(line.purchaseOrderItemId)}
+                      itemId={line.itemId}
+                      onSelect={(itemId) => chooseItem(index, itemId)}
+                    />
+                    <label className="block">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 block">Description <span className="text-red-600">*</span></span>
+                      <input
+                        className={inputClass}
+                        onChange={(event) => updateLine(index, { description: event.target.value })}
+                        placeholder="Description"
+                        required
+                        value={line.description}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 block">Qty</span>
+                      <input
+                        className={`${inputClass} font-mono`}
+                        max={remainingPo ? Number(remainingPo.quantity) - Number(remainingPo.receivedQuantity) : undefined}
+                        min={item?.isSerialized ? "1" : "0.01"}
+                        onChange={(event) => updateLine(index, { quantityReceived: event.target.value })}
+                        step={item?.isSerialized ? "1" : "0.01"}
+                        type="number"
+                        value={line.quantityReceived}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 block">Unit Cost</span>
+                      <input
+                        className={`${inputClass} font-mono`}
+                        min="0"
+                        onChange={(event) => updateLine(index, { unitCost: event.target.value })}
+                        step="0.01"
+                        type="number"
+                        value={line.unitCost}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 block">Discount</span>
+                      <input
+                        className={`${inputClass} font-mono`}
+                        min="0"
+                        onChange={(event) => updateLine(index, { discountAmount: event.target.value })}
+                        step="0.01"
+                        type="number"
+                        value={line.discountAmount}
+                      />
+                    </label>
+                    <button
+                      className="grid size-8 place-items-center rounded-lg border border-rose-200 bg-white text-rose-700 hover:bg-rose-50 disabled:opacity-30 transition self-end"
+                      disabled={form.items.length === 1 && !line.itemId && !line.description}
+                      onClick={() => {
+                        if (form.items.length === 1) {
+                          setForm((current) => ({
+                            ...current,
+                            items: [{ ...EMPTY_LINE }],
+                          }))
+                        } else {
+                          setForm((current) => ({
+                            ...current,
+                            items: current.items.filter((_, lineIndex) => lineIndex !== index),
+                          }))
+                        }
+                      }}
+                      title="Remove or exclude line from delivery"
+                      type="button"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+
+                  <div className="grid gap-2.5 md:grid-cols-2 lg:grid-cols-3">
+                    <label className={labelClass}>
+                      Batch Code
+                      <input className={`${inputClass} font-mono`} onChange={(event) => updateLine(index, { batchCode: event.target.value })} placeholder="Auto-generated if blank" value={line.batchCode} />
+                    </label>
+                    <label className={labelClass}>
+                      Expiry Date (Optional)
+                      <input className={inputClass} onChange={(event) => updateLine(index, { expiryDate: event.target.value })} type="date" value={line.expiryDate} />
+                    </label>
+                    {!item ? (
+                      <div className="rounded-xl border border-dashed border-slate-200 bg-white p-3 md:col-span-2 lg:col-span-3 text-xs">
+                        <p className="font-bold text-slate-800">Serial Number Tracking</p>
+                        <p className="mt-0.5 text-[11px] text-slate-500">Select an item first to determine serialization.</p>
+                      </div>
+                    ) : item.isSerialized ? (
+                      <div className="space-y-2.5 rounded-xl border border-slate-200 bg-white p-3 md:col-span-2 lg:col-span-3 text-xs">
+                        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <p className="font-bold text-slate-900">Serial Numbers (Required)</p>
+                            <p className="text-[11px] text-slate-500">Scan or type serial barcode, then press Enter.</p>
+                          </div>
+                          <span
+                            className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${
+                              parseSerials(line.serialText).length === Number(line.quantityReceived || 0)
+                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                : "bg-amber-50 text-amber-700 border border-amber-200"
+                            }`}
+                          >
+                            {parseSerials(line.serialText).length}/{Number(line.quantityReceived || 0)} Serials Added
+                          </span>
+                        </div>
+
+                        <div className="flex gap-2">
+                          <input
+                            autoComplete="off"
+                            className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-mono font-bold text-slate-800 outline-none focus:border-[var(--color-maroon)] focus:ring-1 focus:ring-[var(--color-maroon)]"
+                            onChange={(event) => {
+                              setSerialScanInputs((current) => ({
+                                ...current,
+                                [index]: event.target.value,
+                              }))
+                              setSerialScanMessages((current) => ({
+                                ...current,
+                                [index]: "",
+                              }))
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault()
+                                addScannedSerial(index)
+                              }
+                            }}
+                            placeholder="Scan serial barcode / Type Serial Number"
+                            value={serialScanInputs[index] || ""}
+                          />
+                          <button
+                            className="rounded-xl bg-[var(--color-maroon)] px-4 py-2 text-xs font-bold text-white shadow-2xs hover:bg-[var(--color-maroon-hover)] transition"
+                            onClick={() => addScannedSerial(index)}
+                            type="button"
+                          >
+                            Add
+                          </button>
+                        </div>
+
+                        {serialScanMessages[index] ? (
+                          <p className="text-[11px] font-bold text-red-600">{serialScanMessages[index]}</p>
+                        ) : null}
+
+                        {parseSerials(line.serialText).length > 0 ? (
+                          <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-1 border border-slate-100 rounded-lg bg-slate-50/50">
+                            {parseSerials(line.serialText).map((serialNumber) => (
+                              <span
+                                className="inline-flex items-center gap-1 rounded-md bg-white border border-slate-200 px-2 py-0.5 text-[11px] font-mono font-semibold text-slate-800 shadow-2xs"
+                                key={serialNumber}
+                              >
+                                {serialNumber}
+                                <button
+                                  aria-label={`Remove ${serialNumber}`}
+                                  className="text-slate-400 hover:text-red-600 font-bold ml-1"
+                                  onClick={() => removeSerial(index, serialNumber)}
+                                  type="button"
+                                >
+                                  ×
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="rounded-lg border border-dashed border-slate-200 p-2 text-center text-[11px] text-slate-400">
+                            No serial numbers scanned yet.
+                          </div>
+                        )}
+
+                        <textarea
+                          className="min-h-16 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-mono text-slate-800 placeholder:text-slate-400"
+                          onChange={(event) => {
+                            updateLine(index, {
+                              serialText: event.target.value,
+                            })
+                            setSerialScanMessages((current) => ({
+                              ...current,
+                              [index]: "",
+                            }))
+                          }}
+                          placeholder="You may also bulk paste multiple serial numbers here (one per line)…"
+                          value={line.serialText}
+                        />
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-2.5 text-xs text-slate-500 self-center">
+                        Non-serialized item · Serial number not required
+                      </div>
+                    )}
+                  </div>
+                </article>
+              )
+            })}
+          </div>
+        </section>
+
+        <div className="grid gap-2.5 rounded-xl border border-slate-100 bg-slate-50/75 p-3 sm:grid-cols-3 text-xs">
+          <div><p className="text-[10px] font-bold uppercase text-slate-500">Subtotal</p><p className="mt-0.5 font-mono font-bold text-slate-900 text-sm">{money(totals.subtotal)}</p></div>
+          <div><p className="text-[10px] font-bold uppercase text-slate-500">Discount</p><p className="mt-0.5 font-mono font-bold text-slate-900 text-sm">{money(totals.discount)}</p></div>
+          <div><p className="text-[10px] font-bold uppercase text-slate-500">Grand Total</p><p className="mt-0.5 font-mono font-black text-[var(--color-maroon)] text-base">{money(totals.subtotal - totals.discount)}</p></div>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className={labelClass}>
+            Delivery Notes
+            <textarea className={`${inputClass} min-h-[45px] h-[45px] resize-none`} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Delivery notes from supplier…" value={form.notes} />
+          </label>
+          <label className={labelClass}>
+            Internal Notes
+            <textarea className={`${inputClass} min-h-[45px] h-[45px] resize-none`} onChange={(event) => setForm((current) => ({ ...current, internalNotes: event.target.value }))} placeholder="Warehouse internal verification remarks…" value={form.internalNotes} />
+          </label>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-end gap-2.5 border-t border-slate-200 bg-slate-50/75 px-5 py-3">
+        <button className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 transition" onClick={onClose} type="button">Cancel</button>
+        <button className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[var(--color-maroon)] px-5 py-2 text-xs font-bold text-white shadow-xs hover:bg-[var(--color-maroon-hover)] transition disabled:opacity-50" disabled={isSaving || form.items.length === 0} type="submit">
+          {isSaving ? "Saving…" : "Save Draft Receiving"}
+        </button>
+      </div>
+    </form>
+  )
+}
+
+export default function PurchaseReceivingsPage({ initialContext, selectedBranch, user }) {
+  const [viewMode, setViewMode] = useState("OPERATIONS")
+  const branchId = selectedBranch?.id || user?.branchId || user?.branch?.id || ""
+  const handledInitialContextRef = useRef(null)
+  const [receivings, setReceivings] = useState([])
+  const [pagination, setPagination] = useState({})
+  const [suppliers, setSuppliers] = useState([])
+  const [purchaseOrders, setPurchaseOrders] = useState([])
+  const [catalogItems, setCatalogItems] = useState([])
+  const [page, setPage] = useState(1)
+  const [search, setSearch] = useState("")
+  const [status, setStatus] = useState("")
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
+  const [message, setMessage] = useState("")
+  const [notice, setNotice] = useState("")
+  const [detail, setDetail] = useState(null)
+  const [isDetailLoading, setIsDetailLoading] = useState(false)
+  const [editing, setEditing] = useState(null)
+
+  // Supplier Warranty & RMA Tracking State (Purchases & Delivery)
+  const [supplierClaims, setSupplierClaims] = useState([])
+  const [isLoadingSupplierClaims, setIsLoadingSupplierClaims] = useState(false)
+  const [supplierRmaSearch, setSupplierRmaSearch] = useState("")
+  const [showResolveSupplierModal, setShowResolveSupplierModal] = useState(false)
+  const [resolveTargetClaim, setResolveTargetClaim] = useState(null)
+  const [resolveForm, setResolveForm] = useState({
+    outcome: "REPLACED_BY_SUPPLIER",
+    replacementItemId: "",
+    newSerial: "",
+    creditMemoNumber: "",
+    creditMemoAmount: "",
+    rejectionReason: "",
+    actionTaken: "Supplier approved & replaced unit.",
+    remarks: "",
+  })
+
+  const loadSupplierClaims = useCallback(async () => {
+    if (!branchId) return
+    setIsLoadingSupplierClaims(true)
+    try {
+      const response = await getWarrantyClaims({
+        branchId,
+        status: "SENT_TO_SUPPLIER",
+        limit: 100,
+      })
+      const list = response?.data?.items || response?.data || []
+      setSupplierClaims(Array.isArray(list) ? list : [])
+    } catch (err) {
+      console.warn("Could not load supplier RMA claims:", err)
+    } finally {
+      setIsLoadingSupplierClaims(false)
+    }
+  }, [branchId])
+
+  useEffect(() => {
+    if (viewMode === "SUPPLIER_WARRANTY") {
+      loadSupplierClaims()
+    }
+  }, [viewMode, loadSupplierClaims])
+
+  const openResolveSupplier = (claim) => {
+    setResolveTargetClaim(claim)
+    setResolveForm({
+      outcome: "REPLACED_BY_SUPPLIER",
+      replacementItemId: claim.itemId || "",
+      newSerial: "",
+      creditMemoNumber: "",
+      creditMemoAmount: "",
+      rejectionReason: "",
+      actionTaken: "Supplier approved & replaced unit.",
+      remarks: "",
+    })
+    setShowResolveSupplierModal(true)
+  }
+
+  const handleConfirmSupplierResolve = async (e) => {
+    e.preventDefault()
+    if (!resolveTargetClaim || isSaving) return
+    setIsSaving(true)
+    setMessage("")
+    try {
+      await resolveSupplierRma(resolveTargetClaim.id, {
+        outcome: resolveForm.outcome,
+        replacementItemId: resolveForm.outcome === "CHANGE_MODEL" ? resolveForm.replacementItemId : undefined,
+        newSerial: resolveForm.newSerial.trim() || undefined,
+        creditMemoNumber: resolveForm.outcome === "CREDIT_MEMO" ? resolveForm.creditMemoNumber.trim() : undefined,
+        creditMemoAmount: resolveForm.outcome === "CREDIT_MEMO" && resolveForm.creditMemoAmount ? Number(resolveForm.creditMemoAmount) : undefined,
+        rejectionReason: resolveForm.rejectionReason.trim() || undefined,
+        actionTaken: resolveForm.actionTaken.trim() || undefined,
+        remarks: resolveForm.remarks.trim() || undefined,
+      })
+      setShowResolveSupplierModal(false)
+      let msg = `✅ Supplier RMA resolved for ${resolveTargetClaim.claimCode}.`
+      if (resolveForm.outcome === "CHANGE_MODEL") {
+        msg = `✅ Supplier RMA resolved for ${resolveTargetClaim.claimCode}: Replaced with new model. Stock replenished.`
+      } else if (resolveForm.outcome === "CREDIT_MEMO") {
+        msg = `✅ Supplier RMA resolved for ${resolveTargetClaim.claimCode}: Credit Memo #${resolveForm.creditMemoNumber || "N/A"} applied against supplier AP.`
+      } else if (resolveForm.outcome === "REJECTED") {
+        msg = `⚠️ Supplier RMA rejected for ${resolveTargetClaim.claimCode}. Unit written off as Shrinkage Loss.`
+      } else {
+        msg = `✅ Supplier RMA resolved for ${resolveTargetClaim.claimCode}. Unit returned and replenished to stock.`
+      }
+      setNotice(msg)
+      await loadSupplierClaims()
+    } catch (err) {
+      setMessage(apiError(err, "Could not resolve supplier RMA."))
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const filteredSupplierClaims = useMemo(() => {
+    const now = Date.now()
+    const list = (supplierClaims || []).map((c) => ({
+      ...c,
+      daysElapsed: c.sentToSupplierAt
+        ? Math.max(0, Math.floor((now - new Date(c.sentToSupplierAt).getTime()) / 86400000))
+        : 0,
+    }))
+    if (!supplierRmaSearch.trim()) return list
+    const q = supplierRmaSearch.toLowerCase().trim()
+    return list.filter((c) => {
+      const code = String(c.claimCode || "").toLowerCase()
+      const sup = String(c.supplierName || "").toLowerCase()
+      const ref = String(c.supplierReferenceNo || "").toLowerCase()
+      const item = String(c.item?.itemName || c.item?.itemCode || "").toLowerCase()
+      const ser = String(c.serial?.serialNumber || "").toLowerCase()
+      return code.includes(q) || sup.includes(q) || ref.includes(q) || item.includes(q) || ser.includes(q)
+    })
+  }, [supplierClaims, supplierRmaSearch])
+
+  const loadReferenceData = useCallback(async () => {
+    const [supplierResponse, orderResponse, itemResponse] = await Promise.all([
+      getSuppliers({ ...(branchId ? { branchId } : {}), status: "ACTIVE", limit: 100 }),
+      getPurchaseOrders({ ...(branchId ? { branchId } : {}), limit: 100 }),
+      getItems({ ...(branchId ? { branchId } : {}), status: "ACTIVE", limit: 100 }),
+    ])
+    let ordersList = (orderResponse?.data?.items || []).filter((order) => ["ORDERED", "PARTIALLY_RECEIVED"].includes(order.status))
+    if (initialContext?.purchaseOrderId && !ordersList.some((o) => o.id === initialContext.purchaseOrderId)) {
+      try {
+        const poRes = await getPurchaseOrderById(initialContext.purchaseOrderId)
+        if (poRes?.data && ["ORDERED", "PARTIALLY_RECEIVED"].includes(poRes.data.status)) {
+          ordersList = [poRes.data, ...ordersList]
+        }
+      } catch {
+        // ignore fallback
+      }
+    }
+    setSuppliers(supplierResponse?.data?.items || [])
+    setPurchaseOrders(ordersList)
+    setCatalogItems(itemResponse?.data?.items || [])
+  }, [branchId, initialContext?.purchaseOrderId])
+
+  const load = useCallback(async () => {
+    setIsLoading(true); setMessage("")
+    try { const response = await getPurchaseReceivings({ ...(branchId ? { branchId } : {}), ...(search.trim() ? { search: search.trim() } : {}), ...(status ? { status } : {}), page, limit: 20 }); setReceivings(response?.data?.items || []); setPagination(response?.data?.pagination || {}) } catch (error) { setReceivings([]); setMessage(apiError(error, "Could not load purchase receivings.")) } finally { setIsLoading(false) }
+  }, [branchId, page, search, status])
+
+  useEffect(() => { const timer = window.setTimeout(async () => { try { await Promise.all([load(), loadReferenceData()]) } catch (error) { setMessage(apiError(error, "Could not load receiving reference data.")) } }, 150); return () => window.clearTimeout(timer) }, [load, loadReferenceData])
+
+  useEffect(() => {
+    if (!initialContext?.purchaseOrderId) return
+    if (handledInitialContextRef.current === initialContext.purchaseOrderId) return
+    if (purchaseOrders.length === 0) return
+
+    handledInitialContextRef.current = initialContext.purchaseOrderId
+    setEditing({ purchaseOrderId: initialContext.purchaseOrderId })
+  }, [initialContext, purchaseOrders])
+
+  const openDetail = async (receiving) => { setDetail(receiving); setIsDetailLoading(true); try { const response = await getPurchaseReceivingById(receiving.id); setDetail(response?.data || receiving) } catch (error) { setMessage(apiError(error, "Could not load receiving details.")) } finally { setIsDetailLoading(false) } }
+
+  const save = async (form) => {
+    setIsSaving(true); setMessage("")
+    const payload = {
+      ...(form.receivingCode.trim() ? { receivingCode: form.receivingCode.trim() } : {}),
+      ...(!editing?.id ? { supplierId: form.supplierId, purchaseOrderId: form.purchaseOrderId || null, ...(branchId ? { branchId } : {}) } : {}),
+      supplierDeliveryNo: form.supplierDeliveryNo.trim() || null,
+      supplierInvoiceNo: form.supplierInvoiceNo.trim() || null,
+      referenceNo: form.referenceNo.trim() || null,
+      notes: form.notes.trim() || null,
+      internalNotes: form.internalNotes.trim() || null,
+      items: form.items.map((line) => ({ itemId: line.itemId, purchaseOrderItemId: line.purchaseOrderItemId || null, description: line.description.trim(), quantityReceived: Number(line.quantityReceived), unitCost: Number(line.unitCost), discountAmount: Number(line.discountAmount || 0), batchCode: line.batchCode.trim() || null, expiryDate: line.expiryDate || null, serialNumbers: parseSerials(line.serialText) })),
+    }
+    try { const response = editing?.id ? await updatePurchaseReceiving(editing.id, payload) : await createPurchaseReceiving(payload); setNotice(`${response?.data?.receivingCode || "Receiving"} saved as draft.`); setEditing(null); await Promise.all([load(), loadReferenceData()]) } catch (error) { setMessage(apiError(error, "Could not save purchase receiving.")) } finally { setIsSaving(false) }
+  }
+
+  const changeStatus = async (receiving, nextStatus) => {
+    let cancellationReason
+    if (nextStatus === "CANCELLED") { cancellationReason = window.prompt(`Reason for cancelling ${receiving.receivingCode}?`); if (!cancellationReason?.trim()) return } else if (!window.confirm(`Post ${receiving.receivingCode}? This will increase inventory and cannot be edited afterward.`)) return
+    setIsSaving(true); setMessage("")
+    try { await updatePurchaseReceivingStatus(receiving.id, { status: nextStatus, ...(cancellationReason ? { cancellationReason: cancellationReason.trim() } : {}) }); setNotice(`${receiving.receivingCode} is now ${nextStatus.toLowerCase()}.`); await Promise.all([load(), loadReferenceData()]); if (detail?.id === receiving.id) await openDetail(receiving) } catch (error) { setMessage(apiError(error, `Could not ${nextStatus === "POSTED" ? "post" : "cancel"} receiving.`)) } finally { setIsSaving(false) }
+  }
+
+  const handleExportReceivingsExcel = async () => {
+    try {
+      const queryParams = {
+        ...(branchId ? { branchId } : {}),
+        ...(search.trim() ? { search: search.trim() } : {}),
+        ...(status ? { status } : {}),
+      }
+
+      const exportReceivings = []
+      let exportPage = 1
+      let totalPages = 1
+
+      do {
+        const response = await getPurchaseReceivings({ ...queryParams, page: exportPage, limit: 50 })
+        const pageItems = Array.isArray(response?.data?.items) ? response.data.items : []
+        exportReceivings.push(...pageItems)
+        totalPages = Math.max(1, Number(response?.data?.pagination?.totalPages || 1))
+        exportPage += 1
+      } while (exportPage <= totalPages)
+
+      const exportColumns = [
+        ["Receiving Code", (row) => row.receivingCode || "—"],
+        ["Date Received", (row) => row.receivingDate ? dateOnly(row.receivingDate) : dateOnly(row.createdAt)],
+        ["Supplier", (row) => row.supplier?.name || "—"],
+        ["Linked PO", (row) => row.purchaseOrder?.poNumber || "—"],
+        ["Invoice / DR No", (row) => row.supplierInvoiceNumber || "—"],
+        ["Status", (row) => formatStatus(row.status)],
+        ["Items Count", (row) => (row.items || []).length],
+        ["Total Units", (row) => (row.items || []).reduce((s, it) => s + Number(it.quantityReceived || 0), 0)],
+        ["Total Amount", (row) => Number(row.totalAmount || 0)],
+        ["Received By", (row) => row.receivedByUser?.fullName || row.receivedByUser?.username || "—"],
+        ["Notes", (row) => row.notes || "—"],
+      ]
+
+      exportReportExcel({
+        label: "Purchase Receivings & Deliveries",
+        filename: `Receivings-${new Date().toISOString().slice(0, 10)}`,
+        columns: exportColumns,
+        records: exportReceivings,
+        branch: selectedBranch || user?.branch,
+        generatedBy: user,
+        filters: [
+          ["Search Query", search.trim() || "All"],
+          ["Status", status ? formatStatus(status) : "All statuses"],
+        ],
+        totals: [
+          ["Total Deliveries Exported", exportReceivings.length],
+          ["Combined Delivery Value", exportReceivings.reduce((s, r) => s + Number(r.totalAmount || 0), 0)],
+        ],
+      })
+    } catch (error) {
+      setMessage(apiError(error, "Could not export purchase receivings to Excel."))
+    }
+  }
+
+  const totalPages = Math.max(1, pagination.totalPages || 1)
+  return (
+    <div className="space-y-5">
+      {/* MINIMALIST HEADER & VIEW SWITCHER */}
+      <section className="rounded-xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-2xs">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Purchases &amp; Supply Chain</p>
+            <h1 className="text-xl sm:text-2xl font-black text-slate-900 leading-tight">
+              {viewMode === "REPORTS"
+                ? "Inbound Deliveries & Cost Audit"
+                : viewMode === "SUPPLIER_WARRANTY"
+                  ? "Supplier Warranty (RMA / RTV)"
+                  : "Receiving / Deliveries"}
+            </h1>
+            <p className="mt-0.5 text-xs text-slate-500">
+              {viewMode === "REPORTS"
+                ? "Landed goods receiving audit, PO vs actual delivery cost variances, and supplier turnaround scorecard."
+                : viewMode === "SUPPLIER_WARRANTY"
+                  ? "Track defective items sent to suppliers and resolve via: Same Item, Change Model, or Credit Memo."
+                  : "Draft, validate, and post supplier deliveries into the correct branch inventory."}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {viewMode === "OPERATIONS" ? (
+              <>
+                <ExportExcelButton
+                  filteredCount={pagination?.totalItems ?? receivings.length}
+                  label="Export (.xlsx)"
+                  onExport={handleExportReceivingsExcel}
+                />
+                <button
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[var(--color-maroon)] px-3.5 py-2 text-xs font-bold text-white shadow-2xs transition hover:bg-[var(--color-maroon-hover)]"
+                  onClick={() => setEditing({})}
+                  type="button"
+                >
+                  <Plus size={15} /> New Receiving
+                </button>
+              </>
+            ) : viewMode === "SUPPLIER_WARRANTY" ? (
+              <button
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition shadow-2xs"
+                onClick={loadSupplierClaims}
+                disabled={isLoadingSupplierClaims}
+                type="button"
+              >
+                <RefreshCw size={13} className={isLoadingSupplierClaims ? "animate-spin" : ""} /> Refresh
+              </button>
+            ) : (
+              <button
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[var(--color-maroon)] px-3.5 py-2 text-xs font-bold text-white shadow-2xs transition hover:bg-[var(--color-maroon-hover)]"
+                onClick={() => setEditing({})}
+                type="button"
+              >
+                <Plus size={15} /> New Receiving
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Unified Minimalist Segment Switcher */}
+        <div className="mt-3.5 pt-3 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2">
+          <div className="inline-flex p-1 bg-slate-100/80 rounded-xl border border-slate-200/60 text-xs">
+            <button
+              type="button"
+              onClick={() => setViewMode("OPERATIONS")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg transition ${
+                viewMode === "OPERATIONS"
+                  ? "bg-white text-slate-900 font-bold shadow-2xs"
+                  : "text-slate-500 hover:text-slate-800 font-medium"
+              }`}
+            >
+              <Boxes size={14} /> Deliveries &amp; Inbound PO
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("SUPPLIER_WARRANTY")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg transition ${
+                viewMode === "SUPPLIER_WARRANTY"
+                  ? "bg-white text-slate-900 font-bold shadow-2xs"
+                  : "text-slate-500 hover:text-slate-800 font-medium"
+              }`}
+            >
+              <Truck size={14} /> Supplier Warranty (RMA / RTV)
+              {supplierClaims.length > 0 ? (
+                <span className="ml-1 rounded-full bg-slate-200/80 text-slate-800 px-1.5 py-0.2 text-[10px] font-bold">
+                  {supplierClaims.length}
+                </span>
+              ) : null}
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("REPORTS")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg transition ${
+                viewMode === "REPORTS"
+                  ? "bg-white text-slate-900 font-bold shadow-2xs"
+                  : "text-slate-500 hover:text-slate-800 font-medium"
+              }`}
+            >
+              <BarChart3 size={14} /> Reports &amp; Audit
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {message ? <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-bold text-rose-700">{message}</div> : null}
+      {notice ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold text-emerald-700">{notice}</div> : null}
+
+      {viewMode === "REPORTS" ? (
+        <PurchasesReportView
+          branchId={branchId}
+          selectedBranch={selectedBranch}
+          user={user}
+          initialTab="RECEIVINGS_LOG"
+          onOpenReceivingDetail={(rec) => openDetail(rec)}
+        />
+      ) : viewMode === "SUPPLIER_WARRANTY" ? (
+        <div className="space-y-4">
+          {/* Minimalist Summary Strip */}
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="rounded-xl border border-slate-200/80 bg-white p-3.5 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">With Suppliers</span>
+                <Truck size={16} className="text-slate-400" />
+              </div>
+              <p className="mt-1 font-mono text-2xl font-black text-slate-900">{supplierClaims.length}</p>
+              <p className="text-[11px] text-slate-500">Units pending return / resolution</p>
+            </div>
+            <div className="rounded-xl border border-slate-200/80 bg-white p-3.5 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Active Suppliers</span>
+                <Boxes size={16} className="text-slate-400" />
+              </div>
+              <p className="mt-1 font-mono text-2xl font-black text-slate-900">
+                {new Set(supplierClaims.map((c) => c.supplierName).filter(Boolean)).size}
+              </p>
+              <p className="text-[11px] text-slate-500">Distinct supplier RMA channels</p>
+            </div>
+            <div className="rounded-xl border border-slate-200/80 bg-white p-3.5 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Settlement</span>
+                <ShieldCheck size={16} className="text-slate-400" />
+              </div>
+              <p className="mt-1 text-sm font-bold text-slate-900">3 Scenarios Supported</p>
+              <p className="text-[11px] text-slate-500">Same Item, Change Model, or Credit Memo</p>
+            </div>
+          </div>
+
+          {/* Search bar */}
+          <section className="rounded-xl border border-slate-200/80 bg-white p-2.5 shadow-2xs">
+            <label className="relative block">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+              <input
+                className="w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-8 pr-3 text-xs outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-200 text-slate-800 placeholder:text-slate-400"
+                onChange={(e) => setSupplierRmaSearch(e.target.value)}
+                placeholder="Search RMA code, supplier, item, serial, or reference..."
+                value={supplierRmaSearch}
+              />
+            </label>
+          </section>
+
+          {/* RMA Claims Table */}
+          <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-2xs">
+            <div className="overflow-x-auto w-full">
+              <table className="w-full min-w-[760px] text-left text-xs">
+                <thead className="border-b border-slate-100 bg-slate-50/75 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  <tr>
+                    <th className="px-3.5 py-2.5">RMA Code</th>
+                    <th className="px-3.5 py-2.5">Supplier &amp; Ref #</th>
+                    <th className="px-3.5 py-2.5">Defective Item &amp; S/N</th>
+                    <th className="px-3.5 py-2.5">Dispatched</th>
+                    <th className="px-3.5 py-2.5">Aging</th>
+                    <th className="px-3.5 py-2.5 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {isLoadingSupplierClaims ? (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-8 text-center text-slate-400 font-semibold">
+                        Loading supplier RMA claims…
+                      </td>
+                    </tr>
+                  ) : null}
+                  {!isLoadingSupplierClaims && filteredSupplierClaims.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-8 text-center text-slate-400 font-semibold">
+                        No defective units currently out with suppliers.
+                      </td>
+                    </tr>
+                  ) : null}
+                  {!isLoadingSupplierClaims
+                    ? filteredSupplierClaims.map((claim) => {
+                        const days = claim.daysElapsed || 0
+                        return (
+                          <tr key={claim.id} className="hover:bg-slate-50/50 transition-colors">
+                            <td className="px-3.5 py-2.5">
+                              <span className="font-mono font-bold text-slate-900 text-xs">{claim.claimCode}</span>
+                              <p className="text-[10px] text-slate-500 max-w-44 truncate">{claim.issueDescription || "Defective unit"}</p>
+                            </td>
+                            <td className="px-3.5 py-2.5">
+                              <p className="font-bold text-slate-800 max-w-40 truncate">{claim.supplierName || "Direct Supplier"}</p>
+                              <p className="font-mono text-[10px] text-slate-400">Ref: {claim.supplierReferenceNo || "—"}</p>
+                            </td>
+                            <td className="px-3.5 py-2.5">
+                              <p className="font-semibold text-slate-900 max-w-xs truncate">{claim.item?.itemName || "Item"}</p>
+                              <p className="font-mono text-[10px] text-slate-500">S/N: <span className="font-bold">{claim.serial?.serialNumber || "Non-serialized"}</span></p>
+                            </td>
+                            <td className="px-3.5 py-2.5 text-slate-600 whitespace-nowrap">
+                              {claim.sentToSupplierAt ? new Date(claim.sentToSupplierAt).toLocaleDateString("en-PH") : "—"}
+                            </td>
+                            <td className="px-3.5 py-2.5 whitespace-nowrap">
+                              <span className={`inline-block rounded-md px-2 py-0.5 text-[10px] font-bold ${
+                                days > 14
+                                  ? "bg-rose-50 text-rose-700 border border-rose-200/60"
+                                  : days > 7
+                                    ? "bg-amber-50 text-amber-700 border border-amber-200/60"
+                                    : "bg-slate-100 text-slate-700"
+                              }`}>
+                                {days}d out
+                              </span>
+                            </td>
+                            <td className="px-3.5 py-2.5 text-right whitespace-nowrap">
+                              <button
+                                type="button"
+                                onClick={() => openResolveSupplier(claim)}
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 px-3 py-1.5 text-xs font-bold text-white shadow-2xs transition"
+                              >
+                                <PackageCheck size={13} />
+                                <span>Resolve Outcome</span>
+                              </button>
+                            </td>
+                          </tr>
+                        )
+                      })
+                    : null}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      ) : (
+        <>
+          <section className="grid gap-2.5 rounded-xl border border-slate-200/80 bg-white p-2.5 shadow-2xs sm:grid-cols-[1fr_200px]">
+        <label className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+          <input className="w-full rounded-lg border border-slate-200 bg-white text-slate-800 py-1.5 pl-8 pr-3 text-xs outline-none focus:border-slate-400" onChange={(event) => { setSearch(event.target.value); setPage(1) }} placeholder="Search receiving, invoice, delivery, supplier…" value={search} />
+        </label>
+        <select className="rounded-lg border border-slate-200 bg-white text-slate-800 px-3 py-1.5 text-xs outline-none focus:border-slate-400 font-semibold" onChange={(event) => { setStatus(event.target.value); setPage(1) }} value={status}>
+          <option value="">All statuses</option>
+          <option value="DRAFT">Draft</option>
+          <option value="POSTED">Posted</option>
+          <option value="CANCELLED">Cancelled</option>
+        </select>
+      </section>
+
+      <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-2xs">
+        {isLoading ? (
+          <div className="flex items-center justify-center gap-2 p-10 text-xs font-bold text-slate-500">
+            <LoaderCircle className="animate-spin text-slate-400" size={16} />Loading deliveries…
+          </div>
+        ) : receivings.length === 0 ? (
+          <div className="p-10 text-center">
+            <Boxes className="mx-auto text-slate-300" size={32} />
+            <p className="mt-2 text-xs font-bold text-slate-800">No matching receivings</p>
+          </div>
+        ) : (
+          <>
+            <div className="hidden overflow-x-auto lg:block w-full">
+              <table className="w-full min-w-[850px] text-left text-xs">
+                <thead className="bg-slate-50/75 border-b border-slate-100 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                  <tr>
+                    <th className="px-3.5 py-2.5">Receiving</th>
+                    <th className="px-3.5 py-2.5">Supplier / PO</th>
+                    <th className="px-3.5 py-2.5">References</th>
+                    <th className="px-3.5 py-2.5">Status</th>
+                    <th className="px-3.5 py-2.5 text-right">Total</th>
+                    <th className="px-3.5 py-2.5 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {receivings.map((receiving) => (
+                    <tr key={receiving.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="px-3.5 py-2.5 whitespace-nowrap">
+                        <p className="font-mono font-bold text-slate-900">{receiving.receivingCode}</p>
+                        <p className="text-[11px] text-slate-400">{dateOnly(receiving.receivingDate)} · {receiving.branch?.code}</p>
+                      </td>
+                      <td className="px-3.5 py-2.5">
+                        <p className="font-semibold text-slate-800 max-w-44 truncate">{receiving.supplierNameSnapshot}</p>
+                        <p className="text-[11px] text-slate-400">{receiving.purchaseOrder?.poCode || "Standalone"}</p>
+                      </td>
+                      <td className="px-3.5 py-2.5 text-slate-600 max-w-36 truncate">{receiving.supplierInvoiceNo || receiving.supplierDeliveryNo || receiving.referenceNo || "—"}</td>
+                      <td className="px-3.5 py-2.5 whitespace-nowrap"><Status value={receiving.status} /></td>
+                      <td className="px-3.5 py-2.5 text-right font-mono font-bold text-slate-900 whitespace-nowrap">{money(receiving.grandTotal)}</td>
+                      <td className="px-3.5 py-2.5 whitespace-nowrap">
+                        <div className="flex justify-end gap-1.5">
+                          <button className="rounded-lg border border-slate-200 p-1.5 text-slate-600 hover:bg-slate-50 transition" onClick={() => openDetail(receiving)} type="button"><Eye size={14} /></button>
+                          {receiving.status === "DRAFT" ? (
+                            <>
+                              <button className="rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-50 transition" onClick={() => setEditing(receiving)} type="button">Edit</button>
+                              <button className="rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white shadow-2xs hover:bg-emerald-700 transition" disabled={isSaving} onClick={() => changeStatus(receiving, "POSTED")} type="button">Post Stock</button>
+                              <button className="rounded-lg border border-rose-200 bg-white px-2.5 py-1 text-[11px] font-bold text-rose-700 hover:bg-rose-50 transition" disabled={isSaving} onClick={() => changeStatus(receiving, "CANCELLED")} type="button">Cancel</button>
+                            </>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="grid gap-2.5 p-3 lg:hidden">
+              {receivings.map((receiving) => (
+                <article className="rounded-xl border border-slate-200 bg-white p-3 shadow-2xs text-xs" key={receiving.id}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-mono font-bold text-slate-900">{receiving.receivingCode}</p>
+                      <p className="text-[11px] text-slate-500">{receiving.supplierNameSnapshot}</p>
+                    </div>
+                    <Status value={receiving.status} />
+                  </div>
+                  <div className="mt-2.5 flex items-end justify-between border-t border-slate-100 pt-2 text-xs">
+                    <p className="text-slate-500">{dateOnly(receiving.receivingDate)}</p>
+                    <p className="font-mono font-bold text-[var(--color-maroon)]">{money(receiving.grandTotal)}</p>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    <button className="flex-1 min-w-[70px] rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50" onClick={() => openDetail(receiving)} type="button">View</button>
+                    {receiving.status === "DRAFT" ? (
+                      <>
+                        <button className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50" onClick={() => setEditing(receiving)} type="button">Edit</button>
+                        <button className="rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-bold text-white shadow-2xs hover:bg-emerald-700 transition" disabled={isSaving} onClick={() => changeStatus(receiving, "POSTED")} type="button">Post Stock</button>
+                        <button className="rounded-lg border border-rose-200 bg-white px-2.5 py-1.5 text-xs font-bold text-rose-700 hover:bg-rose-50 transition" disabled={isSaving} onClick={() => changeStatus(receiving, "CANCELLED")} type="button">Cancel</button>
+                      </>
+                    ) : null}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </>
+        )}
+        <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50/75 p-3 text-xs text-slate-500">
+          <p>Page {pagination.page || page} of {totalPages}</p>
+          <div className="flex gap-1.5">
+            <button className="rounded-lg border border-slate-200 bg-white p-1 text-slate-600 disabled:opacity-30" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))} type="button"><ChevronLeft size={16} /></button>
+            <button className="rounded-lg border border-slate-200 bg-white p-1 text-slate-600 disabled:opacity-30" disabled={page >= totalPages} onClick={() => setPage((value) => value + 1)} type="button"><ChevronRight size={16} /></button>
+          </div>
+        </div>
+      </section>
+      </>
+      )}
+
+      {editing ? (
+        <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-950/60 p-3 sm:p-5 backdrop-blur-xs">
+          <section className="my-auto w-full max-w-6xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/75 px-5 py-3.5">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-[var(--color-maroon)]">Purchase Receiving</span>
+                <h2 className="text-base font-black text-slate-900 leading-tight">{editing.id ? `Edit ${editing.receivingCode}` : "New Purchase Receiving"}</h2>
+              </div>
+              <button className="rounded-lg border border-slate-200 p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition" onClick={() => setEditing(null)} type="button"><X size={16} /></button>
+            </div>
+            <ReceivingForm catalogItems={catalogItems} initial={editing} isSaving={isSaving} onClose={() => setEditing(null)} onSave={save} purchaseOrders={purchaseOrders} suppliers={suppliers} />
+          </section>
+        </div>
+      ) : null}
+
+      {detail ? (
+        <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-950/60 p-3 sm:p-5 backdrop-blur-xs">
+          <section className="my-auto w-full max-w-4xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+            <header className="flex items-center justify-between border-b border-slate-200 bg-slate-50/75 px-5 py-3.5">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[var(--color-maroon)]">{detail.receivingCode}</span>
+                  <Status value={detail.status} />
+                </div>
+                <h2 className="mt-0.5 text-base font-black text-slate-900 leading-tight">{detail.supplierNameSnapshot}</h2>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100 transition"
+                  onClick={() =>
+                    exportReceivingPdf(detail, {
+                      branch: detail.branch || selectedBranch,
+                      generatedBy: user,
+                    })
+                  }
+                  type="button"
+                >
+                  Export PDF
+                </button>
+
+                <button
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100 transition"
+                  onClick={() =>
+                    printReceiving(detail, {
+                      branch: detail.branch || selectedBranch,
+                      generatedBy: user,
+                    })
+                  }
+                  type="button"
+                >
+                  Print
+                </button>
+
+                <button
+                  className="rounded-lg border border-slate-200 p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+                  onClick={() => setDetail(null)}
+                  type="button"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </header>
+
+            {isDetailLoading ? (
+              <div className="flex items-center justify-center gap-2 p-10 text-xs font-bold text-slate-500"><LoaderCircle className="animate-spin" size={16} />Loading receiving…</div>
+            ) : (
+              <div className="max-h-[75vh] overflow-y-auto p-5 space-y-4">
+                <div className="grid gap-2.5 sm:grid-cols-3">
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/75 p-3 text-xs"><p className="text-[10px] font-bold uppercase text-slate-500">Purchase Order</p><p className="mt-1 font-semibold text-slate-900">{detail.purchaseOrder?.poCode || "Standalone"}</p></div>
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/75 p-3 text-xs"><p className="text-[10px] font-bold uppercase text-slate-500">Reference</p><p className="mt-1 font-semibold text-slate-900">{detail.supplierInvoiceNo || detail.supplierDeliveryNo || detail.referenceNo || "—"}</p></div>
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/75 p-3 text-xs"><p className="text-[10px] font-bold uppercase text-slate-500">Grand Total</p><p className="mt-1 font-mono font-black text-slate-900">{money(detail.grandTotal)}</p></div>
+                </div>
+
+                <div className="space-y-2.5">
+                  {(detail.items || []).map((line) => (
+                    <article className="rounded-xl border border-slate-200 bg-white p-3 text-xs shadow-2xs" key={line.id}>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className="font-bold text-slate-900">{line.item?.itemCode} · {line.item?.itemName}</p>
+                          <p className="text-[11px] text-slate-500">{line.description}</p>
+                          <p className="mt-1 text-[11px] text-slate-600 font-medium">Batch {line.batchCode || "not set"} · Qty {Number(line.quantityReceived)} · {money(line.unitCost)} each</p>
+                        </div>
+                        <p className="font-mono font-bold text-slate-900">{money(line.lineTotal)}</p>
+                      </div>
+                      {(line.serials || []).length ? (
+                        <div className="mt-2.5 flex flex-wrap gap-1.5 border-t border-slate-100 pt-2">
+                          {line.serials.map((serial) => (
+                            <span className="rounded-md bg-slate-100 border border-slate-200 px-2 py-0.5 text-[10px] font-mono font-semibold text-slate-700" key={serial.id}>{serial.serialNumber}</span>
+                          ))}
+                        </div>
+                      ) : null}
+                    </article>
+                  ))}
+                </div>
+
+                {detail.status === "DRAFT" ? (
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    <button className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-2xs hover:bg-emerald-700 transition" disabled={isSaving} onClick={() => changeStatus(detail, "POSTED")} type="button">
+                      <PackagePlus size={14} />Post to Inventory
+                    </button>
+                    <button className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50 transition" onClick={() => setEditing(detail)} type="button">
+                      <CheckCircle2 size={14} />Review / Edit Draft
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </section>
+        </div>
+      ) : null}
+
+      {/* MODAL: RESOLVE SUPPLIER RMA (3 SCENARIOS) */}
+      {showResolveSupplierModal && resolveTargetClaim ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/40 backdrop-blur-xs">
+          <section className="w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden">
+            <header className="shrink-0 flex items-center justify-between border-b border-slate-100 bg-white px-5 py-3.5">
+              <div>
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400">Supplier RMA Resolution</span>
+                <h3 className="text-base font-black text-slate-900 leading-tight">
+                  Resolve Supplier Claim: {resolveTargetClaim.claimCode}
+                </h3>
+              </div>
+              <button
+                className="rounded-lg border border-slate-200 p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+                onClick={() => setShowResolveSupplierModal(false)}
+                type="button"
+              >
+                <X size={16} />
+              </button>
+            </header>
+
+            <form onSubmit={handleConfirmSupplierResolve} className="flex-1 flex flex-col min-h-0">
+              <div className="space-y-4 p-5 sm:p-6 text-xs overflow-y-auto flex-1">
+                <div>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600 block mb-1.5">
+                    Select Supplier Outcome Scenario *
+                  </label>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    {[
+                      { id: "REPLACED_BY_SUPPLIER", label: "📦 Same Item Replaced", desc: "Same model returns to stock" },
+                      { id: "CHANGE_MODEL", label: "🔄 Change Model", desc: "Phased out -> New model stock" },
+                      { id: "CREDIT_MEMO", label: "📄 Credit Memo (CM)", desc: "Deduct from AP payables" },
+                      { id: "REPAIRED", label: "🔧 Repaired Unit", desc: "Fixed unit returns to stock" },
+                      { id: "REJECTED", label: "❌ Supplier Rejected", desc: "Write-off / Shrinkage loss" },
+                    ].map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setResolveForm((prev) => ({ ...prev, outcome: opt.id }))}
+                        className={`rounded-xl p-3 text-left transition border ${
+                          resolveForm.outcome === opt.id
+                            ? opt.id === "REJECTED"
+                              ? "border-rose-600 bg-rose-50 text-rose-900 shadow-2xs font-bold"
+                              : "border-slate-900 bg-slate-50 text-slate-900 shadow-2xs font-bold ring-1 ring-slate-900/10"
+                            : "border-slate-200/90 bg-white hover:bg-slate-50/80 text-slate-700"
+                        }`}
+                      >
+                        <p className="text-xs font-black">{opt.label}</p>
+                        <p className="text-[10px] text-slate-500 mt-0.5">{opt.desc}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {resolveForm.outcome === "CHANGE_MODEL" ? (
+                  <div className="rounded-2xl border border-amber-300 bg-amber-50/70 p-3.5 space-y-3">
+                    <div>
+                      <h5 className="text-xs font-black uppercase tracking-wider text-amber-900">
+                        Scenario 2: Change Model (Phased-Out Replacement)
+                      </h5>
+                      <p className="text-[11px] text-amber-800">
+                        Since the original item is phased out, select the replacement model provided by the supplier. 1 unit will be replenished into the new model's inventory stock.
+                      </p>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="block">
+                        <span className="text-[11px] font-bold text-slate-700 block mb-1">Select New Model Item from Catalog *</span>
+                        <select
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-[var(--color-maroon)]"
+                          value={resolveForm.replacementItemId}
+                          onChange={(e) => setResolveForm((prev) => ({ ...prev, replacementItemId: e.target.value }))}
+                          required
+                        >
+                          <option value="">Select replacement model...</option>
+                          {catalogItems.map((it) => (
+                            <option key={it.id} value={it.id}>
+                              {it.itemCode} · {it.itemName} {it.isSerialized ? "(Serialized)" : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="text-[11px] font-bold text-slate-700 block mb-1">New Serial Number (Optional)</span>
+                        <input
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-[var(--color-maroon)]"
+                          placeholder="Scan or type new serial barcode..."
+                          value={resolveForm.newSerial}
+                          onChange={(e) => setResolveForm((prev) => ({ ...prev, newSerial: e.target.value }))}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                ) : null}
+
+                {resolveForm.outcome === "CREDIT_MEMO" ? (
+                  <div className="rounded-2xl border border-blue-300 bg-blue-50/70 p-3.5 space-y-3">
+                    <div>
+                      <h5 className="text-xs font-black uppercase tracking-wider text-blue-900">
+                        Scenario 3: Supplier Credit Memo (CM)
+                      </h5>
+                      <p className="text-[11px] text-blue-800">
+                        Supplier issued a Credit Memo instead of physical stock replacement. This CM will be logged to deduct from your accounts payable (AP) balance with this supplier.
+                      </p>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="block">
+                        <span className="text-[11px] font-bold text-slate-700 block mb-1">Credit Memo Reference / Number *</span>
+                        <input
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-[var(--color-maroon)]"
+                          placeholder="e.g. CM-2026-0041"
+                          required
+                          value={resolveForm.creditMemoNumber}
+                          onChange={(e) => setResolveForm((prev) => ({ ...prev, creditMemoNumber: e.target.value }))}
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="text-[11px] font-bold text-slate-700 block mb-1">Credit Memo Amount (₱) *</span>
+                        <input
+                          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-mono font-bold text-slate-800 outline-none focus:border-[var(--color-maroon)]"
+                          min="0"
+                          placeholder="0.00"
+                          required
+                          step="0.01"
+                          type="number"
+                          value={resolveForm.creditMemoAmount}
+                          onChange={(e) => setResolveForm((prev) => ({ ...prev, creditMemoAmount: e.target.value }))}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                ) : null}
+
+                {resolveForm.outcome === "REPLACED_BY_SUPPLIER" || resolveForm.outcome === "REPAIRED" ? (
+                  <div className="rounded-2xl border border-emerald-300 bg-emerald-50 p-3.5 space-y-2">
+                    <p className="text-xs font-bold text-emerald-900">
+                      <strong>Scenario 1: Stock Replenishment:</strong> Receiving the replaced/repaired unit automatically replenishes 1 unit back into branch stock via <code className="font-mono">WARRANTY_RETURN</code>.
+                    </p>
+                    <label className="block">
+                      <span className="text-[11px] font-bold text-slate-700 block mb-1">Replacement Unit Serial Number (Optional)</span>
+                      <input
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-[var(--color-maroon)]"
+                        placeholder="Scan or type new serial barcode if replaced with new serial..."
+                        value={resolveForm.newSerial}
+                        onChange={(e) => setResolveForm((prev) => ({ ...prev, newSerial: e.target.value }))}
+                      />
+                    </label>
+                  </div>
+                ) : null}
+
+                {resolveForm.outcome === "REJECTED" ? (
+                  <div className="rounded-2xl border border-rose-300 bg-rose-50 p-3.5 space-y-2">
+                    <p className="text-xs font-bold text-rose-900">
+                      <strong>Inventory Shrinkage Loss:</strong> The supplier rejected the claim. This unit will be logged as a write-off / shrinkage loss.
+                    </p>
+                    <label className="block">
+                      <span className="text-[11px] font-bold text-slate-700 block mb-1">Mandatory Supplier Rejection Reason *</span>
+                      <textarea
+                        required
+                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-[var(--color-maroon)]"
+                        placeholder="e.g. Customer induced damage: Corroded contacts, PCB fracture..."
+                        rows="3"
+                        value={resolveForm.rejectionReason}
+                        onChange={(e) => setResolveForm((prev) => ({ ...prev, rejectionReason: e.target.value }))}
+                      />
+                    </label>
+                  </div>
+                ) : null}
+
+                <label className="block">
+                  <span className="text-[11px] font-bold text-slate-700 block mb-1">Action Taken / Resolution Notes</span>
+                  <textarea
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-[var(--color-maroon)]"
+                    rows="2"
+                    value={resolveForm.actionTaken}
+                    onChange={(e) => setResolveForm((prev) => ({ ...prev, actionTaken: e.target.value }))}
+                  />
+                </label>
+              </div>
+
+              <div className="shrink-0 flex items-center justify-end gap-2 border-t border-slate-100 p-4 sm:px-6 bg-slate-50/70">
+                <button
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition"
+                  onClick={() => setShowResolveSupplierModal(false)}
+                  type="button"
+                >
+                  Cancel
+                </button>
+                <button
+                  className={`rounded-xl px-4 py-2 text-xs font-bold text-white shadow-2xs transition ${
+                    resolveForm.outcome === "REJECTED" ? "bg-rose-700 hover:bg-rose-800" : "bg-slate-900 hover:bg-slate-800"
+                  }`}
+                  disabled={isSaving}
+                  type="submit"
+                >
+                  {isSaving ? "Submitting Resolution…" : "Confirm Supplier Outcome"}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+
+
+
+
+
+
+
+

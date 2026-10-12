@@ -1,0 +1,216 @@
+const ACCESS_TOKEN_KEY = "pointify_access_token"
+const LEGACY_ACCESS_TOKEN_KEY = "arunafeltz_access_token"
+const USER_KEY = "pointify_user"
+const LEGACY_USER_KEY = "arunafeltz_user"
+const SELECTED_BRANCH_KEY = "pointify_selected_branch"
+const LEGACY_SELECTED_BRANCH_KEY = "arunafeltz_selected_branch"
+const ACTIVE_PAGE_KEY_PREFIX = "pointify_active_page_"
+const LEGACY_ACTIVE_PAGE_KEY_PREFIX = "arunafeltz_active_page_"
+
+export function saveAccessToken(token) {
+  if (!token) return
+  try {
+    localStorage.setItem(ACCESS_TOKEN_KEY, token)
+    sessionStorage.setItem(ACCESS_TOKEN_KEY, token)
+  } catch (err) {
+    console.warn("Storage save token error:", err)
+  }
+}
+
+export function getAccessToken() {
+  try {
+    return (
+      localStorage.getItem(ACCESS_TOKEN_KEY) ||
+      sessionStorage.getItem(ACCESS_TOKEN_KEY) ||
+      localStorage.getItem(LEGACY_ACCESS_TOKEN_KEY) ||
+      sessionStorage.getItem(LEGACY_ACCESS_TOKEN_KEY)
+    )
+  } catch {
+    return null
+  }
+}
+
+export function removeAccessToken() {
+  try {
+    localStorage.removeItem(ACCESS_TOKEN_KEY)
+    sessionStorage.removeItem(ACCESS_TOKEN_KEY)
+    localStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY)
+    sessionStorage.removeItem(LEGACY_ACCESS_TOKEN_KEY)
+  } catch (err) {
+    console.warn("Storage remove token error:", err)
+  }
+}
+
+export function saveUser(user) {
+  if (!user) return
+  try {
+    const raw = JSON.stringify(user)
+    localStorage.setItem(USER_KEY, raw)
+    sessionStorage.setItem(USER_KEY, raw)
+  } catch (err) {
+    console.warn("Storage save user error:", err)
+  }
+}
+
+export function getUser() {
+  try {
+    const rawUser =
+      localStorage.getItem(USER_KEY) ||
+      sessionStorage.getItem(USER_KEY) ||
+      localStorage.getItem(LEGACY_USER_KEY) ||
+      sessionStorage.getItem(LEGACY_USER_KEY)
+    if (!rawUser) return null
+    return JSON.parse(rawUser)
+  } catch {
+    return null
+  }
+}
+
+export function removeUser() {
+  try {
+    localStorage.removeItem(USER_KEY)
+    sessionStorage.removeItem(USER_KEY)
+    localStorage.removeItem(LEGACY_USER_KEY)
+    sessionStorage.removeItem(LEGACY_USER_KEY)
+  } catch (err) {
+    console.warn("Storage remove user error:", err)
+  }
+}
+
+export function saveSelectedBranch(branch) {
+  if (!branch) return
+  try {
+    const raw = JSON.stringify(branch)
+    localStorage.setItem(SELECTED_BRANCH_KEY, raw)
+    sessionStorage.setItem(SELECTED_BRANCH_KEY, raw)
+  } catch (err) {
+    console.warn("Storage save branch error:", err)
+  }
+}
+
+export function getSelectedBranch() {
+  try {
+    const rawBranch =
+      localStorage.getItem(SELECTED_BRANCH_KEY) ||
+      sessionStorage.getItem(SELECTED_BRANCH_KEY) ||
+      localStorage.getItem(LEGACY_SELECTED_BRANCH_KEY) ||
+      sessionStorage.getItem(LEGACY_SELECTED_BRANCH_KEY)
+    if (!rawBranch) return null
+    return JSON.parse(rawBranch)
+  } catch {
+    return null
+  }
+}
+
+export function removeSelectedBranch() {
+  try {
+    localStorage.removeItem(SELECTED_BRANCH_KEY)
+    sessionStorage.removeItem(SELECTED_BRANCH_KEY)
+    localStorage.removeItem(LEGACY_SELECTED_BRANCH_KEY)
+    sessionStorage.removeItem(LEGACY_SELECTED_BRANCH_KEY)
+  } catch (err) {
+    console.warn("Storage remove branch error:", err)
+  }
+}
+
+export function clearSelectedBranch() {
+  removeSelectedBranch()
+}
+
+export function saveActivePage(userId, pageKey) {
+  if (!pageKey) return
+  try {
+    const key = userId ? `${ACTIVE_PAGE_KEY_PREFIX}${userId}` : "pointify_active_page_default"
+    localStorage.setItem(key, pageKey)
+  } catch (err) {
+    console.warn("Storage save page error:", err)
+  }
+}
+
+export function getActivePage(userId) {
+  try {
+    const key = userId ? `${ACTIVE_PAGE_KEY_PREFIX}${userId}` : "pointify_active_page_default"
+    const legacyKey = userId ? `${LEGACY_ACTIVE_PAGE_KEY_PREFIX}${userId}` : "arunafeltz_active_page_default"
+    return localStorage.getItem(key) || localStorage.getItem(legacyKey) || null
+  } catch {
+    return null
+  }
+}
+
+export function removeActivePage(userId) {
+  try {
+    const key = userId ? `${ACTIVE_PAGE_KEY_PREFIX}${userId}` : "pointify_active_page_default"
+    const legacyKey = userId ? `${LEGACY_ACTIVE_PAGE_KEY_PREFIX}${userId}` : "arunafeltz_active_page_default"
+    localStorage.removeItem(key)
+    localStorage.removeItem(legacyKey)
+  } catch (err) {
+    console.warn("Storage remove page error:", err)
+  }
+}
+
+export function saveFormDraft(draftKey, data) {
+  if (!draftKey) return
+  try {
+    if (data === null || data === undefined) {
+      localStorage.removeItem(draftKey)
+    } else {
+      localStorage.setItem(draftKey, JSON.stringify(data))
+    }
+  } catch (err) {
+    console.warn("Storage save draft error:", err)
+  }
+}
+
+export function getFormDraft(draftKey) {
+  if (!draftKey) return null
+  try {
+    const raw = localStorage.getItem(draftKey)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+export function clearFormDraft(draftKey) {
+  if (!draftKey) return
+  try {
+    localStorage.removeItem(draftKey)
+  } catch (err) {
+    console.warn("Storage clear draft error:", err)
+  }
+}
+
+export function saveCustomerItemTier(customerId, itemId, priceTier) {
+  if (!customerId || !itemId || !priceTier) return
+  try {
+    const key = `customer_item_tiers_${customerId}`
+    const existing = JSON.parse(localStorage.getItem(key) || "{}")
+    existing[itemId] = Number(priceTier)
+    localStorage.setItem(key, JSON.stringify(existing))
+  } catch (err) {
+    console.warn("Storage save customer item tier error:", err)
+  }
+}
+
+export function getCustomerItemTiers(customerId) {
+  if (!customerId) return {}
+  try {
+    const key = `customer_item_tiers_${customerId}`
+    const raw = localStorage.getItem(key)
+    return raw ? JSON.parse(raw) : {}
+  } catch {
+    return {}
+  }
+}
+
+export function clearSession() {
+  const currentUser = getUser()
+  if (currentUser?.id) {
+    removeActivePage(currentUser.id)
+  }
+  removeAccessToken()
+  removeUser()
+  removeSelectedBranch()
+}
+
+

@@ -1,0 +1,2891 @@
+import { useCallback, useEffect, useMemo, useState } from "react"
+import {
+  BarChart3,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  CircleAlert,
+  Eye,
+  Handshake,
+  Layers,
+  LoaderCircle,
+  PackageCheck,
+  Plus,
+  Printer,
+  RefreshCw,
+  RotateCcw,
+  Search,
+  ShieldCheck,
+  Truck,
+  X,
+} from "lucide-react"
+
+import { getCustomers } from "../../features/customers/customers.api"
+import { getInventoryBatches, getInventorySerials } from "../../features/inventory/inventory.api"
+import { getItems } from "../../features/items/items.api"
+import { getSaleById, getSales } from "../../features/sales/sales.api"
+import {
+  createWarrantyClaim,
+  dispatchToSupplier,
+  getWarrantyClaimById,
+  getWarrantyClaims,
+  issueLoanerUnit,
+  processImmediateReplacement,
+  rejectCustomerClaim,
+  releaseWarrantyClaim,
+  resolveSupplierRma,
+  returnLoanerUnit,
+  updateWarrantyClaimStatus,
+} from "../../features/warranty-claims/warrantyClaims.api"
+import { exportReportExcel } from "../../utils/businessDocumentExport"
+import ExportExcelButton from "../../components/common/ExportExcelButton"
+import WarrantySlipModal from "../../components/warranty/WarrantySlipModal"
+import WarrantyReportView from "./WarrantyReportView"
+
+const CREATE_ROLES = new Set(["SUPER_OWNER", "BRANCH_OWNER", "ADMIN", "CASHIER", "TECHNICIAN"])
+const ACTION_ROLES = new Set(["SUPER_OWNER", "BRANCH_OWNER", "ADMIN", "CASHIER", "TECHNICIAN"])
+const STATUSES = ["IN", "CHECKING", "SENT_TO_SUPPLIER", "APPROVED", "REJECTED", "REPAIRED", "REPLACED", "OUT"]
+const NEXT_STATUSES = {
+  IN: ["CHECKING"],
+  CHECKING: ["SENT_TO_SUPPLIER", "APPROVED", "REJECTED", "REPAIRED"],
+  SENT_TO_SUPPLIER: ["APPROVED", "REJECTED", "REPAIRED", "REPLACED"],
+  APPROVED: ["REPAIRED", "REPLACED"],
+  REJECTED: [],
+  REPAIRED: [],
+  REPLACED: [],
+  OUT: [],
+}
+const RELEASE_READY = new Set(["REJECTED", "REPAIRED", "REPLACED"])
+const FIELD_CLASS =
+  "mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 outline-none transition focus:border-[var(--color-maroon)] focus:ring-1 focus:ring-[var(--color-maroon)] hover:border-slate-300 placeholder:text-slate-400 placeholder:font-normal"
+
+function dateTime(value) {
+  if (!value) return "—"
+  const valueDate = new Date(value)
+  return Number.isNaN(valueDate.getTime()) ? "—" : valueDate.toLocaleString("en-PH")
+}
+
+function dateOnly(value) {
+  if (!value) return "—"
+  const valueDate = new Date(value)
+  return Number.isNaN(valueDate.getTime()) ? "—" : valueDate.toLocaleDateString("en-PH")
+}
+
+function calculateAgingDays(dateValue) {
+  if (!dateValue) return 0
+  const start = new Date(dateValue).getTime()
+  const now = Date.now()
+  return Math.max(0, Math.floor((now - start) / (1000 * 60 * 60 * 24)))
+}
+
+function apiError(error, fallback) {
+  return error?.response?.data?.message || error?.response?.data?.error?.message || fallback
+}
+
+function formatStatus(status) {
+  if (!status) return "—"
+  return String(status)
+    .replace(/_/g, " ")
+    .toLowerCase()
+    .split(" ")
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ")
+}
+
+function statusTone(status) {
+  if (status === "OUT") return "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+  if (["REPAIRED", "REPLACED", "APPROVED"].includes(status))
+    return "bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/50 dark:text-emerald-300 dark:border-emerald-800"
+  if (status === "REJECTED")
+    return "bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/50 dark:text-rose-300 dark:border-rose-800"
+  if (status === "SENT_TO_SUPPLIER")
+    return "bg-violet-50 text-violet-700 border border-violet-200 dark:bg-violet-950/50 dark:text-violet-300 dark:border-violet-800"
+  if (status === "CHECKING")
+    return "bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-800"
+  return "bg-sky-50 text-sky-700 border border-sky-200 dark:bg-sky-950/50 dark:text-sky-300 dark:border-sky-800"
+}
+
+function extractSerialRows(response) {
+  if (Array.isArray(response)) return response
+  if (Array.isArray(response?.data?.data)) return response.data.data
+  if (Array.isArray(response?.data?.items)) return response.data.items
+  if (Array.isArray(response?.data?.records)) return response.data.records
+  if (Array.isArray(response?.data)) return response.data
+  if (Array.isArray(response?.items)) return response.items
+  return []
+}
+
+function getClaimLoanerData(claim) {
+  if (!claim?.remarks || !claim.remarks.includes("[LOANER_DATA]:")) return null
+  try {
+    const jsonStr = claim.remarks.split("[LOANER_DATA]:")[1]?.split("[/LOANER_DATA]")[0]
+    return jsonStr ? JSON.parse(jsonStr) : null
+  } catch {
+    return null
+  }
+}
+
+function StatusBadge({ status }) {
+  return (
+    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold ${statusTone(status)}`}>
+      {formatStatus(status)}
+    </span>
+  )
+}
+
+function Modal({ children, onClose, title, wide = false }) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-950/60 p-3 sm:p-5 backdrop-blur-xs">
+      <section
+        aria-label={title}
+        aria-modal="true"
+        className={`my-auto w-full overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-800 shadow-2xl ${
+          wide ? "max-w-4xl" : "max-w-2xl"
+        }`}
+        role="dialog"
+      >
+        <header className="flex items-center justify-between border-b border-slate-200 bg-slate-50/75 px-5 py-3.5">
+          <h2 className="text-base font-black text-slate-900 leading-tight">{title}</h2>
+          <button
+            aria-label="Close"
+            className="rounded-lg border border-slate-200 p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+            onClick={onClose}
+            type="button"
+          >
+            <X size={16} />
+          </button>
+        </header>
+        {children}
+      </section>
+    </div>
+  )
+}
+
+function Field({ children, label, required = false }) {
+  return (
+    <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-600">
+      {label} {required ? <span className="text-rose-600">*</span> : null}
+      {children}
+    </label>
+  )
+}
+
+function unwrapList(response) {
+  if (Array.isArray(response)) return response
+  if (Array.isArray(response?.data)) return response.data
+  if (Array.isArray(response?.data?.data)) return response.data.data
+  if (Array.isArray(response?.data?.items)) return response.data.items
+  if (Array.isArray(response?.items)) return response.items
+  return []
+}
+
+const EMPTY_CREATE = {
+  customerId: "",
+  saleId: "",
+  saleItemId: "",
+  itemId: "",
+  serialId: "",
+  issueDescription: "",
+  customerComplaint: "",
+  diagnosis: "",
+  actionTaken: "",
+  supplierName: "",
+  supplierReferenceNo: "",
+  remarks: "",
+}
+
+export default function WarrantyPage({ initialContext, selectedBranch, user }) {
+  const branchName = selectedBranch?.name || user?.branch?.name || "Selected Branch"
+  const branchId = selectedBranch?.id || user?.branchId || user?.branch?.id || ""
+  const canCreate = CREATE_ROLES.has(user?.role)
+  const canAct = ACTION_ROLES.has(user?.role)
+  const [warrantyViewMode, setWarrantyViewMode] = useState("OPERATIONS") // "OPERATIONS" | "REPORTS"
+  const [activeTab, setActiveTab] = useState("claims") // "claims", "supplier", "replaced_log"
+
+  const [claims, setClaims] = useState([])
+  const [meta, setMeta] = useState({})
+  const [customers, setCustomers] = useState([])
+  const [items, setItems] = useState([])
+  const [sales, setSales] = useState([])
+  const [selectedSale, setSelectedSale] = useState(null)
+  const [saleSearchText, setSaleSearchText] = useState("")
+  const [isSaleDropdownOpen, setIsSaleDropdownOpen] = useState(false)
+  const [selectedClaim, setSelectedClaim] = useState(null)
+  const [search, setSearch] = useState(initialContext?.search || "")
+  const [statusFilter, setStatusFilter] = useState("")
+  const [page, setPage] = useState(1)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isDetailLoading, setIsDetailLoading] = useState(false)
+  const [isSaleLoading, setIsSaleLoading] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [errorMessage, setErrorMessage] = useState("")
+  const [notice, setNotice] = useState("")
+
+  // Create claim modal
+  const [showCreate, setShowCreate] = useState(false)
+  const [createForm, setCreateForm] = useState(EMPTY_CREATE)
+
+  // Status Action Modal (Standard Lifecycle)
+  const [actionStatus, setActionStatus] = useState("")
+  const [actionForm, setActionForm] = useState({
+    diagnosis: "",
+    actionTaken: "",
+    supplierName: "",
+    supplierReferenceNo: "",
+    remarks: "",
+  })
+
+  // Customer Claim Rejection Modal (Required remarks)
+  const [showCustomerReject, setShowCustomerReject] = useState(false)
+  const [customerRejectForm, setCustomerRejectForm] = useState({
+    rejectionReason: "",
+    remarks: "",
+  })
+
+  // Immediate Replacement Modal (Instant Swap with fresh warranty)
+  const [showImmediateReplace, setShowImmediateReplace] = useState(false)
+  const [replaceTargetClaim, setReplaceTargetClaim] = useState(null)
+  const [replaceForm, setReplaceForm] = useState({
+    replacementItemId: "",
+    replacementBatchId: "",
+    replacementSerialId: "",
+    replacementSerialNumber: "",
+    replacementWarrantyType: "MAJOR_PARTS",
+    replacementWarrantyDuration: "12 Months Major Parts (7D Outright)",
+    actionTaken: "",
+    remarks: "",
+  })
+  const [availableReplacementBatches, setAvailableReplacementBatches] = useState([])
+  const [availableReplacementSerials, setAvailableReplacementSerials] = useState([])
+  const [isLoadingStock, setIsLoadingStock] = useState(false)
+
+  // Dispatch to Supplier Modal
+  const [showDispatchSupplier, setShowDispatchSupplier] = useState(false)
+  const [dispatchTargetClaim, setDispatchTargetClaim] = useState(null)
+  const [dispatchForm, setDispatchForm] = useState({
+    supplierName: "",
+    supplierReferenceNo: "",
+    remarks: "",
+  })
+
+  // Supplier RMA Resolution Modal (Supplier Replaced vs Supplier Rejected Shrinkage)
+  const [showResolveSupplier, setShowResolveSupplier] = useState(false)
+  const [resolveTargetClaim, setResolveTargetClaim] = useState(null)
+  const [resolveForm, setResolveForm] = useState({
+    outcome: "REPLACED_BY_SUPPLIER",
+    rejectionReason: "",
+    actionTaken: "",
+    remarks: "",
+  })
+
+  // Release Modal
+  const [showRelease, setShowRelease] = useState(false)
+  const [releaseForm, setReleaseForm] = useState({ actionTaken: "", remarks: "" })
+
+  // Print 2-Copy Slip Modal
+  const [showSlipModal, setShowSlipModal] = useState(false)
+  const [activeSlipClaim, setActiveSlipClaim] = useState(null)
+  const [activeSlipType, setActiveSlipType] = useState("CLAIM")
+  const [activeSlipOptions, setActiveSlipOptions] = useState({})
+
+  const openSlipModal = (claim, type = "CLAIM", options = {}) => {
+    setActiveSlipClaim(claim)
+    setActiveSlipType(type)
+    setActiveSlipOptions(options)
+    setShowSlipModal(true)
+  }
+
+  // Issue Service Loaner Unit Modal
+  const [showIssueLoaner, setShowIssueLoaner] = useState(false)
+  const [loanerTargetClaim, setLoanerTargetClaim] = useState(null)
+  const [loanerAvailableSerials, setLoanerAvailableSerials] = useState([])
+  const [loanerForm, setLoanerForm] = useState({
+    loanerItemId: "",
+    loanerItemName: "",
+    loanerSerialId: "",
+    loanerSerialNumber: "",
+    loanRemarks: "",
+  })
+
+  // Return Service Loaner Unit Modal
+  const [showReturnLoaner, setShowReturnLoaner] = useState(false)
+  const [returnLoanerTargetClaim, setReturnLoanerTargetClaim] = useState(null)
+  const [returnLoanerForm, setReturnLoanerForm] = useState({
+    returnCondition: "Good / Working Condition",
+    remarks: "",
+  })
+
+  const loadClaims = useCallback(async () => {
+    const response = await getWarrantyClaims({
+      ...(branchId ? { branchId } : {}),
+      ...(search.trim() ? { search: search.trim() } : {}),
+      ...(statusFilter ? { status: statusFilter } : {}),
+      page,
+      limit: 50,
+    })
+    setClaims(Array.isArray(response?.data) ? response.data : [])
+    setMeta(response?.meta || {})
+  }, [branchId, page, search, statusFilter])
+
+  const loadReferences = useCallback(async () => {
+    if (!canCreate) return
+    const branchParams = { ...(branchId ? { branchId } : {}), limit: 100 }
+    const [customerResponse, itemResponse, saleResponse] = await Promise.all([
+      getCustomers({ ...branchParams, status: "ACTIVE" }),
+      getItems({ ...branchParams, status: "ACTIVE" }),
+      getSales(branchParams),
+    ])
+    setCustomers(unwrapList(customerResponse))
+    setItems(unwrapList(itemResponse))
+    setSales(unwrapList(saleResponse).filter((sale) => sale.status !== "CANCELLED"))
+  }, [branchId, canCreate])
+
+  const refresh = useCallback(async () => {
+    setIsLoading(true)
+    setErrorMessage("")
+    try {
+      await Promise.all([loadClaims(), loadReferences()])
+    } catch (error) {
+      setErrorMessage(apiError(error, "Could not load warranty claims."))
+    } finally {
+      setIsLoading(false)
+    }
+  }, [loadClaims, loadReferences])
+
+  const [isExporting, setIsExporting] = useState(false)
+
+  const handleExportWarrantyExcel = async () => {
+    setIsExporting(true)
+    try {
+      let allClaims = []
+      let currPage = 1
+      let totalPages = 1
+      const effectiveStatus = activeTab === "supplier" ? "SENT_TO_SUPPLIER" : statusFilter
+
+      do {
+        const response = await getWarrantyClaims({
+          ...(branchId ? { branchId } : {}),
+          ...(search.trim() ? { search: search.trim() } : {}),
+          ...(effectiveStatus ? { status: effectiveStatus } : {}),
+          page: currPage,
+          limit: 100,
+        })
+        const data = Array.isArray(response?.data) ? response.data : []
+        allClaims = allClaims.concat(data)
+        totalPages = Number(response?.meta?.totalPages || response?.meta?.total_pages || 1)
+        currPage += 1
+      } while (currPage <= totalPages && currPage <= 50)
+
+      let exportData = allClaims
+      if (activeTab === "replaced_log") {
+        exportData = allClaims.filter((c) => c.replacementSerialId || c.status === "REPLACED" || c.status === "REJECTED")
+      }
+
+      const activeFilters = [
+        { label: "Active View", value: activeTab === "supplier" ? "Supplier RMA Hub" : activeTab === "replaced_log" ? "Replaced & Shrinkage Log" : "All Claims" },
+      ]
+      if (search.trim()) activeFilters.push({ label: "Search Keyword", value: search.trim() })
+      if (effectiveStatus) activeFilters.push({ label: "Status", value: formatStatus(effectiveStatus) })
+
+      const headers = [
+        "Claim Code",
+        "Date Received",
+        "Customer Name",
+        "Contact",
+        "Product Name",
+        "Serial Number",
+        "Reported Issue",
+        "Status",
+        "Supplier Name",
+        "Supplier Ref No",
+        "Aging (Days)",
+        "Replacement Serial",
+        "Resolution Remarks",
+      ]
+
+      const rows = exportData.map((c) => {
+        const agingDays = calculateAgingDays(c.sentToSupplierAt || c.receivedAt)
+        return [
+          c.claimCode || "-",
+          dateOnly(c.receivedAt || c.createdAt),
+          c.customer?.fullName || "Walk-in Customer",
+          c.customer?.mobileNumber || "-",
+          c.item?.itemName || c.saleItem?.itemNameSnapshot || "Unlinked Item",
+          c.serial?.serialNumber || "No serial",
+          c.issueDescription || "-",
+          formatStatus(c.status),
+          c.supplierName || "-",
+          c.supplierReferenceNo || "-",
+          agingDays,
+          c.replacementSerial?.serialNumber || c.replacementSerialNumber || "-",
+          c.actionTaken || c.remarks || "-",
+        ]
+      })
+
+      exportReportExcel({
+        title: activeTab === "supplier" ? "WARRANTY SUPPLIER RMA REPORT" : activeTab === "replaced_log" ? "WARRANTY REPLACEMENTS LOG" : "WARRANTY CLAIMS REPORT",
+        branchName: branchName || "All Branches",
+        generatedBy: user?.fullName || user?.username || "System",
+        filenamePrefix: `warranty_${activeTab}`,
+        headers,
+        rows,
+        activeFilters,
+      })
+    } catch (error) {
+      console.error(error)
+      setErrorMessage("Failed to export warranty claims: " + (error.message || "Unknown error"))
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  useEffect(() => {
+    const timer = window.setTimeout(refresh, 180)
+    return () => window.clearTimeout(timer)
+  }, [refresh])
+
+  const openDetail = async (claim) => {
+    setSelectedClaim(claim)
+    setIsDetailLoading(true)
+    setErrorMessage("")
+    try {
+      const response = await getWarrantyClaimById(claim.id)
+      setSelectedClaim(response?.data || claim)
+    } catch (error) {
+      setErrorMessage(apiError(error, "Could not load warranty claim details."))
+    } finally {
+      setIsDetailLoading(false)
+    }
+  }
+
+  const selectSale = async (saleId) => {
+    setCreateForm((form) => ({ ...form, saleId, saleItemId: "", itemId: "", serialId: "" }))
+    setSelectedSale(null)
+    if (!saleId) return
+    setIsSaleLoading(true)
+    try {
+      const response = await getSaleById(saleId)
+      const sale = response?.data || null
+      setSelectedSale(sale)
+      setCreateForm((form) => ({ ...form, customerId: sale?.customer?.id || "" }))
+    } catch (error) {
+      setErrorMessage(apiError(error, "Could not load the selected sale."))
+    } finally {
+      setIsSaleLoading(false)
+    }
+  }
+
+  const selectSaleItem = (saleItemId) => {
+    const line = selectedSale?.items?.find((item) => item.id === saleItemId)
+    setCreateForm((form) => ({
+      ...form,
+      saleItemId,
+      itemId: line?.itemId || "",
+      serialId: line?.serialId || "",
+    }))
+  }
+
+  const submitCreate = async (event) => {
+    event.preventDefault()
+    if (isSaving) return
+    setIsSaving(true)
+    setErrorMessage("")
+    try {
+      const response = await createWarrantyClaim({
+        branchId,
+        customerId: createForm.customerId || undefined,
+        saleId: createForm.saleId || undefined,
+        saleItemId: createForm.saleItemId || undefined,
+        itemId: createForm.itemId || undefined,
+        serialId: createForm.serialId || undefined,
+        issueDescription: createForm.issueDescription.trim(),
+        customerComplaint: createForm.customerComplaint.trim() || undefined,
+        diagnosis: createForm.diagnosis.trim() || undefined,
+        actionTaken: createForm.actionTaken.trim() || undefined,
+        supplierName: createForm.supplierName.trim() || undefined,
+        supplierReferenceNo: createForm.supplierReferenceNo.trim() || undefined,
+        remarks: createForm.remarks.trim() || undefined,
+      })
+      const createdClaim = response?.data
+      setShowCreate(false)
+      setCreateForm(EMPTY_CREATE)
+      setSelectedSale(null)
+      setSaleSearchText("")
+      setNotice("Customer warranty claim received successfully.")
+      await loadClaims()
+      if (createdClaim) {
+        openSlipModal(createdClaim, "CLAIM")
+      }
+    } catch (error) {
+      setErrorMessage(apiError(error, "Could not receive warranty claim."))
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  // Handle Immediate Replacement Modal Trigger
+  const openImmediateReplacementModal = async (claim) => {
+    setReplaceTargetClaim(claim)
+    const initialItemId = claim.itemId || claim.saleItem?.itemId || ""
+    setReplaceForm({
+      replacementItemId: initialItemId,
+      replacementBatchId: "",
+      replacementSerialId: "",
+      replacementSerialNumber: "",
+      replacementWarrantyType: "MAJOR_PARTS",
+      replacementWarrantyDuration: "12 Months Major Parts (7D Outright)",
+      actionTaken: "Immediate replacement unit issued.",
+      remarks: "",
+    })
+    setShowImmediateReplace(true)
+
+    if (initialItemId) {
+      await loadStockForReplacement(initialItemId)
+    }
+  }
+
+  const loadStockForReplacement = async (itemId) => {
+    if (!itemId) {
+      setAvailableReplacementBatches([])
+      setAvailableReplacementSerials([])
+      return
+    }
+    setIsLoadingStock(true)
+    try {
+      const [batchRes, serialRes] = await Promise.all([
+        getInventoryBatches({ branchId, itemId, status: "ACTIVE" }),
+        getInventorySerials({ branchId, itemId, status: "AVAILABLE" }),
+      ])
+      const batches = unwrapList(batchRes).filter((b) => Number(b.quantityAvailable || 0) > 0)
+      const serials = unwrapList(serialRes)
+
+      setAvailableReplacementBatches(batches)
+      setAvailableReplacementSerials(serials)
+
+      if (batches.length > 0 && !replaceForm.replacementBatchId) {
+        setReplaceForm((prev) => ({ ...prev, replacementBatchId: batches[0].id }))
+      }
+    } catch (err) {
+      console.warn("Failed to load replacement stock:", err)
+    } finally {
+      setIsLoadingStock(false)
+    }
+  }
+
+  const handleReplacementItemChange = async (itemId) => {
+    setReplaceForm((prev) => ({
+      ...prev,
+      replacementItemId: itemId,
+      replacementBatchId: "",
+      replacementSerialId: "",
+      replacementSerialNumber: "",
+    }))
+    await loadStockForReplacement(itemId)
+  }
+
+  const submitImmediateReplacement = async (event) => {
+    event.preventDefault()
+    if (!replaceTargetClaim || isSaving) return
+    setIsSaving(true)
+    setErrorMessage("")
+    try {
+      const response = await processImmediateReplacement(replaceTargetClaim.id, {
+        replacementItemId: replaceForm.replacementItemId || undefined,
+        replacementBatchId: replaceForm.replacementBatchId || undefined,
+        replacementSerialId: replaceForm.replacementSerialId || undefined,
+        replacementSerialNumber: replaceForm.replacementSerialNumber.trim() || undefined,
+        replacementWarrantyType: replaceForm.replacementWarrantyType,
+        replacementWarrantyDuration: replaceForm.replacementWarrantyDuration.trim(),
+        actionTaken: replaceForm.actionTaken.trim() || undefined,
+        remarks: replaceForm.remarks.trim() || undefined,
+      })
+      const replacedClaim = response?.data || replaceTargetClaim
+      setShowImmediateReplace(false)
+      if (selectedClaim?.id === replaceTargetClaim.id) {
+        setSelectedClaim(replacedClaim)
+      }
+      setNotice(`✅ Replacement unit issued for ${replaceTargetClaim.claimCode}. Stock automatically deducted.`)
+      await loadClaims()
+      openSlipModal(replacedClaim, "REPLACEMENT", {
+        replacement: {
+          itemName: replaceForm.replacementSerialNumber ? `Replacement Unit (SN: ${replaceForm.replacementSerialNumber})` : "Replacement Unit",
+          serialNumber: replaceForm.replacementSerialNumber,
+          warrantyDuration: replaceForm.replacementWarrantyDuration,
+        },
+      })
+    } catch (error) {
+      setErrorMessage(apiError(error, "Could not process immediate replacement."))
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  // Handle Service Loaner Unit
+  const openIssueLoanerModal = (claim) => {
+    setLoanerTargetClaim(claim)
+    const initialItem = claim.item || null
+    setLoanerForm({
+      loanerItemId: initialItem?.id || "",
+      loanerItemName: initialItem?.itemName || "",
+      loanerSerialId: "",
+      loanerSerialNumber: "",
+      loanRemarks: "",
+    })
+    setShowIssueLoaner(true)
+    if (initialItem?.id) {
+      loadSerialsForLoaner(initialItem.id)
+    }
+  }
+
+  const loadSerialsForLoaner = async (itemId) => {
+    if (!itemId) {
+      setLoanerAvailableSerials([])
+      return
+    }
+    try {
+      const serialRes = await getInventorySerials({
+        ...(branchId ? { branchId } : {}),
+        itemId,
+        status: "AVAILABLE",
+        limit: 100,
+      })
+      const list = extractSerialRows(serialRes)
+      setLoanerAvailableSerials(list)
+    } catch (err) {
+      console.warn("Failed to load loaner serials:", err)
+      setLoanerAvailableSerials([])
+    }
+  }
+
+  const handleLoanerItemChange = (itemId) => {
+    const it = items.find((i) => i.id === itemId)
+    setLoanerForm((prev) => ({
+      ...prev,
+      loanerItemId: itemId,
+      loanerItemName: it?.itemName || "",
+      loanerSerialId: "",
+      loanerSerialNumber: "",
+    }))
+    loadSerialsForLoaner(itemId)
+  }
+
+  const submitIssueLoaner = async (e) => {
+    e.preventDefault()
+    if (!loanerTargetClaim || isSaving) return
+    if (!loanerForm.loanerItemName.trim() || !loanerForm.loanerSerialNumber.trim()) {
+      setErrorMessage("Please enter both Loaner Item Name and Serial Number.")
+      return
+    }
+    setIsSaving(true)
+    setErrorMessage("")
+    try {
+      const response = await issueLoanerUnit(loanerTargetClaim.id, {
+        loanerItemId: loanerForm.loanerItemId || undefined,
+        loanerItemName: loanerForm.loanerItemName.trim(),
+        loanerSerialId: loanerForm.loanerSerialId || undefined,
+        loanerSerialNumber: loanerForm.loanerSerialNumber.trim(),
+        loanRemarks: loanerForm.loanRemarks.trim() || undefined,
+      })
+      const updated = response?.data || loanerTargetClaim
+      setShowIssueLoaner(false)
+      if (selectedClaim?.id === loanerTargetClaim.id) {
+        setSelectedClaim(updated)
+      }
+      setNotice(`✅ Service loaner unit issued for ${loanerTargetClaim.claimCode}.`)
+      await loadClaims()
+      openSlipModal(updated, "LOANER")
+    } catch (error) {
+      setErrorMessage(apiError(error, "Could not issue service loaner unit."))
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const openReturnLoanerModal = (claim) => {
+    setReturnLoanerTargetClaim(claim)
+    setReturnLoanerForm({
+      returnCondition: "Good / Working Condition",
+      remarks: "",
+    })
+    setShowReturnLoaner(true)
+  }
+
+  const submitReturnLoaner = async (e) => {
+    e.preventDefault()
+    if (!returnLoanerTargetClaim || isSaving) return
+    setIsSaving(true)
+    setErrorMessage("")
+    try {
+      const response = await returnLoanerUnit(returnLoanerTargetClaim.id, {
+        returnCondition: returnLoanerForm.returnCondition.trim(),
+        remarks: returnLoanerForm.remarks.trim() || undefined,
+      })
+      const updated = response?.data || returnLoanerTargetClaim
+      setShowReturnLoaner(false)
+      if (selectedClaim?.id === returnLoanerTargetClaim.id) {
+        setSelectedClaim(updated)
+      }
+      setNotice(`✅ Service loaner unit safely returned to inventory for ${returnLoanerTargetClaim.claimCode}.`)
+      await loadClaims()
+    } catch (error) {
+      setErrorMessage(apiError(error, "Could not return service loaner unit."))
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  // Handle Customer Claim Rejection
+  const openCustomerRejectModal = (claim) => {
+    setSelectedClaim(claim)
+    setCustomerRejectForm({
+      rejectionReason: "",
+      remarks: "",
+    })
+    setShowCustomerReject(true)
+  }
+
+  const submitCustomerReject = async (event) => {
+    event.preventDefault()
+    if (!selectedClaim || isSaving) return
+    setIsSaving(true)
+    setErrorMessage("")
+    try {
+      const response = await rejectCustomerClaim(selectedClaim.id, {
+        rejectionReason: customerRejectForm.rejectionReason.trim(),
+        remarks: customerRejectForm.remarks.trim() || undefined,
+      })
+      setShowCustomerReject(false)
+      setSelectedClaim(response?.data || selectedClaim)
+      setNotice(`⚠️ Claim ${selectedClaim.claimCode} marked as REJECTED.`)
+      await loadClaims()
+    } catch (error) {
+      setErrorMessage(apiError(error, "Could not reject warranty claim."))
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  // Handle Dispatch to Supplier
+  const openDispatchSupplierModal = (claim) => {
+    setDispatchTargetClaim(claim)
+    setDispatchForm({
+      supplierName: claim.supplierName || "",
+      supplierReferenceNo: claim.supplierReferenceNo || "",
+      remarks: claim.remarks || "",
+    })
+    setShowDispatchSupplier(true)
+  }
+
+  const submitDispatchSupplier = async (event) => {
+    event.preventDefault()
+    if (!dispatchTargetClaim || isSaving) return
+    setIsSaving(true)
+    setErrorMessage("")
+    try {
+      const response = await dispatchToSupplier(dispatchTargetClaim.id, {
+        supplierName: dispatchForm.supplierName.trim(),
+        supplierReferenceNo: dispatchForm.supplierReferenceNo.trim() || undefined,
+        remarks: dispatchForm.remarks.trim() || undefined,
+      })
+      setShowDispatchSupplier(false)
+      if (selectedClaim?.id === dispatchTargetClaim.id) {
+        setSelectedClaim(response?.data || dispatchTargetClaim)
+      }
+      setNotice(`📦 Claim ${dispatchTargetClaim.claimCode} dispatched to ${dispatchForm.supplierName}.`)
+      await loadClaims()
+    } catch (error) {
+      setErrorMessage(apiError(error, "Could not dispatch to supplier."))
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  // Handle Supplier RMA Resolution
+  const openResolveSupplierModal = (claim) => {
+    setResolveTargetClaim(claim)
+    setResolveForm({
+      outcome: "REPLACED_BY_SUPPLIER",
+      replacementItemId: claim.itemId || "",
+      newSerial: "",
+      creditMemoNumber: "",
+      creditMemoAmount: "",
+      rejectionReason: "",
+      actionTaken: "Supplier approved & replaced unit.",
+      remarks: "",
+    })
+    setShowResolveSupplier(true)
+  }
+
+  const submitResolveSupplier = async (event) => {
+    event.preventDefault()
+    if (!resolveTargetClaim || isSaving) return
+    setIsSaving(true)
+    setErrorMessage("")
+    try {
+      const response = await resolveSupplierRma(resolveTargetClaim.id, {
+        outcome: resolveForm.outcome,
+        replacementItemId: resolveForm.outcome === "CHANGE_MODEL" ? resolveForm.replacementItemId : undefined,
+        newSerial: resolveForm.newSerial.trim() || undefined,
+        creditMemoNumber: resolveForm.outcome === "CREDIT_MEMO" ? resolveForm.creditMemoNumber.trim() : undefined,
+        creditMemoAmount: resolveForm.outcome === "CREDIT_MEMO" && resolveForm.creditMemoAmount ? Number(resolveForm.creditMemoAmount) : undefined,
+        rejectionReason: resolveForm.rejectionReason.trim() || undefined,
+        actionTaken: resolveForm.actionTaken.trim() || undefined,
+        remarks: resolveForm.remarks.trim() || undefined,
+      })
+      setShowResolveSupplier(false)
+      if (selectedClaim?.id === resolveTargetClaim.id) {
+        setSelectedClaim(response?.data || resolveTargetClaim)
+      }
+      let msg = `✅ Supplier resolved ${resolveTargetClaim.claimCode}.`
+      if (resolveForm.outcome === "REJECTED") {
+        msg = `⚠️ Supplier rejected RMA for ${resolveTargetClaim.claimCode}. Defective unit written off to Shrinkage Loss.`
+      } else if (resolveForm.outcome === "CHANGE_MODEL") {
+        msg = `✅ Supplier replaced ${resolveTargetClaim.claimCode} with a new model. 1 unit added to inventory as fresh stock.`
+      } else if (resolveForm.outcome === "CREDIT_MEMO") {
+        msg = `✅ Supplier issued Credit Memo #${resolveForm.creditMemoNumber || "N/A"} for ${resolveTargetClaim.claimCode}. Applied to deduct from supplier payables.`
+      } else {
+        msg = `✅ Supplier resolved ${resolveTargetClaim.claimCode}. Unit received and replenished to stock (WARRANTY_RETURN).`
+      }
+      setNotice(msg)
+      await loadClaims()
+    } catch (error) {
+      setErrorMessage(apiError(error, "Could not resolve supplier RMA."))
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const beginStatusAction = (status) => {
+    setActionStatus(status)
+    setActionForm({
+      diagnosis: selectedClaim?.diagnosis || "",
+      actionTaken: selectedClaim?.actionTaken || "",
+      supplierName: selectedClaim?.supplierName || "",
+      supplierReferenceNo: selectedClaim?.supplierReferenceNo || "",
+      remarks: selectedClaim?.remarks || "",
+    })
+  }
+
+  const submitStatus = async (event) => {
+    event.preventDefault()
+    if (!selectedClaim || !actionStatus || isSaving) return
+    setIsSaving(true)
+    setErrorMessage("")
+    try {
+      const response = await updateWarrantyClaimStatus(selectedClaim.id, {
+        status: actionStatus,
+        diagnosis: actionForm.diagnosis.trim() || undefined,
+        actionTaken: actionForm.actionTaken.trim() || undefined,
+        supplierName: actionForm.supplierName.trim() || undefined,
+        supplierReferenceNo: actionForm.supplierReferenceNo.trim() || undefined,
+        remarks: actionForm.remarks.trim() || undefined,
+      })
+      setSelectedClaim(response?.data || selectedClaim)
+      setActionStatus("")
+      setNotice(`Claim ${selectedClaim.claimCode} moved to ${actionStatus.replaceAll("_", " ")}.`)
+      await loadClaims()
+    } catch (error) {
+      setErrorMessage(apiError(error, "Could not update warranty status."))
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const openRelease = () => {
+    setReleaseForm({ actionTaken: selectedClaim?.actionTaken || "", remarks: selectedClaim?.remarks || "" })
+    setShowRelease(true)
+  }
+
+  const submitRelease = async (event) => {
+    event.preventDefault()
+    if (!selectedClaim || isSaving) return
+    setIsSaving(true)
+    setErrorMessage("")
+    try {
+      const response = await releaseWarrantyClaim(selectedClaim.id, {
+        actionTaken: releaseForm.actionTaken.trim() || undefined,
+        remarks: releaseForm.remarks.trim() || undefined,
+      })
+      setSelectedClaim(response?.data || selectedClaim)
+      setShowRelease(false)
+      setNotice(`✅ ${selectedClaim.claimCode} released to the customer.`)
+      await loadClaims()
+    } catch (error) {
+      setErrorMessage(apiError(error, "Could not release warranty claim."))
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  // Filter subsets for tabs
+  const activeClaims = useMemo(() => {
+    return claims.filter((c) => ["IN", "CHECKING", "APPROVED", "REPAIRED", "REPLACED"].includes(c.status))
+  }, [claims])
+
+  const supplierClaims = useMemo(() => {
+    return claims.filter((c) => c.status === "SENT_TO_SUPPLIER")
+  }, [claims])
+
+  const replacedAndShrinkageClaims = useMemo(() => {
+    return claims.filter((c) => ["REPLACED", "REJECTED", "OUT"].includes(c.status))
+  }, [claims])
+
+  const pageSummary = useMemo(
+    () => ({
+      active: activeClaims.length,
+      supplier: supplierClaims.length,
+      readyRelease: claims.filter((c) => RELEASE_READY.has(c.status)).length,
+      shrinkageOrReplaced: replacedAndShrinkageClaims.length,
+    }),
+    [activeClaims, supplierClaims, claims, replacedAndShrinkageClaims],
+  )
+
+  const totalPages = Math.max(1, meta.totalPages || 1)
+
+  const filteredSales = useMemo(() => {
+    const query = saleSearchText.trim().toLowerCase()
+    if (!query) return sales.slice(0, 30)
+    return sales
+      .filter((s) => {
+        return [s.receiptCode, s.customer?.fullName, s.customer?.customerCode, s.customer?.mobileNumber]
+          .filter(Boolean)
+          .some((val) => String(val).toLowerCase().includes(query))
+      })
+      .slice(0, 30)
+  }, [sales, saleSearchText])
+
+  return (
+    <div className="space-y-6">
+      {/* Header Banner */}
+      <section className="relative overflow-hidden rounded-xl border border-slate-200/90 bg-white p-4 sm:p-5 shadow-2xs">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                Warranty &amp; RMA
+              </span>
+              <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                {branchName}
+              </span>
+            </div>
+            <h1 className="mt-1 text-xl sm:text-2xl font-black tracking-tight text-slate-900">
+              Warranty &amp; Claims Management
+            </h1>
+            <p className="mt-0.5 text-xs text-slate-500">
+              Customer claims intake, 7-day outright replacement swaps, distributor RMA tracking, and audited releases.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-2xs transition hover:bg-slate-50"
+              disabled={isLoading}
+              onClick={refresh}
+              type="button"
+            >
+              <RefreshCw className={isLoading ? "animate-spin" : ""} size={14} />
+              {isLoading ? "Refreshing..." : "Refresh"}
+            </button>
+
+            <ExportExcelButton
+              count={meta?.total || claims.length}
+              isExporting={isExporting}
+              onClick={handleExportWarrantyExcel}
+            />
+
+            {canCreate ? (
+              <button
+                className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--color-maroon)] px-3.5 py-2 text-xs font-bold text-white shadow-2xs transition hover:bg-[var(--color-maroon-hover)]"
+                onClick={() => setShowCreate(true)}
+                type="button"
+              >
+                <Plus size={14} />
+                Receive Customer Claim
+              </button>
+            ) : null}
+          </div>
+        </div>
+
+        {/* View Mode Switcher (Workbench vs Reports) */}
+        <div className="mt-3.5 flex items-center justify-between border-t border-slate-100 pt-3 flex-wrap gap-2">
+          <div className="inline-flex p-1 bg-slate-100/80 rounded-xl border border-slate-200/60 text-xs">
+            <button
+              type="button"
+              onClick={() => setWarrantyViewMode("OPERATIONS")}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition cursor-pointer ${
+                warrantyViewMode === "OPERATIONS"
+                  ? "bg-white text-slate-900 shadow-2xs font-bold"
+                  : "text-slate-500 hover:text-slate-800 font-medium"
+              }`}
+            >
+              <ShieldCheck size={14} />
+              Operations &amp; Workbench
+            </button>
+            <button
+              type="button"
+              onClick={() => setWarrantyViewMode("REPORTS")}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition cursor-pointer ${
+                warrantyViewMode === "REPORTS"
+                  ? "bg-white text-slate-900 shadow-2xs font-bold"
+                  : "text-slate-500 hover:text-slate-800 font-medium"
+              }`}
+            >
+              <BarChart3 size={14} />
+              Reports &amp; Detailed Audit
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* Global Notice Alert */}
+      {notice ? (
+        <div className="flex items-center justify-between rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-xs font-bold text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
+          <span>{notice}</span>
+          <button onClick={() => setNotice("")} type="button">
+            <X size={14} />
+          </button>
+        </div>
+      ) : null}
+
+      {/* Global Error Message */}
+      {errorMessage ? (
+        <div className="flex items-start gap-2 rounded-2xl border border-rose-300 bg-rose-50 px-4 py-3 text-xs font-bold text-rose-900 dark:border-rose-800 dark:bg-rose-950/60 dark:text-rose-300">
+          <CircleAlert className="mt-0.5 shrink-0" size={15} />
+          <span>{errorMessage}</span>
+        </div>
+      ) : null}
+
+      {warrantyViewMode === "REPORTS" ? (
+        <WarrantyReportView
+          branchId={branchId}
+          selectedBranch={selectedBranch}
+          user={user}
+          getWarrantyClaimsApi={getWarrantyClaims}
+          onOpenDetail={openDetail}
+          onImmediateReplace={openImmediateReplacementModal}
+          onDispatchSupplier={openDispatchSupplierModal}
+          onResolveSupplier={openResolveSupplierModal}
+          onCustomerReject={openCustomerRejectModal}
+          onRelease={(claim) => {
+            setSelectedClaim(claim)
+            openRelease()
+          }}
+        />
+      ) : (
+        <>
+          {/* Minimalist 4 Metrics Strip */}
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div
+              onClick={() => setActiveTab("claims")}
+              className={`cursor-pointer rounded-xl p-3.5 border transition shadow-2xs ${
+                activeTab === "claims"
+                  ? "border-slate-900 bg-slate-50/80 ring-1 ring-slate-900/10"
+                  : "border-slate-200/80 bg-white hover:border-slate-300"
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="grid size-8 place-items-center rounded-lg bg-slate-100 text-slate-700">
+                  <ShieldCheck size={16} />
+                </span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">In Store</span>
+              </div>
+              <p className="mt-2 font-mono text-2xl font-black text-slate-900">{pageSummary.active}</p>
+              <p className="mt-0.5 text-xs text-slate-500">Active In-Store Claims</p>
+            </div>
+
+            <div
+              onClick={() => setActiveTab("supplier")}
+              className={`cursor-pointer rounded-xl p-3.5 border transition shadow-2xs ${
+                activeTab === "supplier"
+                  ? "border-slate-900 bg-slate-50/80 ring-1 ring-slate-900/10"
+                  : "border-slate-200/80 bg-white hover:border-slate-300"
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="grid size-8 place-items-center rounded-lg bg-slate-100 text-slate-700">
+                  <Truck size={16} />
+                </span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">With Suppliers</span>
+              </div>
+              <p className="mt-2 font-mono text-2xl font-black text-slate-900">{pageSummary.supplier}</p>
+              <p className="mt-0.5 text-xs text-slate-500">Dispatched for Supplier RMA</p>
+            </div>
+
+            <div
+              onClick={() => setActiveTab("claims")}
+              className="cursor-pointer rounded-xl p-3.5 border border-slate-200/80 bg-white shadow-2xs hover:border-slate-300 transition"
+            >
+              <div className="flex items-center justify-between">
+                <span className="grid size-8 place-items-center rounded-lg bg-slate-100 text-slate-700">
+                  <PackageCheck size={16} />
+                </span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Ready Pickup</span>
+              </div>
+              <p className="mt-2 font-mono text-2xl font-black text-slate-900">{pageSummary.readyRelease}</p>
+              <p className="mt-0.5 text-xs text-slate-500">Repaired / Replaced Units</p>
+            </div>
+
+            <div
+              onClick={() => setActiveTab("replaced_log")}
+              className={`cursor-pointer rounded-xl p-3.5 border transition shadow-2xs ${
+                activeTab === "replaced_log"
+                  ? "border-slate-900 bg-slate-50/80 ring-1 ring-slate-900/10"
+                  : "border-slate-200/80 bg-white hover:border-slate-300"
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="grid size-8 place-items-center rounded-lg bg-slate-100 text-slate-700">
+                  <Layers size={16} />
+                </span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Audit Log</span>
+              </div>
+              <p className="mt-2 font-mono text-2xl font-black text-slate-900">{pageSummary.shrinkageOrReplaced}</p>
+              <p className="mt-0.5 text-xs text-slate-500">Swapped / Written-Off</p>
+            </div>
+          </div>
+
+          {/* Minimalist Segmented Tabs */}
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2 overflow-x-auto">
+            <div className="inline-flex p-1 bg-slate-100/80 rounded-xl border border-slate-200/60 text-xs">
+              <button
+                type="button"
+                onClick={() => setActiveTab("claims")}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition ${
+                  activeTab === "claims"
+                    ? "bg-white text-slate-900 shadow-2xs font-bold"
+                    : "text-slate-500 hover:text-slate-800 font-medium"
+                }`}
+              >
+                <ShieldCheck size={14} />
+                <span>Active Claims ({activeClaims.length})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab("supplier")}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition ${
+                  activeTab === "supplier"
+                    ? "bg-white text-slate-900 shadow-2xs font-bold"
+                    : "text-slate-500 hover:text-slate-800 font-medium"
+                }`}
+              >
+                <Truck size={14} />
+                <span>Supplier RMA Hub ({supplierClaims.length})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab("replaced_log")}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition ${
+                  activeTab === "replaced_log"
+                    ? "bg-white text-slate-900 shadow-2xs font-bold"
+                    : "text-slate-500 hover:text-slate-800 font-medium"
+                }`}
+              >
+                <Layers size={14} />
+                <span>Replacements Ledger ({replacedAndShrinkageClaims.length})</span>
+              </button>
+            </div>
+          </div>
+
+          {/* TAB 1: ACTIVE CLAIMS */}
+          {activeTab === "claims" && (
+            <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-2xs">
+              {/* Search & Filter Header */}
+              <div className="grid gap-2.5 border-b border-slate-100 p-2.5 md:grid-cols-[1fr_220px]">
+                <label className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
+                  <input
+                    aria-label="Search warranty claims"
+                    className="w-full rounded-lg border border-slate-200 bg-white py-1.5 pl-8 pr-3 text-xs text-slate-800 outline-none focus:border-slate-400"
+                    onChange={(event) => {
+                      setSearch(event.target.value)
+                      setPage(1)
+                    }}
+                    placeholder="Search claim code, customer, serial, or issue..."
+                    value={search}
+                  />
+                </label>
+                <select
+                  aria-label="Filter warranty status"
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 outline-none focus:border-slate-400"
+                  onChange={(event) => {
+                    setStatusFilter(event.target.value)
+                    setPage(1)
+                  }}
+                  value={statusFilter}
+                >
+                  <option value="">All active statuses</option>
+                  {STATUSES.map((status) => (
+                    <option key={status} value={status}>
+                      {formatStatus(status)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+          {isLoading ? (
+            <div className="p-12 text-center text-sm font-semibold text-[var(--color-muted)]">
+              <LoaderCircle className="mx-auto mb-2 animate-spin text-[var(--color-maroon)]" size={24} />
+              Loading claims...
+            </div>
+          ) : claims.length === 0 ? (
+            <div className="p-12 text-center text-sm font-semibold text-[var(--color-muted)]">
+              No warranty claims found matching your search.
+            </div>
+          ) : (
+            <>
+              <div className="hidden overflow-x-auto lg:block w-full">
+                <table className="w-full min-w-[850px] text-left text-xs">
+                  <thead className="bg-slate-50/75 border-b border-slate-100 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                    <tr>
+                      <th className="px-3.5 py-2.5">Claim No.</th>
+                      <th className="px-3.5 py-2.5">Customer</th>
+                      <th className="px-3.5 py-2.5">Product &amp; Serial</th>
+                      <th className="px-3.5 py-2.5">Reported Issue</th>
+                      <th className="px-3.5 py-2.5">Status</th>
+                      <th className="px-3.5 py-2.5">Received Date</th>
+                      <th className="px-3.5 py-2.5 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {claims.map((claim) => {
+                      const isOutright = calculateAgingDays(claim.sale?.saleDate) <= 7 && claim.sale?.saleDate
+                      const loanerData = getClaimLoanerData(claim)
+                      return (
+                        <tr className="transition-colors hover:bg-slate-50/50" key={claim.id}>
+                          <td className="px-3.5 py-2.5 whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={() => openDetail(claim)}
+                              className="font-mono font-bold text-xs text-[var(--color-maroon)] hover:underline text-left block"
+                            >
+                              {claim.claimCode}
+                            </button>
+                            <div className="flex flex-wrap gap-1 mt-0.5">
+                              {isOutright ? (
+                                <span className="inline-block rounded-md bg-emerald-50 border border-emerald-200/60 text-emerald-800 px-1.5 py-0.2 text-[9px] font-bold">
+                                  ⚡ 7D Outright
+                                </span>
+                              ) : null}
+                              {loanerData?.status === "ON_LOAN" ? (
+                                <span className="inline-block rounded-md bg-amber-50 border border-amber-300 text-amber-800 px-1.5 py-0.2 text-[9px] font-bold" title={`Loaner: ${loanerData.loanerItemName} (SN: ${loanerData.loanerSerialNumber})`}>
+                                  🟡 Loaner: {loanerData.loanerSerialNumber}
+                                </span>
+                              ) : null}
+                            </div>
+                          </td>
+                          <td className="px-3.5 py-2.5">
+                            <p className="font-bold text-xs text-slate-800 max-w-40 truncate">
+                              {claim.customer?.fullName || "Walk-in Customer"}
+                            </p>
+                            {claim.customer?.mobileNumber ? (
+                              <p className="text-[11px] text-slate-400">{claim.customer.mobileNumber}</p>
+                            ) : null}
+                          </td>
+                          <td className="px-3.5 py-2.5">
+                            <p className="font-semibold text-xs text-slate-900 max-w-xs truncate">
+                              {claim.item?.itemName || claim.saleItem?.itemNameSnapshot || "Unlinked Product"}
+                            </p>
+                            <p className="text-[11px] font-mono text-slate-500">
+                              S/N: <strong className="text-slate-800">{claim.serial?.serialNumber || "No serial"}</strong>
+                            </p>
+                          </td>
+                          <td className="px-3.5 py-2.5 text-xs text-slate-500 max-w-xs">
+                            <p className="line-clamp-1">{claim.issueDescription || "—"}</p>
+                          </td>
+                          <td className="px-3.5 py-2.5 whitespace-nowrap">
+                            <StatusBadge status={claim.status} />
+                          </td>
+                          <td className="px-3.5 py-2.5 text-xs text-slate-500 whitespace-nowrap">
+                            {dateOnly(claim.receivedAt)}
+                          </td>
+                          <td className="px-3.5 py-2.5 text-right whitespace-nowrap">
+                            <div className="inline-flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => openSlipModal(claim, "CLAIM")}
+                                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+                                title="Print 2-Copy Warranty Claim Slip"
+                              >
+                                <Printer size={12} />
+                                <span>Slip</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => openDetail(claim)}
+                                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
+                              >
+                                <Eye size={12} />
+                                <span>Details</span>
+                              </button>
+
+                              {canAct && !["REPLACED", "REJECTED", "OUT"].includes(claim.status) ? (
+                                <>
+                                  {loanerData?.status === "ON_LOAN" ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => openReturnLoanerModal(claim)}
+                                      className="inline-flex items-center gap-1 rounded-xl bg-amber-500 hover:bg-amber-600 px-2.5 py-1.5 text-xs font-bold text-white shadow-sm transition"
+                                      title="Return service loaner unit"
+                                    >
+                                      <span>Return Loan</span>
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => openIssueLoanerModal(claim)}
+                                      className="inline-flex items-center gap-1 rounded-xl bg-amber-600 hover:bg-amber-700 px-2.5 py-1.5 text-xs font-bold text-white shadow-sm transition"
+                                      title="Issue temporary service loaner unit"
+                                    >
+                                      <span>Loan</span>
+                                    </button>
+                                  )}
+
+                                  <button
+                                    type="button"
+                                    onClick={() => openImmediateReplacementModal(claim)}
+                                    className="inline-flex items-center gap-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition"
+                                    title="Issue immediate replacement unit"
+                                  >
+                                    <span>Swap</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => openDispatchSupplierModal(claim)}
+                                    className="inline-flex items-center gap-1 rounded-xl bg-violet-700 hover:bg-violet-800 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition"
+                                    title="Dispatch to supplier for RMA"
+                                  >
+                                    <span>Supplier</span>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => openCustomerRejectModal(claim)}
+                                    className="inline-flex items-center gap-1 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 px-3 py-1.5 text-xs font-bold text-rose-700 transition"
+                                    title="Reject claim with remarks"
+                                  >
+                                    <span>Reject</span>
+                                  </button>
+                                </>
+                              ) : null}
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile Cards View */}
+              <div className="grid gap-3 p-3 lg:hidden">
+                {claims.map((claim) => {
+                  const isOutright = calculateAgingDays(claim.sale?.saleDate) <= 7 && claim.sale?.saleDate
+                  return (
+                    <article
+                      key={claim.id}
+                      className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-card)] p-3.5 shadow-2xs space-y-2.5 text-xs"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <button
+                            type="button"
+                            onClick={() => openDetail(claim)}
+                            className="font-mono font-bold text-sm text-[var(--color-maroon)] hover:underline text-left block"
+                          >
+                            {claim.claimCode}
+                          </button>
+                          {isOutright ? (
+                            <span className="inline-block mt-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 px-1.5 py-0.2 text-[9px] font-black">
+                              ⚡ 7D Outright
+                            </span>
+                          ) : null}
+                        </div>
+                        <StatusBadge status={claim.status} />
+                      </div>
+
+                      <div className="space-y-1">
+                        <p className="font-bold text-xs text-[var(--color-text-strong)]">
+                          {claim.item?.itemName || claim.saleItem?.itemNameSnapshot || "Unlinked Product"}
+                        </p>
+                        <p className="text-[11px] font-mono text-[var(--color-muted)]">
+                          S/N: <strong>{claim.serial?.serialNumber || "No serial"}</strong>
+                        </p>
+                        <p className="text-[11px] text-[var(--color-text-strong)]">
+                          Customer: <span className="font-semibold">{claim.customer?.fullName || "Walk-in Customer"}</span>
+                        </p>
+                        {claim.issueDescription && (
+                          <p className="text-[11px] text-[var(--color-muted)] line-clamp-2 bg-[var(--color-soft)]/60 rounded-lg p-2">
+                            Issue: {claim.issueDescription}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex items-center justify-between border-t border-[var(--color-border)] pt-2 text-[10px] text-[var(--color-muted)]">
+                        <span>Received: {dateOnly(claim.receivedAt)}</span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => openDetail(claim)}
+                            className="rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] px-2.5 py-1 text-xs font-bold text-[var(--color-text-strong)] shadow-2xs hover:bg-[var(--color-soft)]"
+                          >
+                            Details
+                          </button>
+                          {canAct && !["REPLACED", "REJECTED", "OUT"].includes(claim.status) ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => openImmediateReplacementModal(claim)}
+                                className="rounded-lg bg-emerald-600 hover:bg-emerald-700 px-2.5 py-1 text-xs font-bold text-white shadow-2xs"
+                              >
+                                Swap
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => openDispatchSupplierModal(claim)}
+                                className="rounded-lg bg-violet-700 hover:bg-violet-800 px-2.5 py-1 text-xs font-bold text-white shadow-2xs"
+                              >
+                                Supplier
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => openCustomerRejectModal(claim)}
+                                className="rounded-lg border border-rose-200 bg-rose-50 hover:bg-rose-100 px-2.5 py-1 text-xs font-bold text-rose-700"
+                              >
+                                Reject
+                              </button>
+                            </>
+                          ) : null}
+                        </div>
+                      </div>
+                    </article>
+                  )
+                })}
+              </div>
+            </>
+          )}
+
+          {/* Minimalist Pagination */}
+          <div className="flex items-center justify-between border-t border-[var(--color-border)] p-4">
+            <p className="text-xs font-bold text-[var(--color-muted)]">
+              {meta.total || claims.length} total claim(s)
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                aria-label="Previous page"
+                className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] p-2 text-[var(--color-text-strong)] disabled:opacity-40"
+                disabled={page <= 1 || isLoading}
+                onClick={() => setPage((value) => value - 1)}
+                type="button"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <span className="text-xs font-black text-[var(--color-text-strong)]">
+                {page} / {totalPages}
+              </span>
+              <button
+                aria-label="Next page"
+                className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] p-2 text-[var(--color-text-strong)] disabled:opacity-40"
+                disabled={page >= totalPages || isLoading}
+                onClick={() => setPage((value) => value + 1)}
+                type="button"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* TAB 2: SENT TO SUPPLIER (SUPPLIER RMA HUB) */}
+      {activeTab === "supplier" && (
+        <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-2xs">
+          <div className="border-b border-slate-100 p-3.5 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900">Supplier RMA Monitoring Hub</h2>
+              <p className="text-xs text-slate-500">
+                Units dispatched to distributors and suppliers awaiting replacement or repair outcome.
+              </p>
+            </div>
+            <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-bold text-slate-700">
+              {supplierClaims.length} Active RMA(s)
+            </span>
+          </div>
+
+          {supplierClaims.length === 0 ? (
+            <div className="p-10 text-center text-xs font-medium text-slate-500">
+              <Truck className="mx-auto mb-2 text-slate-300" size={28} />
+              No claims currently aging with suppliers.
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {supplierClaims.map((claim) => {
+                const agingDays = calculateAgingDays(claim.sentToSupplierAt || claim.receivedAt)
+                return (
+                  <div className="p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 transition-colors hover:bg-slate-50/50" key={claim.id}>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-mono font-bold text-xs text-[var(--color-maroon)]">
+                          {claim.claimCode}
+                        </span>
+                        <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+                          {claim.supplierName || "Unspecified Supplier"}
+                        </span>
+                        {claim.supplierReferenceNo ? (
+                          <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-mono text-slate-600">
+                            Ref: {claim.supplierReferenceNo}
+                          </span>
+                        ) : null}
+                        <span
+                          className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${
+                            agingDays >= 14
+                              ? "bg-rose-50 text-rose-700 border border-rose-200/60"
+                              : agingDays >= 7
+                                ? "bg-amber-50 text-amber-700 border border-amber-200/60"
+                                : "bg-slate-100 text-slate-700"
+                          }`}
+                        >
+                          {agingDays}d aging
+                        </span>
+                      </div>
+
+                      <h3 className="mt-1 font-bold text-xs text-slate-900">
+                        {claim.item?.itemName || claim.saleItem?.itemNameSnapshot || claim.issueDescription}
+                      </h3>
+                      <p className="text-[11px] text-slate-400">
+                        Serial: <span className="font-mono font-bold text-slate-700">{claim.serial?.serialNumber || "—"}</span> · Dispatched: {dateTime(claim.sentToSupplierAt || claim.receivedAt)}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openResolveSupplierModal(claim)}
+                        className="rounded-lg bg-slate-900 hover:bg-slate-800 px-3 py-1.5 text-xs font-bold text-white shadow-2xs transition"
+                      >
+                        Receive Supplier Outcome
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* TAB 3: REPLACED ITEMS & SHRINKAGE LOSS LEDGER */}
+      {activeTab === "replaced_log" && (
+        <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-2xs">
+          <div className="border-b border-slate-100 p-3.5">
+            <h2 className="text-sm font-bold text-slate-900">Replacements &amp; Shrinkage Loss Ledger</h2>
+            <p className="text-xs text-slate-500">
+              Audit ledger of replacement units issued from stock (<code className="font-mono">WARRANTY_OUT</code>) and supplier write-offs.
+            </p>
+          </div>
+
+          {replacedAndShrinkageClaims.length === 0 ? (
+            <div className="p-10 text-center text-xs font-medium text-slate-500">
+              No replacements or shrinkage losses recorded yet.
+            </div>
+          ) : (
+            <>
+              <div className="hidden overflow-x-auto lg:block w-full">
+                <table className="w-full min-w-[850px] text-left text-xs">
+                  <thead className="bg-slate-50/75 border-b border-slate-100 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                    <tr>
+                      <th className="px-3.5 py-2.5">Claim / Date</th>
+                      <th className="px-3.5 py-2.5">Classification</th>
+                      <th className="px-3.5 py-2.5">Customer &amp; Product</th>
+                      <th className="px-3.5 py-2.5">Original Serial</th>
+                      <th className="px-3.5 py-2.5">Resolution Notes</th>
+                      <th className="px-3.5 py-2.5">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {replacedAndShrinkageClaims.map((claim) => (
+                      <tr className="hover:bg-slate-50/50 transition-colors" key={claim.id}>
+                        <td className="px-3.5 py-2.5 font-mono font-bold text-xs text-[var(--color-maroon)] whitespace-nowrap">
+                          <div>{claim.claimCode}</div>
+                          <div className="text-[10px] font-normal text-slate-400">{dateOnly(claim.replacedAt || claim.rejectedAt || claim.createdAt)}</div>
+                        </td>
+                        <td className="px-3.5 py-2.5 whitespace-nowrap">
+                          {claim.status === "REPLACED" ? (
+                            <span className="rounded-md bg-emerald-50 border border-emerald-200/60 text-emerald-800 px-2 py-0.5 text-[11px] font-bold">
+                              🔄 Replacement Unit Out
+                            </span>
+                          ) : claim.status === "REJECTED" ? (
+                            <span className="rounded-md bg-rose-50 border border-rose-200/60 text-rose-800 px-2 py-0.5 text-[11px] font-bold">
+                              ❌ Shrinkage Write-Off
+                            </span>
+                          ) : (
+                            <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+                              {claim.status}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3.5 py-2.5">
+                          <p className="font-bold text-xs text-slate-800 max-w-44 truncate">{claim.item?.itemName || claim.saleItem?.itemNameSnapshot}</p>
+                          <p className="text-[11px] text-slate-400">{claim.customer?.fullName || "Walk-in"}</p>
+                        </td>
+                        <td className="px-3.5 py-2.5 font-mono text-xs font-semibold text-slate-800 whitespace-nowrap">
+                          {claim.serial?.serialNumber || "—"}
+                        </td>
+                        <td className="px-3.5 py-2.5 text-xs text-slate-500 max-w-xs truncate">
+                          {claim.actionTaken || claim.diagnosis || claim.remarks || "—"}
+                        </td>
+                        <td className="px-3.5 py-2.5 whitespace-nowrap">
+                          <StatusBadge status={claim.status} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile Cards for Replaced / Shrinkage */}
+              <div className="grid gap-3 p-3 lg:hidden">
+                {replacedAndShrinkageClaims.map((claim) => (
+                  <article
+                    key={claim.id}
+                    className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-card)] p-3.5 shadow-2xs space-y-2 text-xs"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-mono font-bold text-xs text-[var(--color-maroon)]">{claim.claimCode}</p>
+                        <p className="text-[10px] text-[var(--color-muted)]">{dateOnly(claim.replacedAt || claim.rejectedAt || claim.createdAt)}</p>
+                      </div>
+                      <StatusBadge status={claim.status} />
+                    </div>
+                    <div>
+                      <p className="font-bold text-xs text-[var(--color-text-strong)]">{claim.item?.itemName || claim.saleItem?.itemNameSnapshot}</p>
+                      <p className="text-[11px] text-[var(--color-muted)]">Customer: {claim.customer?.fullName || "Walk-in"}</p>
+                      <p className="text-[11px] font-mono text-[var(--color-muted)]">S/N: {claim.serial?.serialNumber || "—"}</p>
+                      {claim.actionTaken || claim.diagnosis || claim.remarks ? (
+                        <p className="mt-1 text-[11px] text-[var(--color-muted)] bg-[var(--color-soft)]/60 rounded-lg p-2">
+                          Notes: {claim.actionTaken || claim.diagnosis || claim.remarks}
+                        </p>
+                      ) : null}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </>
+          )}
+        </section>
+      )}
+        </>
+      )}
+
+      {/* MODAL 1: RECEIVE NEW WARRANTY CLAIM */}
+      {showCreate ? (
+        <Modal
+          onClose={() => {
+            setShowCreate(false)
+            setSaleSearchText("")
+            setIsSaleDropdownOpen(false)
+          }}
+          title="Receive Customer Warranty Claim"
+          wide
+        >
+          <form onSubmit={submitCreate}>
+            <div className="max-h-[72vh] space-y-4 overflow-y-auto p-5 sm:p-6 text-xs">
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="block text-xs font-bold text-[var(--color-text-strong)]">
+                  <span>Original Receipt / Sale Link (Optional)</span>
+                  {selectedSale ? (
+                    <div className="mt-1.5 flex items-center justify-between rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-2.5 shadow-2xs">
+                      <div>
+                        <p className="font-black text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5">
+                          <CheckCircle2 size={14} className="text-emerald-600" />
+                          <span>{selectedSale.receiptCode}</span>
+                        </p>
+                        <p className="mt-0.5 text-[11px] text-emerald-700 dark:text-emerald-400">
+                          {selectedSale.customer?.fullName || "Walk-in"} · {dateTime(selectedSale.saleDate)}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        className="rounded-lg p-1 text-slate-400 hover:bg-rose-100 hover:text-rose-700 transition"
+                        onClick={() => {
+                          selectSale("")
+                          setSaleSearchText("")
+                        }}
+                        title="Remove linked sale"
+                      >
+                        <X size={15} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="relative mt-1.5">
+                      <div className="relative">
+                        <Search
+                          className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-muted)]"
+                          size={15}
+                        />
+                        <input
+                          type="text"
+                          className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-2 pl-9 pr-3 text-xs outline-none transition focus:bg-white focus:border-[var(--color-maroon)]"
+                          placeholder="Scan receipt barcode or type receipt #..."
+                          value={saleSearchText}
+                          onFocus={() => setIsSaleDropdownOpen(true)}
+                          onChange={(e) => {
+                            setSaleSearchText(e.target.value)
+                            setIsSaleDropdownOpen(true)
+                          }}
+                        />
+                      </div>
+                      {isSaleDropdownOpen && (
+                        <div className="absolute z-20 mt-1 max-h-52 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl divide-y divide-slate-100">
+                          <button
+                            type="button"
+                            className="w-full p-2.5 text-left text-xs font-bold text-slate-500 hover:bg-slate-50 transition"
+                            onClick={() => {
+                              selectSale("")
+                              setSaleSearchText("")
+                              setIsSaleDropdownOpen(false)
+                            }}
+                          >
+                            No linked receipt (Walk-in intake)
+                          </button>
+                          {filteredSales.map((sale) => (
+                            <button
+                              key={sale.id}
+                              type="button"
+                              className="w-full p-2.5 text-left hover:bg-slate-50 transition flex items-center justify-between"
+                              onClick={() => {
+                                selectSale(sale.id)
+                                setSaleSearchText("")
+                                setIsSaleDropdownOpen(false)
+                              }}
+                            >
+                              <div>
+                                <p className="text-xs font-bold text-slate-900">{sale.receiptCode}</p>
+                                <p className="text-[11px] text-slate-400">
+                                  {sale.customer?.fullName || "Walk-in"} · {dateTime(sale.saleDate)}
+                                </p>
+                              </div>
+                              <span className="text-[10px] font-bold text-[var(--color-maroon)] bg-rose-50 px-2 py-0.5 rounded-md">
+                                Select
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <Field label="Purchased Item from Receipt">
+                  <select
+                    className={FIELD_CLASS}
+                    disabled={!selectedSale || isSaleLoading}
+                    onChange={(event) => selectSaleItem(event.target.value)}
+                    value={createForm.saleItemId}
+                  >
+                    <option value="">{isSaleLoading ? "Loading receipt items…" : "Select purchased line item"}</option>
+                    {selectedSale?.items?.map((line) => (
+                      <option key={line.id} value={line.id}>
+                        Line {line.lineNo}: {line.itemNameSnapshot || line.description} {line.serialId ? " (Serialized)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                <Field label="Customer (Optional)">
+                  <select
+                    className={FIELD_CLASS}
+                    disabled={Boolean(selectedSale?.customer)}
+                    onChange={(event) => setCreateForm((form) => ({ ...form, customerId: event.target.value }))}
+                    value={createForm.customerId}
+                  >
+                    <option value="">Walk-in / Unlinked customer</option>
+                    {customers.map((customer) => (
+                      <option key={customer.id} value={customer.id}>
+                        {customer.fullName}{customer.companyName ? ` (${customer.companyName})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+
+                <Field label="Product Catalog Item">
+                  <select
+                    className={FIELD_CLASS}
+                    disabled={Boolean(createForm.saleItemId)}
+                    onChange={(event) => setCreateForm((form) => ({ ...form, itemId: event.target.value }))}
+                    value={createForm.itemId}
+                  >
+                    <option value="">Select product</option>
+                    {items.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.itemCode} · {item.itemName}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                <Field label="Issue Description" required>
+                  <textarea
+                    autoFocus
+                    className={FIELD_CLASS}
+                    onChange={(event) => setCreateForm((form) => ({ ...form, issueDescription: event.target.value }))}
+                    placeholder="e.g. No display output, artifacts on boot..."
+                    required
+                    rows="3"
+                    value={createForm.issueDescription}
+                  />
+                </Field>
+
+                <Field label="Customer Complaint">
+                  <textarea
+                    className={FIELD_CLASS}
+                    onChange={(event) => setCreateForm((form) => ({ ...form, customerComplaint: event.target.value }))}
+                    placeholder="Customer's verbatim description of the issue"
+                    rows="3"
+                    value={createForm.customerComplaint}
+                  />
+                </Field>
+              </div>
+
+              <Field label="Staff Receiving Remarks">
+                <textarea
+                  className={FIELD_CLASS}
+                  onChange={(event) => setCreateForm((form) => ({ ...form, remarks: event.target.value }))}
+                  placeholder="Physical condition upon intake (scratches, accessories included, etc.)"
+                  rows="2"
+                  value={createForm.remarks}
+                />
+              </Field>
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-slate-200 p-4 sm:px-6">
+              <button
+                className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                onClick={() => {
+                  setShowCreate(false)
+                  setSaleSearchText("")
+                  setIsSaleDropdownOpen(false)
+                }}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="rounded-xl bg-[var(--color-maroon)] px-5 py-2.5 text-xs font-bold text-white shadow-soft hover:bg-[var(--color-maroon-hover)]"
+                disabled={isSaving}
+                type="submit"
+              >
+                {isSaving ? "Receiving Claim…" : "Receive Claim"}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
+
+      {/* MODAL 2: IMMEDIATE REPLACEMENT / ADVANCE SWAP */}
+      {showImmediateReplace && replaceTargetClaim ? (
+        <Modal
+          onClose={() => setShowImmediateReplace(false)}
+          title={`Immediate Customer Swap: ${replaceTargetClaim.claimCode}`}
+          wide
+        >
+          <form onSubmit={submitImmediateReplacement}>
+            <div className="max-h-[72vh] space-y-4 overflow-y-auto p-5 sm:p-6 text-xs">
+              <div className="rounded-2xl border border-emerald-300 bg-emerald-50 p-3.5 text-emerald-900">
+                <strong>Instant Swap Policy:</strong> Deducts 1 unit from active branch inventory via <code className="font-mono font-bold">WARRANTY_OUT</code> and sets fresh warranty coverage for the replacement unit.
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                <Field label="Replacement Model from Catalog" required>
+                  <select
+                    className={FIELD_CLASS}
+                    value={replaceForm.replacementItemId}
+                    onChange={(e) => handleReplacementItemChange(e.target.value)}
+                    required
+                  >
+                    <option value="">Select replacement model</option>
+                    {items.map((it) => (
+                      <option key={it.id} value={it.id}>
+                        {it.itemCode} · {it.itemName} {it.isSerialized ? "(Serialized)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+
+                {availableReplacementSerials.length > 0 ? (
+                  <Field label="Select Replacement Serial Number" required>
+                    <select
+                      className={FIELD_CLASS}
+                      value={replaceForm.replacementSerialId}
+                      onChange={(e) => {
+                        const sId = e.target.value
+                        const ser = availableReplacementSerials.find((s) => s.id === sId)
+                        setReplaceForm((prev) => ({
+                          ...prev,
+                          replacementSerialId: sId,
+                          replacementSerialNumber: ser?.serialNumber || "",
+                          replacementBatchId: ser?.batchId || prev.replacementBatchId,
+                        }))
+                      }}
+                      required
+                    >
+                      <option value="">Select available serial</option>
+                      {availableReplacementSerials.map((ser) => (
+                        <option key={ser.id} value={ser.id}>
+                          {ser.serialNumber} (Batch: {ser.batch?.batchCode || "Active"})
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                ) : (
+                  <Field label="Select Replacement Stock Batch" required>
+                    <select
+                      className={FIELD_CLASS}
+                      value={replaceForm.replacementBatchId}
+                      onChange={(e) => setReplaceForm((prev) => ({ ...prev, replacementBatchId: e.target.value }))}
+                      required
+                    >
+                      <option value="">Select active batch</option>
+                      {availableReplacementBatches.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.batchCode} · {Number(b.quantityAvailable || 0)} available
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                )}
+              </div>
+
+              {/* Fresh Warranty Coverage */}
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/75 p-3.5 space-y-2">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <span className="text-xs font-bold uppercase tracking-wide text-slate-700 flex items-center gap-1.5">
+                    <ShieldCheck size={15} /> Fresh Warranty Coverage
+                  </span>
+                  <div className="flex gap-1 flex-wrap">
+                    {[
+                      { label: "12 Mos Major Parts", type: "MAJOR_PARTS", duration: "12 Months Major Parts (7D Outright)" },
+                      { label: "30 Days Accessories", type: "ACCESSORIES", duration: "30 Days (7D Outright)" },
+                      { label: "7 Days Outright", type: "OUTRIGHT_ONLY", duration: "7 Days Outright Replacement" },
+                    ].map((preset) => (
+                      <button
+                        key={preset.type}
+                        type="button"
+                        onClick={() =>
+                          setReplaceForm((prev) => ({
+                            ...prev,
+                            replacementWarrantyType: preset.type,
+                            replacementWarrantyDuration: preset.duration,
+                          }))
+                        }
+                        className={`rounded-lg px-2.5 py-1 text-xs font-bold transition ${
+                          replaceForm.replacementWarrantyType === preset.type
+                            ? "bg-[var(--color-maroon)] text-white shadow-2xs"
+                            : "bg-white border border-slate-200 text-slate-700 hover:bg-slate-50"
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <input
+                  type="text"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold outline-none focus:border-[var(--color-maroon)]"
+                  placeholder="e.g. 12 Months Major Parts (7D Outright)"
+                  value={replaceForm.replacementWarrantyDuration}
+                  onChange={(e) => setReplaceForm((prev) => ({ ...prev, replacementWarrantyDuration: e.target.value }))}
+                />
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                <Field label="Action Taken Summary">
+                  <input
+                    className={FIELD_CLASS}
+                    value={replaceForm.actionTaken}
+                    onChange={(e) => setReplaceForm((prev) => ({ ...prev, actionTaken: e.target.value }))}
+                  />
+                </Field>
+
+                <Field label="Internal Remarks">
+                  <input
+                    className={FIELD_CLASS}
+                    placeholder="Optional notes"
+                    value={replaceForm.remarks}
+                    onChange={(e) => setReplaceForm((prev) => ({ ...prev, remarks: e.target.value }))}
+                  />
+                </Field>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-slate-200 p-4 sm:px-6">
+              <button
+                className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                onClick={() => setShowImmediateReplace(false)}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-5 py-2.5 text-xs font-bold text-white shadow-soft transition"
+                disabled={isSaving || isLoadingStock}
+                type="submit"
+              >
+                {isSaving ? "Issuing Replacement…" : "Confirm Replacement & Deduct Stock"}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
+
+      {/* MODAL 3: DISPATCH TO SUPPLIER */}
+      {showDispatchSupplier && dispatchTargetClaim ? (
+        <Modal
+          onClose={() => setShowDispatchSupplier(false)}
+          title={`Dispatch to Supplier: ${dispatchTargetClaim.claimCode}`}
+        >
+          <form onSubmit={submitDispatchSupplier}>
+            <div className="space-y-4 p-5 sm:p-6 text-xs">
+              <div className="rounded-2xl bg-slate-50 border border-slate-200 p-3.5 text-slate-600">
+                Item status will be set to <strong>SENT TO SUPPLIER</strong> and monitored in the Supplier RMA Hub.
+              </div>
+
+              <Field label="Supplier / Distributor Name" required>
+                <input
+                  className={FIELD_CLASS}
+                  placeholder="e.g. Asus Philippines, Ubertech, Iontech..."
+                  required
+                  value={dispatchForm.supplierName}
+                  onChange={(e) => setDispatchForm((prev) => ({ ...prev, supplierName: e.target.value }))}
+                />
+              </Field>
+
+              <Field label="Supplier RMA / Tracking Reference #">
+                <input
+                  className={FIELD_CLASS}
+                  placeholder="e.g. RMA-2026-09823"
+                  value={dispatchForm.supplierReferenceNo}
+                  onChange={(e) => setDispatchForm((prev) => ({ ...prev, supplierReferenceNo: e.target.value }))}
+                />
+              </Field>
+
+              <Field label="Dispatch Remarks">
+                <textarea
+                  className={FIELD_CLASS}
+                  placeholder="Courier tracking, contact person, etc."
+                  rows="2"
+                  value={dispatchForm.remarks}
+                  onChange={(e) => setDispatchForm((prev) => ({ ...prev, remarks: e.target.value }))}
+                />
+              </Field>
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-slate-200 p-4 sm:px-6">
+              <button
+                className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                onClick={() => setShowDispatchSupplier(false)}
+                type="button"
+              >
+                Back
+              </button>
+              <button
+                className="rounded-xl bg-violet-700 hover:bg-violet-800 px-5 py-2.5 text-xs font-bold text-white shadow-soft"
+                disabled={isSaving}
+                type="submit"
+              >
+                {isSaving ? "Dispatching…" : "Confirm Supplier Dispatch"}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
+
+      {/* MODAL 4: SUPPLIER RMA RESOLUTION */}
+      {showResolveSupplier && resolveTargetClaim ? (
+        <Modal
+          onClose={() => setShowResolveSupplier(false)}
+          title={`Resolve Supplier RMA: ${resolveTargetClaim.claimCode}`}
+        >
+          <form onSubmit={submitResolveSupplier}>
+            <div className="space-y-4 p-5 sm:p-6 text-xs">
+              <Field label="Supplier Outcome & Resolution Scenario" required>
+                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  {[
+                    { id: "REPLACED_BY_SUPPLIER", label: "📦 Same Item Replaced", desc: "Same model returns to stock" },
+                    { id: "CHANGE_MODEL", label: "🔄 Change Model", desc: "Phased out -> New model stock" },
+                    { id: "CREDIT_MEMO", label: "📄 Credit Memo (CM)", desc: "Deduct from AP payables" },
+                    { id: "REPAIRED", label: "🔧 Repaired Unit", desc: "Fixed unit returns to stock" },
+                    { id: "REJECTED", label: "❌ Supplier Rejected", desc: "Write-off / Shrinkage loss" },
+                  ].map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setResolveForm((prev) => ({ ...prev, outcome: opt.id }))}
+                      className={`rounded-xl p-2.5 text-left transition border ${
+                        resolveForm.outcome === opt.id
+                          ? opt.id === "REJECTED"
+                            ? "border-rose-600 bg-rose-50 text-rose-900 shadow-2xs font-bold"
+                            : opt.id === "CREDIT_MEMO"
+                              ? "border-blue-600 bg-blue-50 text-blue-900 shadow-2xs font-bold"
+                              : opt.id === "CHANGE_MODEL"
+                                ? "border-amber-600 bg-amber-50 text-amber-900 shadow-2xs font-bold"
+                                : "border-emerald-600 bg-emerald-50 text-emerald-900 shadow-2xs font-bold"
+                          : "border-slate-200 bg-white hover:bg-slate-50"
+                      }`}
+                    >
+                      <p className="text-xs font-black">{opt.label}</p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">{opt.desc}</p>
+                    </button>
+                  ))}
+                </div>
+              </Field>
+
+              {resolveForm.outcome === "CHANGE_MODEL" ? (
+                <div className="rounded-2xl border border-amber-300 bg-amber-50/70 p-3.5 space-y-3">
+                  <div>
+                    <h5 className="text-xs font-black uppercase tracking-wider text-amber-900">
+                      Scenario 2: Change Model (Phased-Out Replacement)
+                    </h5>
+                    <p className="text-[11px] text-amber-800">
+                      Since the original item is phased out, select the replacement model provided by the supplier. 1 unit will be replenished into the new model's inventory stock.
+                    </p>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field label="Select New Model Item from Catalog *" required>
+                      <select
+                        className={FIELD_CLASS}
+                        value={resolveForm.replacementItemId}
+                        onChange={(e) => setResolveForm((prev) => ({ ...prev, replacementItemId: e.target.value }))}
+                        required
+                      >
+                        <option value="">Select replacement model...</option>
+                        {items.map((it) => (
+                          <option key={it.id} value={it.id}>
+                            {it.itemCode} · {it.itemName} {it.isSerialized ? "(Serialized)" : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    <Field label="New Replacement Serial Number (Optional)">
+                      <input
+                        className={FIELD_CLASS}
+                        placeholder="Scan or type new serial barcode..."
+                        value={resolveForm.newSerial}
+                        onChange={(e) => setResolveForm((prev) => ({ ...prev, newSerial: e.target.value }))}
+                      />
+                    </Field>
+                  </div>
+                </div>
+              ) : null}
+
+              {resolveForm.outcome === "CREDIT_MEMO" ? (
+                <div className="rounded-2xl border border-blue-300 bg-blue-50/70 p-3.5 space-y-3">
+                  <div>
+                    <h5 className="text-xs font-black uppercase tracking-wider text-blue-900">
+                      Scenario 3: Supplier Credit Memo (CM)
+                    </h5>
+                    <p className="text-[11px] text-blue-800">
+                      Supplier issued a Credit Memo instead of physical stock replacement. This CM will be logged to deduct from your accounts payable (AP) balance with this supplier.
+                    </p>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field label="Credit Memo Reference / Number *" required>
+                      <input
+                        className={FIELD_CLASS}
+                        placeholder="e.g. CM-2026-0041"
+                        required
+                        value={resolveForm.creditMemoNumber}
+                        onChange={(e) => setResolveForm((prev) => ({ ...prev, creditMemoNumber: e.target.value }))}
+                      />
+                    </Field>
+                    <Field label="Credit Memo Amount (₱) *" required>
+                      <input
+                        className={`${FIELD_CLASS} font-mono font-bold`}
+                        min="0"
+                        placeholder="0.00"
+                        required
+                        step="0.01"
+                        type="number"
+                        value={resolveForm.creditMemoAmount}
+                        onChange={(e) => setResolveForm((prev) => ({ ...prev, creditMemoAmount: e.target.value }))}
+                      />
+                    </Field>
+                  </div>
+                </div>
+              ) : null}
+
+              {resolveForm.outcome === "REPLACED_BY_SUPPLIER" || resolveForm.outcome === "REPAIRED" ? (
+                <div className="rounded-2xl border border-emerald-300 bg-emerald-50 p-3.5 space-y-2">
+                  <p className="text-xs font-bold text-emerald-900">
+                    <strong>Scenario 1: Stock Replenishment:</strong> Receiving the replaced/repaired unit automatically replenishes 1 unit back into branch stock via <code className="font-mono">WARRANTY_RETURN</code>.
+                  </p>
+                  <Field label="Replacement Unit Serial Number (Optional)">
+                    <input
+                      className={FIELD_CLASS}
+                      placeholder="Scan or type new serial barcode if replaced with new serial..."
+                      value={resolveForm.newSerial}
+                      onChange={(e) => setResolveForm((prev) => ({ ...prev, newSerial: e.target.value }))}
+                    />
+                  </Field>
+                </div>
+              ) : null}
+
+              {resolveForm.outcome === "REJECTED" ? (
+                <div className="rounded-2xl border border-rose-300 bg-rose-50 p-3.5 space-y-2">
+                  <p className="text-xs font-bold text-rose-900">
+                    <strong>Inventory Shrinkage Loss:</strong> The supplier rejected the claim. This unit will be logged as a write-off / shrinkage loss.
+                  </p>
+                  <Field label="Mandatory Supplier Rejection Reason *" required>
+                    <textarea
+                      required
+                      className={FIELD_CLASS}
+                      placeholder="e.g. Customer induced damage: Corroded contacts, PCB fracture..."
+                      rows="3"
+                      value={resolveForm.rejectionReason}
+                      onChange={(e) => setResolveForm((prev) => ({ ...prev, rejectionReason: e.target.value }))}
+                    />
+                  </Field>
+                </div>
+              ) : null}
+
+              <Field label="Action Taken Notes">
+                <textarea
+                  className={FIELD_CLASS}
+                  rows="2"
+                  value={resolveForm.actionTaken}
+                  onChange={(e) => setResolveForm((prev) => ({ ...prev, actionTaken: e.target.value }))}
+                />
+              </Field>
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-slate-200 p-4 sm:px-6">
+              <button
+                className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                onClick={() => setShowResolveSupplier(false)}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className={`rounded-xl px-5 py-2.5 text-xs font-bold text-white shadow-soft transition ${
+                  resolveForm.outcome === "REJECTED" ? "bg-rose-700 hover:bg-rose-800" : "bg-emerald-700 hover:bg-emerald-800"
+                }`}
+                disabled={isSaving}
+                type="submit"
+              >
+                {isSaving ? "Submitting Resolution…" : "Confirm Supplier Outcome"}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
+
+      {/* MODAL 5: CUSTOMER CLAIM REJECTION */}
+      {showCustomerReject && selectedClaim ? (
+        <Modal
+          onClose={() => setShowCustomerReject(false)}
+          title={`Reject Customer Claim: ${selectedClaim.claimCode}`}
+        >
+          <form onSubmit={submitCustomerReject}>
+            <div className="space-y-4 p-5 sm:p-6 text-xs">
+              <div className="rounded-2xl border border-rose-300 bg-rose-50 p-3.5 text-rose-900">
+                Record the official reason for denial (e.g. broken warranty seal, physical damage, expired warranty).
+              </div>
+
+              <Field label="Mandatory Rejection Reason" required>
+                <textarea
+                  autoFocus
+                  required
+                  className={FIELD_CLASS}
+                  placeholder="e.g. Void sticker tampered, bent CPU socket pins, liquid damage found..."
+                  rows="3"
+                  value={customerRejectForm.rejectionReason}
+                  onChange={(e) => setCustomerRejectForm((prev) => ({ ...prev, rejectionReason: e.target.value }))}
+                />
+              </Field>
+
+              <Field label="Additional Staff Remarks">
+                <textarea
+                  className={FIELD_CLASS}
+                  placeholder="Optional customer interaction remarks"
+                  rows="2"
+                  value={customerRejectForm.remarks}
+                  onChange={(e) => setCustomerRejectForm((prev) => ({ ...prev, remarks: e.target.value }))}
+                />
+              </Field>
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-slate-200 p-4 sm:px-6">
+              <button
+                className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                onClick={() => setShowCustomerReject(false)}
+                type="button"
+              >
+                Back
+              </button>
+              <button
+                className="rounded-xl bg-rose-700 hover:bg-rose-800 px-5 py-2.5 text-xs font-bold text-white shadow-soft transition"
+                disabled={isSaving}
+                type="submit"
+              >
+                {isSaving ? "Rejecting…" : "Confirm Rejection"}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
+
+      {/* MODAL 6: CLAIM DETAIL VIEW */}
+      {selectedClaim ? (
+        <Modal
+          onClose={() => {
+            setSelectedClaim(null)
+            setActionStatus("")
+            setShowRelease(false)
+          }}
+          title={selectedClaim.claimCode}
+          wide
+        >
+          <div className="max-h-[78vh] overflow-y-auto p-5 sm:p-6 text-xs">
+            {isDetailLoading ? (
+              <div className="grid min-h-48 place-items-center">
+                <LoaderCircle className="animate-spin text-[var(--color-maroon)]" size={24} />
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="max-w-3xl text-lg font-black text-slate-900">{selectedClaim.issueDescription}</h3>
+                    <p className="mt-0.5 text-xs text-slate-400">
+                      Received {dateTime(selectedClaim.receivedAt)} · {selectedClaim.branch?.name || selectedClaim.branch?.code}
+                    </p>
+                  </div>
+                  <StatusBadge status={selectedClaim.status} />
+                </div>
+
+                <div className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50/75 p-3.5 sm:grid-cols-2 lg:grid-cols-4">
+                  <div>
+                    <p className="text-[10px] font-bold uppercase text-slate-400">Customer</p>
+                    <p className="mt-0.5 font-bold text-slate-900">{selectedClaim.customer?.fullName || "Walk-in"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase text-slate-400">Item</p>
+                    <p className="mt-0.5 font-bold text-slate-900 truncate">{selectedClaim.item?.itemName || selectedClaim.saleItem?.itemNameSnapshot || "Unlinked"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase text-slate-400">Serial</p>
+                    <p className="mt-0.5 font-bold font-mono text-slate-900">{selectedClaim.serial?.serialNumber || "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase text-slate-400">Original Sale</p>
+                    <p className="mt-0.5 font-bold font-mono text-slate-900">{selectedClaim.sale?.receiptCode || "—"}</p>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {[
+                    ["Customer complaint", selectedClaim.customerComplaint],
+                    ["Diagnosis", selectedClaim.diagnosis],
+                    ["Action taken", selectedClaim.actionTaken],
+                    ["Supplier", selectedClaim.supplierName],
+                    ["Supplier reference", selectedClaim.supplierReferenceNo],
+                    ["Remarks", selectedClaim.remarks],
+                  ].map(([label, value]) => (
+                    <div className="rounded-xl border border-slate-100 bg-white p-2.5" key={label}>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</p>
+                      <p className="mt-0.5 whitespace-pre-wrap text-xs text-slate-800">{value || "—"}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Lifecycle Trail</p>
+                  <div className="mt-1.5 grid gap-1.5 sm:grid-cols-2 lg:grid-cols-4">
+                    {[
+                      ["Received", selectedClaim.receivedAt],
+                      ["Checking", selectedClaim.checkingAt],
+                      ["Sent to supplier", selectedClaim.sentToSupplierAt],
+                      ["Approved", selectedClaim.approvedAt],
+                      ["Rejected", selectedClaim.rejectedAt],
+                      ["Repaired", selectedClaim.repairedAt],
+                      ["Replaced", selectedClaim.replacedAt],
+                      ["Released", selectedClaim.releasedAt],
+                    ].map(([label, value]) => (
+                      <div
+                        className={`rounded-xl p-2.5 ${
+                          value
+                            ? "border border-emerald-300 bg-emerald-50 text-emerald-900"
+                            : "border border-slate-100 bg-slate-50 text-slate-400"
+                        }`}
+                        key={label}
+                      >
+                        <p className="text-[10px] font-bold uppercase">{label}</p>
+                        <p className="mt-0.5 text-[11px] font-mono">{dateTime(value)}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Loaner Equipment Banner in Details */}
+                {(() => {
+                  const loanerData = getClaimLoanerData(selectedClaim)
+                  if (!loanerData) return null
+                  return (
+                    <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 space-y-2">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <span className="text-xs font-bold uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+                          <ShieldCheck size={15} /> Service Loaner Unit ({loanerData.status === "ON_LOAN" ? "Active on Loan" : "Returned"})
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => openSlipModal(selectedClaim, "LOANER")}
+                          className="rounded-lg bg-amber-700 hover:bg-amber-800 text-white px-3 py-1 text-xs font-bold inline-flex items-center gap-1 shadow-2xs"
+                        >
+                          <Printer size={12} /> Print Loaner Agreement (2 Copies)
+                        </button>
+                      </div>
+                      <div className="grid gap-2 sm:grid-cols-3 text-xs text-amber-950">
+                        <div>
+                          <span className="text-slate-500 block text-[10px] uppercase font-bold">Loaner Item:</span>
+                          <span className="font-bold">{loanerData.loanerItemName}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 block text-[10px] uppercase font-bold">Loaner Serial:</span>
+                          <span className="font-mono font-bold">{loanerData.loanerSerialNumber}</span>
+                        </div>
+                        <div>
+                          <span className="text-slate-500 block text-[10px] uppercase font-bold">Issued Date:</span>
+                          <span>{dateTime(loanerData.loanedAt)}</span>
+                        </div>
+                      </div>
+                      {loanerData.status === "RETURNED" ? (
+                        <p className="text-[11px] text-emerald-800 font-semibold">
+                          ✅ Returned on {dateTime(loanerData.returnedAt)} ({loanerData.returnCondition || "Good condition"})
+                        </p>
+                      ) : (
+                        <div className="pt-1">
+                          <button
+                            type="button"
+                            onClick={() => openReturnLoanerModal(selectedClaim)}
+                            className="rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-1 text-xs font-bold inline-flex items-center gap-1 shadow-2xs"
+                          >
+                            <RotateCcw size={12} /> Return Loaner to Stock
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
+
+                <div className="flex flex-wrap gap-2 border-t border-slate-200 pt-3.5">
+                  <button
+                    className="rounded-xl border border-slate-300 bg-white hover:bg-slate-50 px-4 py-2 text-xs font-bold text-slate-800 shadow-2xs transition inline-flex items-center gap-1.5"
+                    onClick={() => openSlipModal(selectedClaim, "CLAIM")}
+                    type="button"
+                  >
+                    <Printer size={14} />
+                    <span>Print Claim Slip (2 Copies)</span>
+                  </button>
+
+                  {selectedClaim.status === "REPLACED" ? (
+                    <button
+                      className="rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 px-4 py-2 text-xs font-bold text-emerald-800 shadow-2xs transition inline-flex items-center gap-1.5"
+                      onClick={() => openSlipModal(selectedClaim, "REPLACEMENT")}
+                      type="button"
+                    >
+                      <Printer size={14} />
+                      <span>Print Replacement Slip (2 Copies)</span>
+                    </button>
+                  ) : null}
+
+                  {canAct && !["REPLACED", "REJECTED", "OUT"].includes(selectedClaim.status) ? (
+                    <>
+                      {(() => {
+                        const lData = getClaimLoanerData(selectedClaim)
+                        if (lData?.status === "ON_LOAN") {
+                          return (
+                            <button
+                              className="rounded-xl bg-amber-500 hover:bg-amber-600 px-4 py-2 text-xs font-bold text-white shadow-soft transition inline-flex items-center gap-1.5"
+                              onClick={() => openReturnLoanerModal(selectedClaim)}
+                              type="button"
+                            >
+                              <RotateCcw size={14} />
+                              <span>Return Loaner</span>
+                            </button>
+                          )
+                        }
+                        return (
+                          <button
+                            className="rounded-xl bg-amber-600 hover:bg-amber-700 px-4 py-2 text-xs font-bold text-white shadow-soft transition inline-flex items-center gap-1.5"
+                            onClick={() => openIssueLoanerModal(selectedClaim)}
+                            type="button"
+                          >
+                            <Handshake size={14} />
+                            <span>Issue Loaner Unit</span>
+                          </button>
+                        )
+                      })()}
+
+                      <button
+                        className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 text-xs font-bold text-white shadow-soft transition"
+                        onClick={() => openImmediateReplacementModal(selectedClaim)}
+                        type="button"
+                      >
+                        🔄 Quick Swap
+                      </button>
+                      <button
+                        className="rounded-xl bg-violet-700 hover:bg-violet-800 px-4 py-2 text-xs font-bold text-white shadow-soft transition"
+                        onClick={() => openDispatchSupplierModal(selectedClaim)}
+                        type="button"
+                      >
+                        🚚 Send to Supplier
+                      </button>
+                      <button
+                        className="rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 px-4 py-2 text-xs font-bold text-rose-700 transition"
+                        onClick={() => openCustomerRejectModal(selectedClaim)}
+                        type="button"
+                      >
+                        ❌ Reject Claim
+                      </button>
+                    </>
+                  ) : null}
+
+                  {canAct
+                    ? NEXT_STATUSES[selectedClaim.status]?.map((status) => (
+                        <button
+                          className={
+                            status === "REJECTED"
+                              ? "rounded-xl border border-rose-200 px-4 py-2 text-xs font-bold text-rose-700"
+                              : "rounded-xl bg-[var(--color-maroon)] px-4 py-2 text-xs font-bold text-white"
+                          }
+                          key={status}
+                          onClick={() => beginStatusAction(status)}
+                          type="button"
+                        >
+                          Mark {formatStatus(status).toLowerCase()}
+                        </button>
+                      ))
+                    : null}
+
+                  {canAct && RELEASE_READY.has(selectedClaim.status) ? (
+                    <button
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--color-maroon)] px-4 py-2 text-xs font-bold text-white"
+                      onClick={openRelease}
+                      type="button"
+                    >
+                      <CheckCircle2 size={15} /> Release to customer
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            )}
+          </div>
+        </Modal>
+      ) : null}
+
+      {/* MODAL 7: LIFECYCLE STATUS MOVE */}
+      {actionStatus ? (
+        <Modal onClose={() => setActionStatus("")} title={`Move claim to ${formatStatus(actionStatus)}`}>
+          <form onSubmit={submitStatus}>
+            <div className="max-h-[70vh] space-y-3 overflow-y-auto p-5 sm:p-6 text-xs">
+              <Field label="Diagnosis">
+                <textarea
+                  className={FIELD_CLASS}
+                  onChange={(event) => setActionForm((form) => ({ ...form, diagnosis: event.target.value }))}
+                  rows="3"
+                  value={actionForm.diagnosis}
+                />
+              </Field>
+              <Field label="Action taken">
+                <textarea
+                  className={FIELD_CLASS}
+                  onChange={(event) => setActionForm((form) => ({ ...form, actionTaken: event.target.value }))}
+                  rows="3"
+                  value={actionForm.actionTaken}
+                />
+              </Field>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Supplier name">
+                  <input
+                    className={FIELD_CLASS}
+                    onChange={(event) => setActionForm((form) => ({ ...form, supplierName: event.target.value }))}
+                    value={actionForm.supplierName}
+                  />
+                </Field>
+                <Field label="Supplier reference">
+                  <input
+                    className={FIELD_CLASS}
+                    onChange={(event) => setActionForm((form) => ({ ...form, supplierReferenceNo: event.target.value }))}
+                    value={actionForm.supplierReferenceNo}
+                  />
+                </Field>
+              </div>
+              <Field label="Remarks">
+                <textarea
+                  className={FIELD_CLASS}
+                  onChange={(event) => setActionForm((form) => ({ ...form, remarks: event.target.value }))}
+                  rows="2"
+                  value={actionForm.remarks}
+                />
+              </Field>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-slate-200 p-4 sm:px-6">
+              <button
+                className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                onClick={() => setActionStatus("")}
+                type="button"
+              >
+                Back
+              </button>
+              <button
+                className={
+                  actionStatus === "REJECTED"
+                    ? "rounded-xl bg-rose-700 px-5 py-2.5 text-xs font-bold text-white"
+                    : "rounded-xl bg-[var(--color-maroon)] px-5 py-2.5 text-xs font-bold text-white"
+                }
+                disabled={isSaving}
+                type="submit"
+              >
+                {isSaving ? "Saving…" : "Confirm status"}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
+
+      {/* MODAL 8: RELEASE TO CUSTOMER */}
+      {showRelease ? (
+        <Modal onClose={() => setShowRelease(false)} title="Release warranty claim">
+          <form onSubmit={submitRelease}>
+            <div className="space-y-3 p-5 sm:p-6 text-xs">
+              <div className="rounded-2xl border border-amber-300 bg-amber-50 p-3 text-amber-900">
+                <strong>Confirm physical release:</strong> Closes the claim as OUT and records acting user.
+              </div>
+              <Field label="Final action taken">
+                <textarea
+                  className={FIELD_CLASS}
+                  onChange={(event) => setReleaseForm((form) => ({ ...form, actionTaken: event.target.value }))}
+                  rows="3"
+                  value={releaseForm.actionTaken}
+                />
+              </Field>
+              <Field label="Release remarks">
+                <textarea
+                  className={FIELD_CLASS}
+                  onChange={(event) => setReleaseForm((form) => ({ ...form, remarks: event.target.value }))}
+                  rows="2"
+                  value={releaseForm.remarks}
+                />
+              </Field>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-slate-200 p-4 sm:px-6">
+              <button
+                className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                onClick={() => setShowRelease(false)}
+                type="button"
+              >
+                Back
+              </button>
+              <button
+                className="rounded-xl bg-[var(--color-maroon)] px-5 py-2.5 text-xs font-bold text-white"
+                disabled={isSaving}
+                type="submit"
+              >
+                {isSaving ? "Releasing…" : "Confirm release"}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
+
+      {/* MODAL: ISSUE SERVICE LOANER UNIT */}
+      {showIssueLoaner && loanerTargetClaim ? (
+        <Modal
+          onClose={() => setShowIssueLoaner(false)}
+          title={`Issue Service Loaner Unit: ${loanerTargetClaim.claimCode}`}
+        >
+          <form onSubmit={submitIssueLoaner}>
+            <div className="space-y-4 p-5 sm:p-6 text-xs">
+              <div className="rounded-xl border border-amber-300 bg-amber-50 p-3.5 space-y-1 text-amber-900">
+                <p className="font-bold flex items-center gap-1.5">
+                  <ShieldCheck size={14} /> Service Loaner Agreement
+                </p>
+                <p className="text-[11px] text-amber-800">
+                  Lending a temporary unit while the client's defective item is processed for warranty. The client must return this loaner unit regardless of whether the warranty claim is approved, repaired, or rejected.
+                </p>
+              </div>
+
+              <Field label="Select Loaner Item from Catalog">
+                <select
+                  className={FIELD_CLASS}
+                  value={loanerForm.loanerItemId}
+                  onChange={(e) => handleLoanerItemChange(e.target.value)}
+                >
+                  <option value="">Select an available catalog item (or enter custom below)</option>
+                  {items.map((it) => (
+                    <option key={it.id} value={it.id}>
+                      {it.itemCode} · {it.itemName}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Loaner Item Name *" required>
+                <input
+                  required
+                  className={FIELD_CLASS}
+                  placeholder="e.g. Asus GeForce RTX 3060 12GB (Store Service Unit)"
+                  value={loanerForm.loanerItemName}
+                  onChange={(e) => setLoanerForm((prev) => ({ ...prev, loanerItemName: e.target.value }))}
+                />
+              </Field>
+
+              {loanerAvailableSerials.length > 0 ? (
+                <Field label="Select Available Serial Number">
+                  <select
+                    className={FIELD_CLASS}
+                    value={loanerForm.loanerSerialId}
+                    onChange={(e) => {
+                      const sId = e.target.value
+                      const ser = loanerAvailableSerials.find((s) => s.id === sId)
+                      setLoanerForm((prev) => ({
+                        ...prev,
+                        loanerSerialId: sId,
+                        loanerSerialNumber: ser?.serialNumber || "",
+                      }))
+                    }}
+                  >
+                    <option value="">Select available stock serial</option>
+                    {loanerAvailableSerials.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.serialNumber} (Batch: {s.batch?.batchCode || "Active"})
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              ) : null}
+
+              <Field label="Loaner Serial Number *" required>
+                <input
+                  required
+                  className={`${FIELD_CLASS} font-mono`}
+                  placeholder="Scan or enter loaner serial number..."
+                  value={loanerForm.loanerSerialNumber}
+                  onChange={(e) => setLoanerForm((prev) => ({ ...prev, loanerSerialNumber: e.target.value }))}
+                />
+              </Field>
+
+              <Field label="Loan Remarks & Physical Condition">
+                <textarea
+                  className={FIELD_CLASS}
+                  placeholder="e.g. Unit in good working condition with minor outer scratch. Power cord included."
+                  rows="2"
+                  value={loanerForm.loanRemarks}
+                  onChange={(e) => setLoanerForm((prev) => ({ ...prev, loanRemarks: e.target.value }))}
+                />
+              </Field>
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-slate-200 p-4 sm:px-6">
+              <button
+                className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                onClick={() => setShowIssueLoaner(false)}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="rounded-xl bg-amber-600 hover:bg-amber-700 px-5 py-2.5 text-xs font-bold text-white shadow-sm"
+                disabled={isSaving}
+                type="submit"
+              >
+                {isSaving ? "Issuing..." : "Confirm & Print 2-Copy Agreement"}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
+
+      {/* MODAL: RETURN SERVICE LOANER UNIT */}
+      {showReturnLoaner && returnLoanerTargetClaim ? (
+        <Modal
+          onClose={() => setShowReturnLoaner(false)}
+          title={`Return Service Loaner Unit: ${returnLoanerTargetClaim.claimCode}`}
+        >
+          <form onSubmit={submitReturnLoaner}>
+            <div className="space-y-4 p-5 sm:p-6 text-xs">
+              <div className="rounded-xl border border-emerald-300 bg-emerald-50 p-3.5 space-y-1 text-emerald-900">
+                <p className="font-bold flex items-center gap-1.5">
+                  <CheckCircle2 size={14} /> Confirm Service Loaner Return
+                </p>
+                <p className="text-[11px] text-emerald-800">
+                  Customer has returned the service loaner unit back to store inventory.
+                </p>
+              </div>
+
+              <Field label="Return Physical Condition">
+                <select
+                  className={FIELD_CLASS}
+                  value={returnLoanerForm.returnCondition}
+                  onChange={(e) => setReturnLoanerForm((prev) => ({ ...prev, returnCondition: e.target.value }))}
+                >
+                  <option value="Good / Working Condition">Good / Working Condition (Complete)</option>
+                  <option value="Minor Cosmetic Wear">Minor Cosmetic Wear (Working)</option>
+                  <option value="Damaged / Incomplete Accessories">Damaged / Incomplete Accessories</option>
+                  <option value="Defective Upon Return">Defective Upon Return</option>
+                </select>
+              </Field>
+
+              <Field label="Staff Receiving Remarks">
+                <textarea
+                  className={FIELD_CLASS}
+                  placeholder="Notes upon return inspection..."
+                  rows="2"
+                  value={returnLoanerForm.remarks}
+                  onChange={(e) => setReturnLoanerForm((prev) => ({ ...prev, remarks: e.target.value }))}
+                />
+              </Field>
+            </div>
+
+            <div className="flex justify-end gap-2 border-t border-slate-200 p-4 sm:px-6">
+              <button
+                className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                onClick={() => setShowReturnLoaner(false)}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="rounded-xl bg-emerald-700 hover:bg-emerald-800 px-5 py-2.5 text-xs font-bold text-white shadow-sm"
+                disabled={isSaving}
+                type="submit"
+              >
+                {isSaving ? "Returning..." : "Confirm Return to Stock"}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      ) : null}
+
+      {/* MODAL: PRINTABLE 2-COPY WARRANTY SLIP */}
+      {showSlipModal && activeSlipClaim ? (
+        <WarrantySlipModal
+          claim={activeSlipClaim}
+          slipType={activeSlipType}
+          options={activeSlipOptions}
+          onClose={() => setShowSlipModal(false)}
+        />
+      ) : null}
+    </div>
+  )
+}
+
