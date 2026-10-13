@@ -1,6 +1,6 @@
 # Pointify
 
-React/Vite frontend for the Arunafeltz Cloud POS.
+React/Vite frontend for the Pointify.
 
 ## Local commands
 
