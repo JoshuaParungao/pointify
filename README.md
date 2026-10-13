@@ -1,4 +1,4 @@
-# Arunafeltz Frontend
+# Pointify
 
 React/Vite frontend for the Arunafeltz Cloud POS.
 
