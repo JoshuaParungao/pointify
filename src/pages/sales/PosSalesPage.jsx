@@ -9338,7 +9338,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
         amount={totals.grandTotal}
         cartItems={cart}
         customerEmail={customerEmail}
-        customerName={selectedCustomer?.fullName || customerSearch || "Walk-in Customer"}
+        customerName={customers.find((c) => c.id === selectedCustomerId)?.fullName || customerSearch || "Walk-in Customer"}
         customerPhone={customerPhone}
         isOpen={isPayMongoModalOpen}
         onClose={() => setIsPayMongoModalOpen(false)}
