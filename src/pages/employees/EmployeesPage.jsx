@@ -173,7 +173,7 @@ export default function EmployeesPage({ selectedBranch, user }) {
       return
     }
 
-    const pcBuild = validateRate(incentiveForm.pcBuildEnabled, incentiveForm.pcBuildRatePercent, "PC Build")
+    const pcBuild = validateRate(incentiveForm.pcBuildEnabled, incentiveForm.pcBuildRatePercent, "Bundle Item")
     if (!pcBuild.ok) {
       setIncentiveModalError(pcBuild.message)
       return
@@ -1263,8 +1263,8 @@ export default function EmployeesPage({ selectedBranch, user }) {
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
-                          <p className="font-bold text-sm text-[var(--color-text-strong)]">Custom PC Build & Assembly</p>
-                          <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-black text-indigo-700">PC Assembly</span>
+                          <p className="font-bold text-sm text-[var(--color-text-strong)]">Bundle Item Assembly & Packaging</p>
+                          <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-black text-indigo-700">Package Assembly</span>
                         </div>
                         <p className="text-xs text-[var(--color-muted)] mt-0.5">
                           Komisyon sa pag-assemble at build ng sold PC systems.

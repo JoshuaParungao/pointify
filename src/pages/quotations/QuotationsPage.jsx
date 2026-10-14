@@ -603,7 +603,7 @@ export default function QuotationsPage({ selectedBranch, user }) {
       ["Customer Name", (row) => row.customer?.fullName || row.customerName || "Walk-in Customer"],
       ["Contact No", (row) => row.customer?.mobileNumber || row.customerPhone || "—"],
       ["Status", (row) => row.status || "QUOTED"],
-      ["Type", (row) => row.isPcBuild ? "PC Build" : "Standard"],
+      ["Type", (row) => row.isPcBuild ? "Bundle Item" : "Standard"],
       ["Items Count", (row) => (row.items || []).length],
       ["Subtotal", (row) => Number(row.subtotal || 0)],
       ["Total Discount", (row) => Number(row.totalDiscount || 0)],
@@ -1020,7 +1020,7 @@ export default function QuotationsPage({ selectedBranch, user }) {
       const effectiveSalesman = assignedSalesPerson || user || { fullName: "Staff" }
 
       const formattedRemarks = [
-        isPcBuild ? "[PC BUILD]" : "",
+        isPcBuild ? "[BUNDLE]" : "",
         remarks.trim(),
         `[Term: ${PRICING_TERMS[pricingTerm]?.label || pricingTerm}]`,
       ].filter(Boolean).join(" ")
@@ -1029,7 +1029,7 @@ export default function QuotationsPage({ selectedBranch, user }) {
         branchId,
         customerId: effectiveCustomerId,
         serviceDoneById,
-        title: isPcBuild ? "PC Build Quotation" : (formattedRemarks || undefined),
+        title: isPcBuild ? "Bundle Item Quotation" : (formattedRemarks || undefined),
         notes: serializeQuotationNotes(formattedRemarks, {
           installmentCalculation: showFinancingCalc ? installmentCalculation : undefined,
           pricingTerm,
@@ -1629,7 +1629,7 @@ export default function QuotationsPage({ selectedBranch, user }) {
                     onChange={(e) => setIsPcBuild(e.target.checked)}
                     className="size-3.5 rounded text-[var(--color-maroon)] focus:ring-0"
                   />
-                  <span className="text-[11px] font-bold text-slate-700">PC Build</span>
+                  <span className="text-[11px] font-bold text-slate-700">📦 Bundle Item</span>
                 </label>
               </div>
 

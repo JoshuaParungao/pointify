@@ -907,9 +907,9 @@ function SaleDetailDialog({
                 <ReceiptText size={14} />
                 {isCheckoutPreview ? "SALE CHECKOUT PREVIEW" : "WARRANTY RECEIPT"}
               </span>
-              {sale?.quotation?.isPcBuild || sale?.remarks?.includes("[PC BUILD]") || sale?.isPcBuild ? (
+              {sale?.quotation?.isPcBuild || sale?.remarks?.includes("[BUNDLE]") || sale?.remarks?.includes("[PC BUILD]") || sale?.isPcBuild ? (
                 <span className="rounded-md bg-slate-800 px-2 py-1 text-xs font-bold text-white">
-                  🖥️ PC Build / Set
+                  📦 Bundle Item / Package
                 </span>
               ) : null}
             </div>
@@ -4205,10 +4205,10 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
         ? (() => {
             const builder = serviceStaffList.find((s) => s.id === selectedBuilderId)
             return builder?.fullName
-              ? `[PC BUILD] Assembled by: ${builder.fullName}${remarks.trim() ? ` | ${remarks.trim()}` : ""}`
+              ? `[BUNDLE] Prepared by: ${builder.fullName}${remarks.trim() ? ` | ${remarks.trim()}` : ""}`
               : remarks.trim()
-                ? `[PC BUILD] ${remarks.trim()}`
-                : "[PC BUILD]"
+                ? `[BUNDLE] ${remarks.trim()}`
+                : "[BUNDLE]"
           })()
         : remarks.trim() || undefined,
       isPcBuild,
@@ -4421,10 +4421,10 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
       const builderStaff = serviceStaffList.find((s) => s.id === selectedBuilderId)
       const rawBuildRemarks = isPcBuild
         ? builderStaff?.fullName
-          ? `[PC BUILD] Assembled by: ${builderStaff.fullName}${effectiveRemarks ? ` | ${effectiveRemarks}` : ""}`
+          ? `[BUNDLE] Prepared by: ${builderStaff.fullName}${effectiveRemarks ? ` | ${effectiveRemarks}` : ""}`
           : effectiveRemarks
-            ? `[PC BUILD] ${effectiveRemarks}`
-            : "[PC BUILD]"
+            ? `[BUNDLE] ${effectiveRemarks}`
+            : "[BUNDLE]"
         : effectiveRemarks || ""
       const formattedRemarks = [rawBuildRemarks, termTag].filter(Boolean).join(" ") || undefined
 
@@ -4897,7 +4897,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
       const serviceDoneById = serviceLineWithDoneBy?.serviceStaffId || undefined
 
       const formattedRemarks = [
-        isPcBuild ? "[PC BUILD]" : "",
+        isPcBuild ? "[BUNDLE]" : "",
         remarks.trim(),
         `[Term: ${PRICING_TERMS[pricingTerm]?.label || pricingTerm}]`,
       ].filter(Boolean).join(" ")
@@ -4918,7 +4918,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
         branchId,
         customerId: effectiveCustomerId,
         serviceDoneById,
-        title: isPcBuild ? "PC Build Quotation" : (formattedRemarks || undefined),
+        title: isPcBuild ? "Bundle Item Quotation" : (formattedRemarks || undefined),
         notes: serializeQuotationNotes(formattedRemarks, settlementConfig),
         isPcBuild,
         items: cart.map((line) => {
@@ -6633,7 +6633,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                     onChange={(e) => setIsPcBuild(e.target.checked)}
                     className="size-3.5 rounded border-slate-300 text-[var(--color-maroon)] focus:ring-[var(--color-maroon)]"
                   />
-                  <span className="text-[11px] font-bold text-slate-700">🖥️ PC Build</span>
+                  <span className="text-[11px] font-bold text-slate-700">📦 Bundle Item</span>
                 </label>
                 {cart.length > 0 ? (
                   <button className="text-[11px] font-bold text-red-600 hover:text-red-700" onClick={() => { if (window.confirm("Clear all items in cart?")) setCart([]) }} type="button">

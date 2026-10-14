@@ -490,8 +490,7 @@ export default function CommandPaletteModal({
                           <span className="font-bold font-mono text-sm">Quotation #{quoteNum}</span>
                           {q.isPcBuild && (
                             <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                              PC Build
-                            </span>
+                              Bundle Item</span>
                           )}
                           <span className={`text-xs px-2 py-0.5 rounded font-bold ${isSelected ? "bg-white/20 text-white" : "bg-slate-100 text-slate-700"}`}>
                             {q.status}

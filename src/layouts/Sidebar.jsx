@@ -28,7 +28,7 @@ import {
 const ICONS = {
   pos: ShoppingCart,
   quotations: ClipboardList,
-  "pc-builds": Monitor,
+  "pc-builds": Boxes,
   services: Wrench,
   warranty: ShieldCheck,
   inventory: Boxes,

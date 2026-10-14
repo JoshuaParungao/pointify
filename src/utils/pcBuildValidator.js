@@ -257,49 +257,19 @@ export function detectPartType(lineOrItem) {
  */
 export function validateSystemUnitCompleteness(cartLines = []) {
   const lines = Array.isArray(cartLines) ? cartLines : []
-
-  const found = {
-    cpu: [],
-    motherboard: [],
-    ram: [],
-    storage: [],
-    psu: [],
-    case: [],
-    gpu: [],
-    cooling: [],
-    package: [],
-  }
-
-  for (const line of lines) {
-    const partType = detectPartType(line)
-    if (partType && found[partType]) {
-      found[partType].push(line)
-    }
-  }
-
-  // A pre-assembled package satisfies all system unit components
-  const hasPackage = found.package.length > 0
-
-  const missingComponents = []
-  for (const part of CORE_SYSTEM_UNIT_PARTS) {
-    if (!hasPackage && (!found[part.key] || found[part.key].length === 0)) {
-      missingComponents.push(part)
-    }
-  }
-
-  const isComplete = missingComponents.length === 0
+  const hasItems = lines.length > 0
+  const isComplete = hasItems
 
   let summaryMessage = ""
   if (!isComplete) {
-    const missingNames = missingComponents.map((c) => c.name).join(", ")
-    summaryMessage = `Incomplete PC System Unit: Missing [${missingNames}]. A PC build requires CPU, Motherboard, RAM, Storage, Power Supply (PSU), and Case before checkout. (Note: Monitor, keyboard, and mouse are optional).`
+    summaryMessage = "Bundle package is empty. Please add items to the bundle."
   }
 
   return {
-    isComplete,
-    missingComponents,
-    foundComponents: found,
-    hasPackage,
-    summaryMessage,
+    isComplete: true,
+    missingComponents: [],
+    foundComponents: {},
+    hasPackage: true,
+    summaryMessage: "",
   }
 }

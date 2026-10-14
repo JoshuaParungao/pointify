@@ -488,7 +488,7 @@ export default function QuotationConversionDialog({
             <div className="rounded-2xl border border-rose-200 bg-rose-50/70 p-3.5 space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                  🖥️ PC Build System Unit Requirements
+                  📦 Bundle Item Requirements
                 </span>
                 {systemUnitCompleteness?.isComplete ? (
                   <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 text-[10px] font-black text-emerald-800">

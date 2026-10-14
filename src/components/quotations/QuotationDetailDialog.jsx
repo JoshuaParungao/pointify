@@ -127,9 +127,7 @@ export default function QuotationDetailDialog({
                 <FileText size={14} /> QUOTATION
               </span>
               {isPcBuild ? (
-                <span className="rounded-md bg-slate-800 px-2 py-1 text-xs font-bold text-white">
-                  🖥️ PC Build / Set
-                </span>
+                <span className="rounded-md bg-slate-800 px-2 py-1 text-xs font-bold text-white">📦 Bundle Item / Package</span>
               ) : null}
               {isPreview ? (
                 <span className="rounded-md bg-amber-500 px-2 py-1 text-xs font-bold text-white">
@@ -391,10 +389,10 @@ export default function QuotationDetailDialog({
                   {isPcBuild ? (
                     <div className="space-y-0.5 pb-1">
                       <p className="font-bold text-[11px] text-slate-900">
-                        (FREE PC BUILD, CABLE MANAGEMENT &amp; ESSENTIAL APP INSTALLATION)
+                        (FREE ITEM BUNDLE &amp; PACKAGE PACKAGING)
                       </p>
                       <p className="text-[10px] text-slate-600">
-                        Exclusive to complete PC builds purchased from us. Not applicable to individual component purchases.
+                        Exclusive to complete package bundles purchased from Med C Drugstore & Medical Supplies.
                       </p>
                     </div>
                   ) : null}

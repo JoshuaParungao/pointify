@@ -154,34 +154,27 @@ function isPcBuildSale(sale) {
   if (!sale) return false
   const items = Array.isArray(sale.items) ? sale.items : []
   const remarks = String(sale.remarks || "").toLowerCase()
-  if (remarks.includes("[pc build]") || remarks.includes("assembled by")) return true
+  if (
+    remarks.includes("[bundle]") ||
+    remarks.includes("[package]") ||
+    remarks.includes("[pc build]") ||
+    remarks.includes("assembled by") ||
+    remarks.includes("prepared by")
+  ) return true
+  if (sale.quotation?.isPcBuild || sale.isPcBuild) return true
   if (sale.quotation?.serviceDoneBy) return true
   if (items.length >= 3) return true
   const title = String(sale.quotation?.title || "").toLowerCase()
   if (
-    title.includes("build") ||
-    title.includes("pc") ||
-    title.includes("rig") ||
+    title.includes("bundle") ||
     title.includes("package") ||
-    title.includes("desktop") ||
-    title.includes("gaming") ||
-    title.includes("system")
+    title.includes("set") ||
+    title.includes("kit") ||
+    title.includes("build")
   ) {
     return true
   }
-  const hasCoreParts = items.some((item) => {
-    const desc = String(item.description || "").toLowerCase()
-    return (
-      desc.includes("ryzen") ||
-      desc.includes("intel") ||
-      desc.includes("motherboard") ||
-      desc.includes("b450") ||
-      desc.includes("b550") ||
-      desc.includes("gtx") ||
-      desc.includes("rtx")
-    )
-  })
-  return hasCoreParts && items.length >= 2
+  return false
 }
 
 export function getBuilderName(sale) {
@@ -341,7 +334,7 @@ export default function PcBuildsPage({ selectedBranch, user }) {
     setIsExporting(true)
     try {
       const activeFilters = [
-        { label: "Builds View", value: filterMode === "all_builds" ? "Detected Multi-Part PC Builds" : "All Sales Transactions" },
+        { label: "Builds View", value: filterMode === "all_builds" ? "Detected Multi-Item Bundles" : "All Sales Transactions" },
       ]
       if (search.trim()) activeFilters.push({ label: "Search Keyword", value: search.trim() })
       if (selectedBuilderFilter !== "ALL") activeFilters.push({ label: "Assembled / Encoded By", value: selectedBuilderFilter })
@@ -407,17 +400,17 @@ export default function PcBuildsPage({ selectedBranch, user }) {
       })
 
       exportReportExcel({
-        title: "PC BUILDS & ASSEMBLED SYSTEMS DIRECTORY REPORT",
+        title: "ITEM BUNDLES & PACKAGES DIRECTORY REPORT",
         branchName: selectedBranch?.name || user?.branch?.name || "All Branches",
         generatedBy: user?.fullName || user?.username || "System",
-        filenamePrefix: "pc_builds_directory",
+        filenamePrefix: "item_bundles_directory",
         headers,
         rows,
         activeFilters,
       })
     } catch (error) {
       console.error(error)
-      setErrorMessage("Failed to export PC builds: " + (error.message || "Unknown error"))
+      setErrorMessage("Failed to export bundles: " + (error.message || "Unknown error"))
     } finally {
       setIsExporting(false)
     }
@@ -438,11 +431,11 @@ export default function PcBuildsPage({ selectedBranch, user }) {
               </span>
             </div>
             <h1 className="mt-1 text-2xl font-black text-slate-900 flex items-center gap-2.5">
-              <Monitor size={24} className="text-[var(--color-maroon)]" />
-              PC Builds & Sold Systems
+              <Boxes size={24} className="text-[var(--color-maroon)]" />
+              Bundle Items & Packages
             </h1>
             <p className="mt-0.5 text-xs text-slate-500 max-w-2xl">
-              Directory of all sold PC builds and desktop packages. Inspect individual component specs, review existing per-part hardware warranties & serials, and access official sales receipts.
+              Directory of all sold bundle items and packaged sets. Inspect included products, review existing warranties & serials, and access official sales receipts.
             </p>
           </div>
 
@@ -468,24 +461,24 @@ export default function PcBuildsPage({ selectedBranch, user }) {
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-              Total PC Builds Sold
+              Total Bundles Sold
             </span>
             <div className="grid size-8 place-items-center rounded-xl bg-slate-100 text-slate-700">
-              <Monitor size={16} />
+              <Boxes size={16} />
             </div>
           </div>
           <p className="mt-2 font-mono text-2xl font-black text-slate-900">
             {metrics.totalBuilds}
           </p>
           <p className="mt-0.5 text-[11px] text-slate-500">
-            Sold & assembled rigs
+            Sold packages & bundle sets
           </p>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-              PC Builds Revenue
+              Bundle Items Revenue
             </span>
             <div className="grid size-8 place-items-center rounded-xl bg-emerald-50 text-emerald-700">
               <Receipt size={16} />
@@ -562,7 +555,7 @@ export default function PcBuildsPage({ selectedBranch, user }) {
             onChange={(e) => setFilterMode(e.target.value)}
             value={filterMode}
           >
-            <option value="all_builds">🖥️ PC Builds Only ({metrics.totalBuilds})</option>
+            <option value="all_builds">📦 Bundles Only ({metrics.totalBuilds})</option>
             <option value="all_sales">🧾 All Sales & Orders ({sales.length})</option>
           </select>
 
@@ -613,12 +606,12 @@ export default function PcBuildsPage({ selectedBranch, user }) {
           </div>
         ) : filteredBuilds.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-12 text-center shadow-xs">
-            <Monitor className="mx-auto text-slate-300" size={42} />
+            <Boxes className="mx-auto text-slate-300" size={42} />
             <p className="mt-2.5 text-sm font-bold text-slate-800">
-              No matching PC builds found
+              No matching item bundles found
             </p>
             <p className="text-xs text-slate-500">
-              Try adjusting your search query or check back when new system builds are sold at the POS.
+              Try adjusting your search query or check back when new bundle packages are sold at the POS.
             </p>
           </div>
         ) : (

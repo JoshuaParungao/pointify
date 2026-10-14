@@ -40,7 +40,7 @@ export const APP_MODULES = [
   },
   {
     key: "pc-builds",
-    label: "PC Builds (Sold Systems)",
+    label: "Bundle Items (Packages)",
     group: "Operations",
     roles: BRANCH_OPERATION_ROLES,
   },
