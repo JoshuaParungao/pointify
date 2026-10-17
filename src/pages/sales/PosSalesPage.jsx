@@ -7122,29 +7122,29 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                   </label>
 
                   {paymentMethod === "PAYMONGO" ? (
-                    <div className="rounded-2xl border border-[#00D09C]/40 bg-[#00D09C]/10 p-3 space-y-2">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 space-y-2 dark:border-slate-800 dark:bg-slate-850/50">
                       <div className="flex items-center justify-between">
-                        <span className="text-[11px] font-black text-slate-900 dark:text-white flex items-center gap-1.5">
-                          <span className="size-2 rounded-full bg-[#00D09C] animate-pulse"></span>
-                          PayMongo Sandbox
+                        <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                          <span className="size-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                          PayMongo QR Ph
                         </span>
-                        <span className="text-[10px] font-bold text-[#00D09C] uppercase">
-                          QR Ph / Cards
+                        <span className="text-[10px] font-medium text-slate-400 bg-slate-200/60 dark:bg-slate-800 px-1.5 py-0.5 rounded">
+                          Sandbox
                         </span>
                       </div>
-                      <p className="text-[10px] text-slate-600 dark:text-slate-300">
-                        Scan with GCash, Maya, or any QR Ph banking app. Automated webhook verification.
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight">
+                        Scan with GCash, Maya, or any QR Ph enabled mobile banking app.
                       </p>
                       <button
-                        className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#00D09C] py-2 text-xs font-black text-slate-950 shadow-xs hover:bg-[#00c090] transition disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 dark:bg-emerald-600 dark:hover:bg-emerald-500 py-2 text-xs font-medium text-white transition disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shadow-xs"
                         onClick={() => setIsPayMongoModalOpen(true)}
                         type="button"
                         disabled={totals.grandTotal < 20}
                       >
-                        Launch PayMongo QR Ph / Checkout
+                        Launch QR Ph / Checkout
                       </button>
                       {totals.grandTotal < 20 ? (
-                        <p className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold text-center">
+                        <p className="text-[10px] text-amber-600 dark:text-amber-400 text-center font-medium">
                           Minimum ₱20.00 cart total required for digital payment.
                         </p>
                       ) : null}

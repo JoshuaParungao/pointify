@@ -6,11 +6,7 @@ import {
   AlertCircle,
   Loader2,
   X,
-  CreditCard,
-  Smartphone,
   ShieldCheck,
-  RefreshCw,
-  Sparkles,
   Copy,
 } from "lucide-react"
 import {
@@ -35,7 +31,7 @@ export default function PayMongoCheckoutModal({
   const [isSimulating, setIsSimulating] = useState(false)
   const [errorMsg, setErrorMsg] = useState("")
   const [copiedLink, setCopiedLink] = useState(false)
-  const [paymentStatus, setPaymentStatus] = useState("PENDING") // PENDING | PAID | EXPIRED
+  const [paymentStatus, setPaymentStatus] = useState("PENDING") // PENDING | PAID
   const [verifiedDetails, setVerifiedDetails] = useState(null)
 
   const pollIntervalRef = useRef(null)
@@ -175,213 +171,192 @@ export default function PayMongoCheckoutModal({
   }
 
   const qrImageUrl = session?.checkoutUrl
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(
         session.checkoutUrl
       )}`
     : null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-xs">
-      <div className="relative flex max-h-[92vh] w-full max-w-xl flex-col rounded-3xl border border-[var(--color-border)] bg-[var(--color-card)] shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+      <div className="relative w-full max-w-sm rounded-2xl bg-white dark:bg-slate-900 shadow-xl border border-slate-100 dark:border-slate-800 overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-[var(--color-border)] bg-[var(--color-soft)]/50 px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="grid size-10 place-items-center rounded-2xl bg-[#00D09C] text-slate-950 font-black shadow-soft">
-              <QrCode className="size-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h3 className="text-base font-black tracking-tight text-[var(--color-text-strong)]">
-                  PayMongo Digital Payment
-                </h3>
-                <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider text-amber-800 dark:bg-amber-950/60 dark:text-amber-400">
-                  Sandbox Active
-                </span>
-              </div>
-              <p className="text-xs text-[var(--color-muted)]">
-                QR Ph • GCash • Maya • Debit & Credit Card Integration
-              </p>
-            </div>
+        <div className="flex items-center justify-between px-5 pt-5 pb-2.5">
+          <div className="flex items-center gap-2">
+            <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+            <h3 className="text-sm font-semibold tracking-tight text-slate-800 dark:text-slate-100">
+              PayMongo Digital
+            </h3>
+            <span className="text-[10px] font-medium text-slate-400 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
+              Sandbox
+            </span>
           </div>
 
           <button
-            className="grid size-8 place-items-center rounded-xl bg-slate-200/50 text-slate-500 transition hover:bg-slate-200 hover:text-slate-900 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700"
             onClick={onClose}
+            className="rounded-lg p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
             type="button"
           >
             <X size={16} />
           </button>
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        {/* Body Content */}
+        <div className="px-5 pb-5">
           {errorMsg ? (
-            <div className="flex items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs font-semibold text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-400">
-              <AlertCircle className="size-4 shrink-0" />
+            <div className="mb-3 flex items-center gap-2 rounded-xl bg-rose-50 dark:bg-rose-950/30 p-3 text-xs text-rose-600 dark:text-rose-400 border border-rose-100 dark:border-rose-900/40">
+              <AlertCircle size={15} className="shrink-0" />
               <span>{errorMsg}</span>
             </div>
           ) : null}
 
           {isLoading ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <Loader2 className="size-10 animate-spin text-[var(--color-primary)]" />
-              <p className="mt-4 text-sm font-bold text-[var(--color-text-strong)]">
-                Generating Secure PayMongo QR Ph Session...
-              </p>
-              <p className="text-xs text-[var(--color-muted)]">
-                Communicating with PayMongo API Sandbox
+            <div className="flex flex-col items-center justify-center py-14 text-center">
+              <Loader2 className="size-6 animate-spin text-slate-400" />
+              <p className="mt-3 text-xs font-medium text-slate-500 dark:text-slate-400">
+                Generating QR Ph Session...
               </p>
             </div>
           ) : paymentStatus === "PAID" ? (
-            /* Paid Confirmation Screen */
-            <div className="flex flex-col items-center justify-center py-8 text-center space-y-4">
-              <div className="grid size-20 place-items-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400 shadow-soft">
-                <CheckCircle2 className="size-12 animate-pulse" />
+            /* Minimalist Paid Confirmation */
+            <div className="py-2 text-center">
+              <div className="mx-auto size-12 rounded-full bg-emerald-50 dark:bg-emerald-950/40 flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-2.5">
+                <CheckCircle2 size={24} />
               </div>
 
-              <div>
-                <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-black uppercase tracking-wider text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-                  Payment Verified
-                </span>
-                <h4 className="mt-2 text-2xl font-black text-[var(--color-text-strong)]">
-                  ₱{Number(amount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
-                </h4>
-                <p className="text-xs text-[var(--color-muted)] mt-1">
-                  Payment successfully received & verified via PayMongo {verifiedDetails?.paymentMethod || "QR Ph"}!
-                </p>
-              </div>
+              <p className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">
+                Payment Verified
+              </p>
+              <h4 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white mt-0.5">
+                ₱{Number(amount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+              </h4>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Paid via {verifiedDetails?.paymentMethod || "GCash"}
+              </p>
 
-              <div className="w-full rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 text-left text-xs space-y-2 dark:border-emerald-900/50 dark:bg-emerald-950/20">
-                <div className="flex justify-between">
-                  <span className="text-[var(--color-muted)]">Payment Method:</span>
-                  <span className="font-bold text-[var(--color-text-strong)]">
-                    {verifiedDetails?.paymentMethod || "GCASH / QR PH"}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[var(--color-muted)]">PayMongo Session ID:</span>
-                  <span className="font-mono font-bold text-[var(--color-text-strong)]">
-                    {session?.sessionId || "cs_test_..."}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[var(--color-muted)]">Customer:</span>
-                  <span className="font-bold text-[var(--color-text-strong)]">
+              <div className="my-4 rounded-xl bg-slate-50 dark:bg-slate-850 p-3.5 text-xs text-left divide-y divide-slate-100 dark:divide-slate-800 border border-slate-100 dark:border-slate-800">
+                <div className="flex justify-between pb-2">
+                  <span className="text-slate-400">Customer</span>
+                  <span className="font-medium text-slate-700 dark:text-slate-200 truncate max-w-[170px]">
                     {customerName || "Walk-in Customer"}
                   </span>
                 </div>
-              </div>
-            </div>
-          ) : session ? (
-            /* QR / Payment Prompt Screen */
-            <div className="space-y-6">
-              {/* Amount Banner */}
-              <div className="flex items-center justify-between rounded-2xl border border-[var(--color-border)] bg-[var(--color-soft)]/50 p-4">
-                <div>
-                  <p className="text-xs font-semibold text-[var(--color-muted)]">Amount Due</p>
-                  <p className="text-2xl font-black text-[var(--color-primary)]">
-                    ₱{Number(amount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
-                  </p>
+                <div className="flex justify-between py-2">
+                  <span className="text-slate-400">Method</span>
+                  <span className="font-medium text-slate-700 dark:text-slate-200">
+                    {verifiedDetails?.paymentMethod || "GCASH"}
+                  </span>
                 </div>
-                <div className="text-right">
-                  <p className="text-xs font-semibold text-[var(--color-muted)]">Reference</p>
-                  <p className="text-xs font-mono font-bold text-[var(--color-text-strong)]">
-                    {referenceNumber || "ORD-LIVE"}
-                  </p>
+                <div className="flex justify-between pt-2">
+                  <span className="text-slate-400">Session ID</span>
+                  <span className="font-mono text-[11px] text-slate-600 dark:text-slate-300 truncate max-w-[170px]">
+                    {session?.sessionId || "cs_..."}
+                  </span>
                 </div>
               </div>
 
-              {/* QR Code Container */}
-              <div className="flex flex-col items-center justify-center rounded-3xl border border-[var(--color-border)] bg-white p-6 text-center shadow-soft">
+              <button
+                type="button"
+                onClick={handleFinishAndComplete}
+                className="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-emerald-600 dark:hover:bg-emerald-500 text-white text-xs font-medium transition shadow-xs flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <CheckCircle2 size={14} />
+                Complete POS Sale & Print Receipt
+              </button>
+            </div>
+          ) : session ? (
+            /* Minimalist QR Display */
+            <div className="text-center">
+              {/* Amount Display */}
+              <div className="py-1">
+                <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">
+                  Amount Due
+                </p>
+                <p className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+                  ₱{Number(amount).toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                </p>
+                <p className="text-[11px] font-mono text-slate-400">
+                  {referenceNumber || "ORD-POS"}
+                </p>
+              </div>
+
+              {/* QR Image */}
+              <div className="my-3 mx-auto w-fit p-3 bg-white rounded-2xl border border-slate-100 dark:border-slate-800 shadow-xs">
                 {qrImageUrl ? (
                   <img
-                    alt="PayMongo QR Code"
-                    className="size-48 rounded-2xl border border-slate-100 p-2 shadow-xs object-contain"
+                    alt="PayMongo QR"
+                    className="size-44 object-contain"
                     src={qrImageUrl}
                   />
                 ) : (
-                  <div className="size-48 grid place-items-center bg-slate-100 rounded-2xl">
-                    <QrCode className="size-16 text-slate-400" />
+                  <div className="size-44 grid place-items-center bg-slate-50 rounded-xl">
+                    <QrCode className="size-12 text-slate-300" />
                   </div>
                 )}
-
-                <div className="mt-4 flex items-center gap-1.5 text-xs font-bold text-emerald-600 animate-pulse">
-                  <span className="size-2 rounded-full bg-emerald-500"></span>
-                  Listening for customer scan & payment...
-                </div>
-                <p className="text-[11px] text-slate-500 mt-1 max-w-xs">
-                  Customer can scan using GCash, Maya, or any QR Ph enabled banking app.
-                </p>
-
-                {/* External Link Option */}
-                <div className="mt-4 flex items-center gap-2">
-                  <a
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-3.5 py-1.5 text-xs font-bold text-white shadow-xs transition hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700"
-                    href={session.checkoutUrl}
-                    rel="noopener noreferrer"
-                    target="_blank"
-                  >
-                    <ExternalLink size={12} />
-                    Open PayMongo Checkout Page
-                  </a>
-
-                  <button
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-100"
-                    onClick={handleCopyLink}
-                    type="button"
-                  >
-                    <Copy size={12} />
-                    {copiedLink ? "Link Copied!" : "Copy Link"}
-                  </button>
-                </div>
               </div>
 
-              {/* Sandbox Quick Simulator for Thesis / Demo */}
-              <div className="rounded-2xl border border-dashed border-amber-300 bg-amber-50/70 p-4 dark:border-amber-900/60 dark:bg-amber-950/20">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="size-4 text-amber-600" />
-                    <span className="text-xs font-black uppercase tracking-wider text-amber-900 dark:text-amber-300">
-                      Thesis Sandbox Demo Simulator
-                    </span>
-                  </div>
-                  <span className="text-[10px] text-amber-700 font-bold dark:text-amber-400">
-                    Instant Simulation
-                  </span>
-                </div>
-                <p className="mt-1 text-xs text-amber-800 dark:text-amber-400/90 leading-relaxed">
-                  Para sa panel presentation, maaari mong i-simulate ang customer payment nang hindi kailangang mag-login sa tunay na GCash app:
-                </p>
+              <p className="text-[11px] text-slate-400 mb-3">
+                Scan with GCash, Maya, or any QR Ph app
+              </p>
 
-                <div className="mt-3 flex items-center gap-2 flex-wrap">
+              {/* Clean Actions */}
+              <div className="flex items-center justify-center gap-2">
+                <a
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-750 transition"
+                  href={session.checkoutUrl}
+                  rel="noopener noreferrer"
+                  target="_blank"
+                >
+                  <ExternalLink size={12} />
+                  Checkout Page
+                </a>
+
+                <button
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-750 transition cursor-pointer"
+                  onClick={handleCopyLink}
+                  type="button"
+                >
+                  <Copy size={12} />
+                  {copiedLink ? "Copied" : "Copy Link"}
+                </button>
+              </div>
+
+              {/* Minimalist Sandbox Simulator */}
+              <div className="mt-4 pt-3.5 border-t border-slate-100 dark:border-slate-800">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                    Sandbox Demo Testing
+                  </span>
+                  {isSimulating && (
+                    <Loader2 size={11} className="animate-spin text-slate-400" />
+                  )}
+                </div>
+
+                <div className="grid grid-cols-3 gap-1.5">
                   <button
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-2xs hover:bg-blue-700 transition disabled:opacity-50"
+                    className="rounded-lg bg-slate-50 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700/80 py-1.5 px-1 text-[11px] font-medium text-slate-600 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700/60 transition disabled:opacity-50 cursor-pointer"
                     disabled={isSimulating}
                     onClick={() => handleSimulate("GCASH")}
                     type="button"
                   >
-                    <Smartphone size={13} />
-                    Simulate GCash Paid
+                    GCash
                   </button>
 
                   <button
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-2xs hover:bg-emerald-700 transition disabled:opacity-50"
+                    className="rounded-lg bg-slate-50 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700/80 py-1.5 px-1 text-[11px] font-medium text-slate-600 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700/60 transition disabled:opacity-50 cursor-pointer"
                     disabled={isSimulating}
                     onClick={() => handleSimulate("PAYMAYA")}
                     type="button"
                   >
-                    <Smartphone size={13} />
-                    Simulate Maya Paid
+                    Maya
                   </button>
 
                   <button
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-2xs hover:bg-indigo-700 transition disabled:opacity-50"
+                    className="rounded-lg bg-slate-50 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700/80 py-1.5 px-1 text-[11px] font-medium text-slate-600 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700/60 transition disabled:opacity-50 cursor-pointer"
                     disabled={isSimulating}
                     onClick={() => handleSimulate("CARD")}
                     type="button"
                   >
-                    <CreditCard size={13} />
-                    Simulate Card Paid
+                    Card
                   </button>
                 </div>
               </div>
@@ -389,34 +364,23 @@ export default function PayMongoCheckoutModal({
           ) : null}
         </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-between border-t border-[var(--color-border)] bg-[var(--color-soft)]/50 px-6 py-4">
-          <div className="flex items-center gap-1.5 text-xs text-[var(--color-muted)]">
-            <ShieldCheck size={14} className="text-emerald-600" />
-            <span>Encrypted PayMongo Sandbox Gateway</span>
-          </div>
+        {/* Minimalist Footer */}
+        {paymentStatus !== "PAID" && (
+          <div className="flex items-center justify-between px-5 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/40">
+            <span className="text-[10px] text-slate-400 flex items-center gap-1">
+              <ShieldCheck size={12} className="text-slate-400" />
+              Encrypted Sandbox
+            </span>
 
-          <div className="flex items-center gap-2">
             <button
-              className="rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] px-4 py-2 text-xs font-bold text-[var(--color-text-strong)] hover:bg-[var(--color-soft)]"
               onClick={onClose}
+              className="text-xs font-medium text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition cursor-pointer"
               type="button"
             >
-              {paymentStatus === "PAID" ? "Close" : "Cancel"}
+              Cancel
             </button>
-
-            {paymentStatus === "PAID" ? (
-              <button
-                className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2 text-xs font-bold text-white shadow-soft hover:bg-emerald-700 transition"
-                onClick={handleFinishAndComplete}
-                type="button"
-              >
-                <CheckCircle2 size={14} />
-                Complete POS Sale & Print Receipt
-              </button>
-            ) : null}
           </div>
-        </div>
+        )}
       </div>
     </div>
   )
