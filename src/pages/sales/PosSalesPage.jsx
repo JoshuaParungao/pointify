@@ -3620,6 +3620,8 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
           serialId: initialSerialId,
           customSerialNumber: preselectedSerial?.serialNumber || "",
           isCustomSerial,
+          customBatchCode: "",
+          isCustomBatch: (!item.isSerialized && batches.length === 0),
           warrantyType: item.isSerialized ? "MAJOR_PARTS" : "ACCESSORIES",
           warrantyDuration: parseItemWarranty(item),
           batches,
@@ -4464,7 +4466,8 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
             markupPercent: effectiveMarkup,
             quantity: Number(line.quantity),
             discountAmount: Number(line.discountAmount || 0),
-            batchId: line.isCustomSerial ? undefined : (line.batchId || undefined),
+            batchId: (line.isCustomSerial || line.isCustomBatch) ? undefined : (line.batchId || undefined),
+            batchCode: (line.isCustomBatch && line.customBatchCode?.trim()) ? line.customBatchCode.trim() : undefined,
             serialId: (!line.isCustomSerial && line.serialId) ? line.serialId : undefined,
             serialNumber: (line.isCustomSerial && line.customSerialNumber?.trim()) ? line.customSerialNumber.trim() : undefined,
             warrantyType: line.warrantyType || undefined,
@@ -6914,21 +6917,93 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                               )}
                             </div>
                           ) : (
-                            <label className="block">
-                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Source Batch</span>
-                              <select
-                                className="mt-0.5 w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs outline-none focus:border-[var(--color-maroon)]"
-                                onChange={(event) => updateCartLine(line.localId, { batchId: event.target.value })}
-                                value={line.batchId}
-                              >
-                                <option value="">Select active batch</option>
-                                {line.batches.map((batch) => (
-                                  <option key={batch.id} value={batch.id}>
-                                    {batch.batchCode} · {Number(batch.quantityAvailable || 0)} available
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between text-[10px]">
+                                <span className="font-bold uppercase tracking-wider text-slate-500">
+                                  {line.isCustomBatch ? "Custom / New Batch Code" : "Source Batch"}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    updateCartLine(line.localId, {
+                                      isCustomBatch: !line.isCustomBatch,
+                                      batchId: !line.isCustomBatch ? "" : (line.batches[0]?.id || ""),
+                                      customBatchCode: "",
+                                    })
+                                  }
+                                  className="font-bold text-[var(--color-maroon)] underline hover:opacity-80 cursor-pointer"
+                                >
+                                  {line.isCustomBatch
+                                    ? "← Choose from existing batches"
+                                    : "+ Type / Add New Batch"}
+                                </button>
+                              </div>
+
+                              {line.isCustomBatch ? (
+                                <div className="space-y-1">
+                                  <input
+                                    autoFocus
+                                    list={`batch-suggestions-${line.localId}`}
+                                    className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-mono outline-none focus:border-[var(--color-maroon)] focus:ring-1 focus:ring-[var(--color-maroon)]"
+                                    placeholder="Type new batch code (e.g. BATCH-2026-001)…"
+                                    value={line.customBatchCode || ""}
+                                    onChange={(event) => {
+                                      const val = event.target.value
+                                      const matched = line.batches.find(
+                                        (b) => b.batchCode?.toLowerCase() === val.trim().toLowerCase()
+                                      )
+                                      updateCartLine(line.localId, {
+                                        customBatchCode: val,
+                                        batchId: matched ? matched.id : "",
+                                      })
+                                    }}
+                                  />
+                                  <datalist id={`batch-suggestions-${line.localId}`}>
+                                    {line.batches.map((batch) => (
+                                      <option key={batch.id} value={batch.batchCode}>
+                                        {Number(batch.quantityAvailable || 0)} available
+                                      </option>
+                                    ))}
+                                  </datalist>
+                                  <p className="text-[10px] text-slate-400">
+                                    Type any new batch code or pick from suggestions
+                                  </p>
+                                </div>
+                              ) : (
+                                <select
+                                  className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs outline-none focus:border-[var(--color-maroon)]"
+                                  onChange={(event) => {
+                                    if (event.target.value === "__NEW_BATCH__") {
+                                      updateCartLine(line.localId, {
+                                        isCustomBatch: true,
+                                        batchId: "",
+                                        customBatchCode: "",
+                                      })
+                                    } else {
+                                      updateCartLine(line.localId, {
+                                        batchId: event.target.value,
+                                        isCustomBatch: false,
+                                      })
+                                    }
+                                  }}
+                                  value={line.batchId || ""}
+                                >
+                                  <option value="">
+                                    {line.batches.length === 0
+                                      ? "No active batches (Click to type new)"
+                                      : "Select active batch"}
                                   </option>
-                                ))}
-                              </select>
-                            </label>
+                                  {line.batches.map((batch) => (
+                                    <option key={batch.id} value={batch.id}>
+                                      {batch.batchCode} · {Number(batch.quantityAvailable || 0)} available
+                                    </option>
+                                  ))}
+                                  <option value="__NEW_BATCH__" className="font-bold text-[var(--color-maroon)]">
+                                    + Type / Add new batch…
+                                  </option>
+                                </select>
+                              )}
+                            </div>
                           )}
 
                           {/* Line Total & Warranty Banner */}
