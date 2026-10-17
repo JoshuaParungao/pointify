@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react"
 import {
   QrCode,
+  CreditCard,
+  Smartphone,
   ExternalLink,
   CheckCircle2,
   AlertCircle,
@@ -8,12 +10,72 @@ import {
   X,
   ShieldCheck,
   Copy,
+  BellRing,
 } from "lucide-react"
 import {
   createPayMongoCheckoutSession,
   getPayMongoPaymentStatus,
   simulatePayMongoPayment,
 } from "../../features/paymongo/paymongo.api"
+
+/**
+ * Dual-tone audio chime using Web Audio API
+ */
+function playSuccessChime() {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext
+    if (!AudioCtx) return
+    const ctx = new AudioCtx()
+    const now = ctx.currentTime
+
+    // 4-note ascending chord chime: C5 -> E5 -> G5 -> C6
+    const notes = [523.25, 659.25, 783.99, 1046.5]
+    notes.forEach((freq, idx) => {
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+
+      const start = now + idx * 0.08
+      osc.type = "sine"
+      osc.frequency.setValueAtTime(freq, start)
+
+      gain.gain.setValueAtTime(0.18, start)
+      gain.gain.exponentialRampToValueAtTime(0.001, start + 0.5)
+
+      osc.start(start)
+      osc.stop(start + 0.5)
+    })
+  } catch (err) {
+    // Audio context may be restricted by autoplay policy
+  }
+}
+
+/**
+ * Dispatch desktop browser notification if permitted
+ */
+function sendDesktopNotification(title, body) {
+  try {
+    if (!("Notification" in window)) return
+    if (Notification.permission === "granted") {
+      new Notification(title, {
+        body,
+        icon: "/favicon.ico",
+      })
+    } else if (Notification.permission !== "denied") {
+      Notification.requestPermission().then((permission) => {
+        if (permission === "granted") {
+          new Notification(title, {
+            body,
+            icon: "/favicon.ico",
+          })
+        }
+      })
+    }
+  } catch {
+    // Silently ignore notification errors
+  }
+}
 
 export default function PayMongoCheckoutModal({
   isOpen,
@@ -33,6 +95,7 @@ export default function PayMongoCheckoutModal({
   const [copiedLink, setCopiedLink] = useState(false)
   const [paymentStatus, setPaymentStatus] = useState("PENDING") // PENDING | PAID
   const [verifiedDetails, setVerifiedDetails] = useState(null)
+  const [activeTab, setActiveTab] = useState("QR_PH") // "QR_PH" | "CARD_CHECKOUT"
 
   const pollIntervalRef = useRef(null)
 
@@ -45,6 +108,11 @@ export default function PayMongoCheckoutModal({
       return
     }
 
+    // Request notification permission early
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission().catch(() => {})
+    }
+
     let isMounted = true
 
     async function initSession() {
@@ -52,6 +120,7 @@ export default function PayMongoCheckoutModal({
       setErrorMsg("")
       setSession(null)
       setPaymentStatus("PENDING")
+      setActiveTab("QR_PH")
 
       try {
         const response = await createPayMongoCheckoutSession({
@@ -120,6 +189,16 @@ export default function PayMongoCheckoutModal({
         if (response?.success && response?.data?.isPaid) {
           setPaymentStatus("PAID")
           setVerifiedDetails(response.data)
+
+          // Play success chime & trigger notification
+          playSuccessChime()
+          sendDesktopNotification(
+            "Pointify POS: Payment Received!",
+            `₱${Number(amount).toLocaleString("en-PH", { minimumFractionDigits: 2 })} paid via ${
+              response.data.paymentMethod || "PayMongo"
+            }.`
+          )
+
           if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
         }
       } catch (err) {
@@ -127,12 +206,12 @@ export default function PayMongoCheckoutModal({
       }
     }
 
-    pollIntervalRef.current = setInterval(checkStatus, 3000)
+    pollIntervalRef.current = setInterval(checkStatus, 2000)
 
     return () => {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
     }
-  }, [session, paymentStatus])
+  }, [session, paymentStatus, amount])
 
   if (!isOpen) return null
 
@@ -151,6 +230,13 @@ export default function PayMongoCheckoutModal({
       if (response?.success) {
         setPaymentStatus("PAID")
         setVerifiedDetails(response.data)
+
+        // Play chime & desktop notification
+        playSuccessChime()
+        sendDesktopNotification(
+          "Pointify POS: Payment Received!",
+          `₱${Number(amount).toLocaleString("en-PH", { minimumFractionDigits: 2 })} paid via ${method}.`
+        )
       }
     } catch (err) {
       alert("Failed to simulate payment: " + (err.message || "Unknown error"))
@@ -180,7 +266,7 @@ export default function PayMongoCheckoutModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
       <div className="relative w-full max-w-sm rounded-2xl bg-white dark:bg-slate-900 shadow-xl border border-slate-100 dark:border-slate-800 overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 pt-5 pb-2.5">
+        <div className="flex items-center justify-between px-5 pt-4 pb-2">
           <div className="flex items-center gap-2">
             <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
             <h3 className="text-sm font-semibold tracking-tight text-slate-800 dark:text-slate-100">
@@ -217,9 +303,15 @@ export default function PayMongoCheckoutModal({
               </p>
             </div>
           ) : paymentStatus === "PAID" ? (
-            /* Minimalist Paid Confirmation */
+            /* Minimalist Paid Confirmation with Instant Alert Notification */
             <div className="py-2 text-center">
-              <div className="mx-auto size-12 rounded-full bg-emerald-50 dark:bg-emerald-950/40 flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-2.5">
+              {/* Notification Banner */}
+              <div className="mb-3 flex items-center justify-center gap-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 px-3 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/60 animate-in fade-in duration-300">
+                <BellRing size={13} className="text-emerald-600 animate-bounce" />
+                <span>Payment received & confirmed in system!</span>
+              </div>
+
+              <div className="mx-auto size-12 rounded-full bg-emerald-100/70 dark:bg-emerald-950/50 flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-2">
                 <CheckCircle2 size={24} />
               </div>
 
@@ -233,7 +325,7 @@ export default function PayMongoCheckoutModal({
                 Paid via {verifiedDetails?.paymentMethod || "GCash"}
               </p>
 
-              <div className="my-4 rounded-xl bg-slate-50 dark:bg-slate-850 p-3.5 text-xs text-left divide-y divide-slate-100 dark:divide-slate-800 border border-slate-100 dark:border-slate-800">
+              <div className="my-3.5 rounded-xl bg-slate-50 dark:bg-slate-850 p-3 text-xs text-left divide-y divide-slate-100 dark:divide-slate-800 border border-slate-100 dark:border-slate-800">
                 <div className="flex justify-between pb-2">
                   <span className="text-slate-400">Customer</span>
                   <span className="font-medium text-slate-700 dark:text-slate-200 truncate max-w-[170px]">
@@ -264,11 +356,11 @@ export default function PayMongoCheckoutModal({
               </button>
             </div>
           ) : session ? (
-            /* Minimalist QR Display */
+            /* Minimalist QR Display with Tabs */
             <div className="text-center">
               {/* Amount Display */}
               <div className="py-1">
-                <p className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">
+                <p className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">
                   Amount Due
                 </p>
                 <p className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
@@ -279,26 +371,73 @@ export default function PayMongoCheckoutModal({
                 </p>
               </div>
 
-              {/* QR Image */}
-              <div className="my-3 mx-auto w-fit p-3 bg-white rounded-2xl border border-slate-100 dark:border-slate-800 shadow-xs">
+              {/* Mode Switcher Tabs */}
+              <div className="flex rounded-xl bg-slate-100 dark:bg-slate-800/80 p-1 my-2 text-xs font-medium">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("QR_PH")}
+                  className={`flex-1 py-1.5 px-2 rounded-lg text-center transition cursor-pointer flex items-center justify-center gap-1.5 text-xs ${
+                    activeTab === "QR_PH"
+                      ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs font-semibold"
+                      : "text-slate-500 hover:text-slate-800 dark:text-slate-400"
+                  }`}
+                >
+                  <Smartphone size={13} />
+                  <span>QR Ph (Wallets)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("CARD_CHECKOUT")}
+                  className={`flex-1 py-1.5 px-2 rounded-lg text-center transition cursor-pointer flex items-center justify-center gap-1.5 text-xs ${
+                    activeTab === "CARD_CHECKOUT"
+                      ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs font-semibold"
+                      : "text-slate-500 hover:text-slate-800 dark:text-slate-400"
+                  }`}
+                >
+                  <CreditCard size={13} />
+                  <span>Card / Checkout QR</span>
+                </button>
+              </div>
+
+              {/* QR Image Container */}
+              <div className="my-2.5 mx-auto w-fit p-3 bg-white rounded-2xl border border-slate-100 dark:border-slate-800 shadow-xs">
                 {qrImageUrl ? (
                   <img
-                    alt="PayMongo QR"
-                    className="size-44 object-contain"
+                    alt={activeTab === "QR_PH" ? "QR Ph Code" : "Card Checkout QR"}
+                    className="size-40 object-contain"
                     src={qrImageUrl}
                   />
                 ) : (
-                  <div className="size-44 grid place-items-center bg-slate-50 rounded-xl">
+                  <div className="size-40 grid place-items-center bg-slate-50 rounded-xl">
                     <QrCode className="size-12 text-slate-300" />
                   </div>
                 )}
               </div>
 
-              <p className="text-[11px] text-slate-400 mb-3">
-                Scan with GCash, Maya, or any QR Ph app
-              </p>
+              {/* Instruction depending on active tab */}
+              {activeTab === "QR_PH" ? (
+                <div className="mb-3 space-y-1">
+                  <div className="flex items-center justify-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                    <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <span>Listening for wallet scan & payment...</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    Scan using GCash, Maya, or any QR Ph enabled mobile app
+                  </p>
+                </div>
+              ) : (
+                <div className="mb-3 space-y-1">
+                  <div className="flex items-center justify-center gap-1.5 text-xs text-blue-600 dark:text-blue-400 font-medium">
+                    <span className="size-1.5 rounded-full bg-blue-500 animate-pulse" />
+                    <span>Scan to enter card details on customer's phone</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    Or open the secure payment form directly on this device
+                  </p>
+                </div>
+              )}
 
-              {/* Clean Actions */}
+              {/* Actions */}
               <div className="flex items-center justify-center gap-2">
                 <a
                   className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-750 transition"
@@ -307,7 +446,7 @@ export default function PayMongoCheckoutModal({
                   target="_blank"
                 >
                   <ExternalLink size={12} />
-                  Checkout Page
+                  <span>Open Checkout on PC</span>
                 </a>
 
                 <button
@@ -316,15 +455,15 @@ export default function PayMongoCheckoutModal({
                   type="button"
                 >
                   <Copy size={12} />
-                  {copiedLink ? "Copied" : "Copy Link"}
+                  <span>{copiedLink ? "Copied" : "Copy Link"}</span>
                 </button>
               </div>
 
               {/* Minimalist Sandbox Simulator */}
-              <div className="mt-4 pt-3.5 border-t border-slate-100 dark:border-slate-800">
+              <div className="mt-3.5 pt-3 border-t border-slate-100 dark:border-slate-800">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                    Sandbox Demo Testing
+                    Sandbox Instant Testing
                   </span>
                   {isSimulating && (
                     <Loader2 size={11} className="animate-spin text-slate-400" />
@@ -366,7 +505,7 @@ export default function PayMongoCheckoutModal({
 
         {/* Minimalist Footer */}
         {paymentStatus !== "PAID" && (
-          <div className="flex items-center justify-between px-5 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/40">
+          <div className="flex items-center justify-between px-5 py-2.5 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-850/40">
             <span className="text-[10px] text-slate-400 flex items-center gap-1">
               <ShieldCheck size={12} className="text-slate-400" />
               Encrypted Sandbox

@@ -9349,12 +9349,19 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
         isOpen={isPayMongoModalOpen}
         onClose={() => setIsPayMongoModalOpen(false)}
         onPaymentSuccess={(res) => {
-          setPaymentMethod(res.paymentMethod === "GCASH" ? "GCASH" : "OTHER")
+          const methodUpper = String(res.paymentMethod || "").toUpperCase()
+          const matchedMethod =
+            methodUpper === "GCASH"
+              ? "GCASH"
+              : methodUpper.includes("CARD")
+                ? "CREDIT_CARD"
+                : "OTHER"
+          setPaymentMethod(matchedMethod)
           setPaymentReference(res.referenceNo || "")
-          setPaymentRemarks(res.remarks || "[PayMongo Verified]")
+          setPaymentRemarks(res.remarks || `[PayMongo Verified: ${res.paymentMethod || "ONLINE"}]`)
           setPaymentAmount(String(totals.grandTotal))
           setPaymentAmountTouched(true)
-          setNoticeMessage(`PayMongo Payment Verified (Ref: ${res.referenceNo || "PAID"}). Tender filled!`)
+          setNoticeMessage(`🔔 PayMongo Payment Verified: ₱${Number(totals.grandTotal).toLocaleString("en-PH", { minimumFractionDigits: 2 })} via ${res.paymentMethod || "Digital"} (Ref: ${res.referenceNo || "PAID"}). Tender filled!`)
         }}
         referenceNumber={`POS-${Date.now().toString().slice(-6)}`}
       />
