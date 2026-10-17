@@ -7136,12 +7136,18 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                         Scan with GCash, Maya, or any QR Ph banking app. Automated webhook verification.
                       </p>
                       <button
-                        className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#00D09C] py-2 text-xs font-black text-slate-950 shadow-xs hover:bg-[#00c090] transition"
+                        className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#00D09C] py-2 text-xs font-black text-slate-950 shadow-xs hover:bg-[#00c090] transition disabled:opacity-50 disabled:cursor-not-allowed"
                         onClick={() => setIsPayMongoModalOpen(true)}
                         type="button"
+                        disabled={totals.grandTotal < 20}
                       >
                         Launch PayMongo QR Ph / Checkout
                       </button>
+                      {totals.grandTotal < 20 ? (
+                        <p className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold text-center">
+                          Minimum ₱20.00 cart total required for digital payment.
+                        </p>
+                      ) : null}
                     </div>
                   ) : null}
 

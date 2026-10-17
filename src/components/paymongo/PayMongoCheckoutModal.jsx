@@ -42,7 +42,12 @@ export default function PayMongoCheckoutModal({
 
   // Initialize PayMongo Session when modal opens
   useEffect(() => {
-    if (!isOpen || !amount || Number(amount) <= 0) return
+    if (!isOpen) return
+
+    if (!amount || Number(amount) < 20) {
+      setErrorMsg("PayMongo minimum transaction amount is ₱20.00.")
+      return
+    }
 
     let isMounted = true
 
@@ -60,11 +65,27 @@ export default function PayMongoCheckoutModal({
           customerName: customerName || "Walk-in Customer",
           customerPhone: customerPhone || undefined,
           customerEmail: customerEmail || undefined,
-          lineItems: cartItems.map((item) => ({
-            name: item.description || item.itemName || "Item",
-            unitPrice: item.unitPrice || item.price1 || 0,
-            quantity: item.quantity || 1,
-          })),
+          lineItems: (cartItems || []).map((item) => {
+            const name =
+              item.description ||
+              item.itemName ||
+              item.item?.itemName ||
+              item.item?.description ||
+              "Item"
+            const unitPrice =
+              Number(item.unitPrice) ||
+              Number(item.price) ||
+              Number(item.price1) ||
+              Number(item.item?.[`price${item.priceTier || 1}`]) ||
+              Number(item.item?.price1) ||
+              0
+            const quantity = Math.max(1, parseInt(item.quantity || 1, 10))
+            return {
+              name,
+              unitPrice,
+              quantity,
+            }
+          }),
         })
 
         if (isMounted && response?.success && response?.data) {
