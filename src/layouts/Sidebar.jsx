@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react"
 import {
   ArrowLeftRight,
   Award,
@@ -5,12 +6,12 @@ import {
   BarChart3,
   BellRing,
   Boxes,
+  ChevronDown,
   ClipboardList,
   CreditCard,
   FileSpreadsheet,
   History,
   Layers,
-  Monitor,
   PackageCheck,
   PackageSearch,
   ShieldCheck,
@@ -40,6 +41,7 @@ const ICONS = {
   credits: CreditCard,
   incentives: Award,
   items: Tags,
+  categories: Layers,
   "services-maintenance": Layers,
   customers: UsersRound,
   employees: UserCheck,
@@ -50,6 +52,8 @@ const ICONS = {
   alerts: BellRing,
   "audit-logs": History,
 }
+
+const STORAGE_KEY = "pointify_sidebar_open_groups"
 
 function Sidebar({
   activePage,
@@ -64,6 +68,62 @@ function Sidebar({
     acc[item.group].push(item)
     return acc
   }, {})
+
+  const activeGroup = modules.find((item) => item.key === activePage)?.group
+
+  const [openGroups, setOpenGroups] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY)
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        if (parsed && typeof parsed === "object") {
+          return parsed
+        }
+      }
+    } catch {
+      // ignore storage errors
+    }
+    return {
+      Operations: true,
+      "Inventory & Purchasing": true,
+      "Finance & Credits": false,
+      "File Maintenance": false,
+      "Reports & Audit": false,
+      ...(activeGroup ? { [activeGroup]: true } : {}),
+    }
+  })
+
+  // Ensure the group containing the active page is expanded when navigating
+  useEffect(() => {
+    if (activeGroup) {
+      setOpenGroups((prev) => {
+        if (prev[activeGroup]) return prev
+        const next = { ...prev, [activeGroup]: true }
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+        } catch {
+          // ignore
+        }
+        return next
+      })
+    }
+  }, [activeGroup])
+
+  const toggleGroup = (groupName) => {
+    setOpenGroups((prev) => {
+      const isCurrentlyOpen = prev[groupName] ?? true
+      const next = {
+        ...prev,
+        [groupName]: !isCurrentlyOpen,
+      }
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+      } catch {
+        // ignore
+      }
+      return next
+    })
+  }
 
   const handleChangePage = (pageKey) => {
     onChangePage(pageKey)
@@ -99,42 +159,67 @@ function Sidebar({
         ) : null}
       </div>
 
-      <nav className="mt-7 space-y-6">
-        {Object.entries(groups).map(([group, items]) => (
-          <div key={group}>
-            {!isCollapsed ? (
-              <p className="mb-2 px-3 text-[11px] font-bold uppercase tracking-[0.16em] text-white/35">
-                {group}
-              </p>
-            ) : null}
+      <nav className="mt-7 space-y-4">
+        {Object.entries(groups).map(([group, items]) => {
+          const isOpen = isCollapsed ? true : (openGroups[group] ?? true)
+          const hasActiveItem = items.some((item) => item.key === activePage)
 
-            <div className="space-y-1">
-              {items.map((item) => {
-                const Icon = ICONS[item.key] || ShoppingCart
-                const isActive = activePage === item.key
+          return (
+            <div key={group}>
+              {!isCollapsed ? (
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(group)}
+                  className={`mb-1.5 flex w-full items-center justify-between rounded-xl px-3 py-1.5 text-left text-[11px] font-bold uppercase tracking-[0.16em] transition cursor-pointer ${
+                    hasActiveItem
+                      ? "text-white/80 hover:bg-white/8 hover:text-white"
+                      : "text-white/40 hover:bg-white/8 hover:text-white/75"
+                  }`}
+                >
+                  <span className="truncate">{group}</span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {!isOpen && hasActiveItem ? (
+                      <span className="size-1.5 rounded-full bg-[var(--color-maroon)]" />
+                    ) : null}
+                    <ChevronDown
+                      className={`size-3.5 transition-transform duration-200 ${
+                        isOpen ? "rotate-0" : "-rotate-90"
+                      }`}
+                    />
+                  </div>
+                </button>
+              ) : null}
 
-                return (
-                  <button
-                    className={`flex w-full min-w-0 items-center gap-3 rounded-2xl px-3 py-2.5 text-left text-sm font-semibold transition ${
-                      isCollapsed ? "justify-center" : ""
-                    } ${
-                      isActive
-                        ? "bg-[var(--color-maroon)] text-white shadow-soft"
-                        : "text-white/72 hover:bg-white/10 hover:text-white"
-                    }`}
-                    key={item.key}
-                    onClick={() => handleChangePage(item.key)}
-                    title={item.label}
-                    type="button"
-                  >
-                    <Icon className="size-4 shrink-0" />
-                    {!isCollapsed ? <span className="truncate">{item.label}</span> : null}
-                  </button>
-                )
-              })}
+              {isOpen ? (
+                <div className="space-y-1">
+                  {items.map((item) => {
+                    const Icon = ICONS[item.key] || ShoppingCart
+                    const isActive = activePage === item.key
+
+                    return (
+                      <button
+                        className={`flex w-full min-w-0 items-center gap-3 rounded-2xl px-3 py-2.5 text-left text-sm font-semibold transition cursor-pointer ${
+                          isCollapsed ? "justify-center" : ""
+                        } ${
+                          isActive
+                            ? "bg-[var(--color-maroon)] text-white shadow-soft"
+                            : "text-white/72 hover:bg-white/10 hover:text-white"
+                        }`}
+                        key={item.key}
+                        onClick={() => handleChangePage(item.key)}
+                        title={item.label}
+                        type="button"
+                      >
+                        <Icon className="size-4 shrink-0" />
+                        {!isCollapsed ? <span className="truncate">{item.label}</span> : null}
+                      </button>
+                    )
+                  })}
+                </div>
+              ) : null}
             </div>
-          </div>
-        ))}
+          )
+        })}
       </nav>
     </aside>
   )
