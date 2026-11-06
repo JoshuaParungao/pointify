@@ -36,7 +36,7 @@ function renderSlipHtml(transfer, copyLabel) {
       <!-- HEADER -->
       <div class="slip-header">
         <div class="header-left">
-          <div class="shop-title">ARUNAFELTZ COMPUTER TRADING</div>
+          <div class="shop-title">${fromBranch.name || "POINTIFY BUSINESS MANAGEMENT"}</div>
           <div class="shop-sub">Inter-Branch Inventory Logistics & Operations</div>
         </div>
         <div class="header-right">

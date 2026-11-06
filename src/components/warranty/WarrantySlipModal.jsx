@@ -29,7 +29,7 @@ function renderSlipHtml(claim, slipType, copyLabel, options = {}) {
   const saleItem = claim.saleItem || {}
   const createdBy = claim.createdBy || {}
 
-  const shopName = branch.name || "ARUNAFELTZ COMPUTER TRADING"
+  const shopName = branch.name || "POINTIFY BUSINESS MANAGEMENT"
   const shopAddress = branch.address || "Main Branch, Philippines"
   const shopContact = branch.contactNo || "Contact No. Available Upon Request"
 
@@ -37,7 +37,7 @@ function renderSlipHtml(claim, slipType, copyLabel, options = {}) {
   const customerContact = customer.mobileNumber || customer.email || "—"
   const customerAddress = customer.address || "—"
 
-  const itemName = item.itemName || saleItem.itemNameSnapshot || "General Computer Product"
+  const itemName = item.itemName || saleItem.itemNameSnapshot || "General Product / Item"
   const itemCode = item.itemCode || saleItem.itemCodeSnapshot || "—"
   const brandModel = [item.brand, item.modelName].filter(Boolean).join(" ") || "—"
   const serialNumber = serial.serialNumber || claim.serialNumber || "—"

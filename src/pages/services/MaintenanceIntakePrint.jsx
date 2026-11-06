@@ -25,7 +25,7 @@ export default function MaintenanceIntakePrint({ isBlank = false, job = {} }) {
   const receivedDate = isBlank ? "" : formatDate(job.receivedAt)
   const receivedByName = isBlank ? "" : (job.receivedBy?.fullName || job.createdBy?.fullName || "Staff")
 
-  const selectedUnitType = isBlank ? null : (intake.unitType || "Desktop / System Unit")
+  const selectedUnitType = isBlank ? null : (intake.unitType || "General Equipment / Unit")
   const selectedAccessories = isBlank ? [] : (intake.receivedAccessories || [])
   const selectedConditions = isBlank ? [] : (intake.physicalConditions || [])
   const selectedServices = isBlank ? [] : (intake.requestedServices || [])

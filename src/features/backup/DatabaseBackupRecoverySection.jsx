@@ -102,7 +102,7 @@ export default function DatabaseBackupRecoverySection({ user }) {
       const hh = String(manila.getHours()).padStart(2, "0")
       const min = String(manila.getMinutes()).padStart(2, "0")
       const ss = String(manila.getSeconds()).padStart(2, "0")
-      const filename = `arunafeltz-backup-${yyyy}${mm}${dd}-${hh}${min}${ss}.json`
+      const filename = `pointify-backup-${yyyy}${mm}${dd}-${hh}${min}${ss}.json`
 
       triggerBlobDownload(blob, filename)
       setExportMessage("Manual backup successfully generated and downloaded.")
@@ -146,7 +146,7 @@ export default function DatabaseBackupRecoverySection({ user }) {
       try {
         const json = JSON.parse(e.target.result)
         if (!json.data || typeof json.data !== "object") {
-          throw new Error("File is not a valid Arunafeltz database backup format.")
+          throw new Error("File is not a valid Pointify database backup format.")
         }
         setParsedBackup(json)
       } catch (err) {

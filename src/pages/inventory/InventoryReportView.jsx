@@ -498,8 +498,8 @@ export default function InventoryReportView({
       ]
 
       exportReportExcel({
-        title: `SERIALIZED HARDWARE LIFECYCLE AUDIT REPORT (${selectedBranch?.name || "ALL BRANCHES"})`,
-        filename: `Serialized-Hardware-Audit-${new Date().toISOString().slice(0, 10)}`,
+        title: `SERIALIZED PRODUCT LIFECYCLE AUDIT REPORT (${selectedBranch?.name || "ALL BRANCHES"})`,
+        filename: `Serialized-Product-Audit-${new Date().toISOString().slice(0, 10)}`,
         columns,
         records: filteredSerials,
         branch: selectedBranch,
@@ -757,8 +757,8 @@ export default function InventoryReportView({
               className="w-full rounded-2xl border border-[var(--color-border)] bg-[var(--color-card)] text-[var(--color-text-strong)] px-3 py-2.5 text-xs font-semibold outline-none focus:border-[var(--color-maroon)]"
             >
               <option value="ALL">All Item Types</option>
-              <option value="SERIALIZED">Serialized Hardware</option>
-              <option value="NON_SERIALIZED">Non-Serialized Consumables</option>
+              <option value="SERIALIZED">Serialized Products</option>
+              <option value="NON_SERIALIZED">Non-Serialized Items</option>
             </select>
           </div>
         </div>
@@ -882,7 +882,7 @@ export default function InventoryReportView({
             }`}
           >
             <ShieldCheck size={15} />
-            Serialized Hardware Audit ({filteredSerials.length})
+            Serialized Product Audit ({filteredSerials.length})
           </button>
           <button
             type="button"
@@ -1128,7 +1128,7 @@ export default function InventoryReportView({
                 {filteredSerials.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="py-12 text-center text-xs font-semibold text-[var(--color-muted)]">
-                      No serialized hardware units found matching criteria.
+                      No serialized product units found matching criteria.
                     </td>
                   </tr>
                 ) : (

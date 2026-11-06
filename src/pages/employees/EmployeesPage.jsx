@@ -196,7 +196,7 @@ export default function EmployeesPage({ selectedBranch, user }) {
       return
     }
 
-    const pcBuild = validateRate(incentiveForm.pcBuildEnabled, incentiveForm.pcBuildRatePercent, "PC Build")
+    const pcBuild = validateRate(incentiveForm.pcBuildEnabled, incentiveForm.pcBuildRatePercent, "Bundle / Package")
     if (!pcBuild.ok) {
       setIncentiveModalError(pcBuild.message)
       return
@@ -1464,11 +1464,11 @@ export default function EmployeesPage({ selectedBranch, user }) {
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
-                          <p className="font-bold text-sm text-[var(--color-text-strong)]">Technician Labor Rate for Parts Replacement % — Board-Level / Advanced Repair</p>
-                          <span className="rounded-full bg-purple-50 px-2 py-0.5 text-[10px] font-black text-purple-700">Board-Level Labor %</span>
+                          <p className="font-bold text-sm text-[var(--color-text-strong)]">Technician Labor Rate for Parts Replacement % — Complex / Advanced Repair</p>
+                          <span className="rounded-full bg-purple-50 px-2 py-0.5 text-[10px] font-black text-purple-700">Advanced Labor %</span>
                         </div>
                         <p className="text-xs text-[var(--color-muted)] mt-0.5">
-                          For board-level replacement parts (e.g. Power IC, Charging IC, VRAM chip, MOSFET soldering). Technician fee is computed as a percentage of board-level parts wholesale cost.
+                          For specialized or complex replacement parts. Technician fee is computed as a percentage of replacement parts wholesale cost.
                         </p>
                       </div>
                     </div>
@@ -1507,7 +1507,7 @@ export default function EmployeesPage({ selectedBranch, user }) {
                   ) : null}
                 </div>
 
-                {/* 7. Custom PC Build */}
+                {/* 7. Custom Bundle / Package */}
                 <div className={`rounded-2xl border p-4 transition ${incentiveForm.pcBuildEnabled ? "border-[var(--color-maroon)]/40 bg-[var(--color-soft)]/25" : "border-slate-200 bg-slate-50/50"}`}>
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex items-start gap-3">
@@ -1516,11 +1516,11 @@ export default function EmployeesPage({ selectedBranch, user }) {
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
-                          <p className="font-bold text-sm text-[var(--color-text-strong)]">Custom PC Build & Assembly</p>
-                          <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-black text-indigo-700">PC Assembly</span>
+                          <p className="font-bold text-sm text-[var(--color-text-strong)]">Custom Bundle &amp; Package Assembly</p>
+                          <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-black text-indigo-700">Package Assembly</span>
                         </div>
                         <p className="text-xs text-[var(--color-muted)] mt-0.5">
-                          Commission for assembling, configuring, and testing sold custom PC systems.
+                          Commission for assembling, preparing, and fulfilling custom product bundles or packages.
                         </p>
                       </div>
                     </div>

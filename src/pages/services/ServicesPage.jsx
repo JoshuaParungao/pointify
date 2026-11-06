@@ -127,7 +127,7 @@ const EMPTY_CREATE = {
 
   // Intake Form Specific Fields
   intakeType: "DIAGNOSTIC", // "DIAGNOSTIC" | "MAINTENANCE"
-  unitType: "Laptop",
+  unitType: "General Equipment / Unit",
   brandModel: "",
   whenProblemStarted: "",
   checkedByOtherShop: "No",
@@ -227,15 +227,15 @@ function friendly(value) {
 function splitDeviceLabel(value) {
   const text = String(value || "").trim()
   if (!text) {
-    return { unitType: "Laptop", brandModel: "" }
+    return { unitType: "General Equipment / Unit", brandModel: "" }
   }
 
   const separatorIndex = text.indexOf(":")
   if (separatorIndex === -1) {
-    return { unitType: "Laptop", brandModel: text }
+    return { unitType: "General Equipment / Unit", brandModel: text }
   }
 
-  const unitType = text.slice(0, separatorIndex).trim() || "Laptop"
+  const unitType = text.slice(0, separatorIndex).trim() || "General Equipment / Unit"
   const brandModel = text.slice(separatorIndex + 1).trim()
   return { unitType, brandModel }
 }
@@ -1591,7 +1591,7 @@ function WorkshopTasksManager({
       {
         id: `part-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         partName: "",
-        deviceType: job.deviceType || "LAPTOP",
+        deviceType: job.deviceType || "GENERAL EQUIPMENT",
         category: "OTHER",
         costPrice: 0,
         markupAmount: 0,
@@ -1975,7 +1975,7 @@ function WorkshopTasksManager({
                     className={FIELD_CLASS}
                     disabled={!canManage}
                     onChange={(e) => handleUpdatePart(idx, { partName: e.target.value })}
-                    placeholder="Part description / name (e.g. Thermal Grizzly Paste, 512GB NVMe SSD)"
+                    placeholder="Part / material description (e.g. Replacement Part, Consumable)"
                     value={part.partName}
                   />
                 </div>
@@ -4017,7 +4017,7 @@ export default function ServicesPage({ onNavigate, selectedBranch, user }) {
                       className={FIELD_CLASS}
                       maxLength="180"
                       onChange={(event) => setCreateForm((form) => ({ ...form, jobTitle: event.target.value }))}
-                      placeholder={createForm.intakeType === "DIAGNOSTIC" ? "e.g. No Power / Motherboard Diagnosis" : "e.g. Preventive Maintenance & Thermal Repaste"}
+                      placeholder={createForm.intakeType === "DIAGNOSTIC" ? "e.g. Unit Inspection & Fault Diagnosis" : "e.g. Preventive Maintenance & Calibration"}
                       required
                       value={createForm.jobTitle}
                     />
@@ -4163,7 +4163,7 @@ export default function ServicesPage({ onNavigate, selectedBranch, user }) {
                       className={FIELD_CLASS}
                       maxLength="1000"
                       onChange={(e) => setCreateForm((f) => ({ ...f, problemDescription: e.target.value }))}
-                      placeholder="e.g. Deep clean fans, repaste thermal grizzly Kryonaut..."
+                      placeholder="e.g. Full inspection, deep cleaning, calibration..."
                       rows="2"
                       value={createForm.problemDescription}
                     />

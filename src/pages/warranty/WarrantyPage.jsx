@@ -2306,7 +2306,7 @@ export default function WarrantyPage({ initialContext, selectedBranch, user }) {
                   autoFocus
                   required
                   className={FIELD_CLASS}
-                  placeholder="e.g. Void sticker tampered, bent CPU socket pins, liquid damage found..."
+                  placeholder="e.g. Void seal tampered, physical damage, or liquid damage found..."
                   rows="3"
                   value={customerRejectForm.rejectionReason}
                   onChange={(e) => setCustomerRejectForm((prev) => ({ ...prev, rejectionReason: e.target.value }))}
@@ -2743,7 +2743,7 @@ export default function WarrantyPage({ initialContext, selectedBranch, user }) {
                 <input
                   required
                   className={FIELD_CLASS}
-                  placeholder="e.g. Asus GeForce RTX 3060 12GB (Store Service Unit)"
+                  placeholder="e.g. Replacement Service Unit / Product"
                   value={loanerForm.loanerItemName}
                   onChange={(e) => setLoanerForm((prev) => ({ ...prev, loanerItemName: e.target.value }))}
                 />

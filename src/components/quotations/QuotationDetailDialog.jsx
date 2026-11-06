@@ -199,7 +199,7 @@ export default function QuotationDetailDialog({
                 {/* Left Store Info */}
                 <div className="md:col-span-6 space-y-1">
                   <h1 className="text-sm font-black tracking-tight text-slate-950 uppercase leading-snug">
-                    ARUNAFELTZ COMPUTER PARTS AND ACCESSORIES SHOP
+                    {branch.name || "POINTIFY CLOUD POS & BUSINESS MANAGEMENT"}
                   </h1>
                   <p className="text-[11px] text-slate-700 leading-normal">
                     {branchAddress}
@@ -389,18 +389,18 @@ export default function QuotationDetailDialog({
                   {isPcBuild ? (
                     <div className="space-y-0.5 pb-1">
                       <p className="font-bold text-[11px] text-slate-900">
-                        (FREE ITEM BUNDLE &amp; PACKAGE PACKAGING)
+                        (FREE ITEM BUNDLE &amp; PACKAGE PREPARATION)
                       </p>
                       <p className="text-[10px] text-slate-600">
-                        Exclusive to complete package bundles purchased from Med C Drugstore & Medical Supplies.
+                        Exclusive to complete package bundles purchased from us. Not applicable to individual item purchases.
                       </p>
                     </div>
                   ) : null}
                   <p className="font-bold text-[11px] text-slate-900">
-                    ONE (1) YEAR WARRANTY ON MAJOR PARTS &amp; ONE (1) MONTH ON ACCESSORIES
+                    STANDARD STORE WARRANTY APPLIES PER ITEM / PRODUCT CATEGORY
                   </p>
                   <p className="text-[10px] text-slate-600">
-                    COMPLETE BOX &amp; INCLUSIONS (7 DAYS OUTRIGHT REPLACEMENT EXCEPT FOR PRINTERS)
+                    COMPLETE PACKAGING &amp; INCLUSIONS REQUIRED FOR RETURN / REPLACEMENT
                   </p>
                   <p className="font-bold text-[11px] text-red-700">
                     CASH DISCOUNTED PRICE APPLIES ONLY FOR CASH, GCASH, BANK TRANSFER

@@ -24,7 +24,7 @@ export default function DiagnosticIntakePrint({ isBlank = false, job = {} }) {
   const receivedDate = isBlank ? "" : formatDate(job.receivedAt)
   const receivedByName = isBlank ? "" : (job.receivedBy?.fullName || job.createdBy?.fullName || "Staff")
 
-  const selectedUnitType = isBlank ? null : (intake.unitType || "Laptop")
+  const selectedUnitType = isBlank ? null : (intake.unitType || "General Equipment / Unit")
   const selectedAccessories = isBlank ? [] : (intake.receivedAccessories || [])
   const selectedConditions = isBlank ? [] : (intake.physicalConditions || [])
   const selectedPreviousRepairs = isBlank ? [] : (intake.previousRepairs || [])

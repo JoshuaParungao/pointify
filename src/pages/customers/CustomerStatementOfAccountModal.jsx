@@ -244,7 +244,7 @@ export default function CustomerStatementOfAccountModal({
 
     exportReportExcel({
       title: `STATEMENT OF ACCOUNT — ${custName.toUpperCase()}`,
-      branchName: selectedBranch?.name || user?.branch?.name || "Arunafeltz Computer Parts",
+      branchName: selectedBranch?.name || user?.branch?.name || "Pointify Main Branch",
       generatedBy: user?.fullName || user?.username || "Accounting",
       filenamePrefix: `statement_of_account_${cleanName}`,
       headers,
@@ -257,7 +257,7 @@ export default function CustomerStatementOfAccountModal({
     })
   }
 
-  const shopName = "ARUNAFELTZ COMPUTER PARTS and ACCESSORIES SHOP"
+  const shopName = selectedBranch?.name || "POINTIFY CLOUD POS & BUSINESS MANAGEMENT"
   const shopAddressLine1 =
     selectedBranch?.address ||
     "Kingspire Business Centre, Km.71, Mac Arthur Highway,"
@@ -484,7 +484,7 @@ export default function CustomerStatementOfAccountModal({
                   Pls. disregard if payment has been made and send proof payment. Thank you very much.
                 </p>
                 <div className="pt-6">
-                  <p className="font-bold">Arunafeltz Accounting</p>
+                  <p className="font-bold">Pointify Accounting</p>
                 </div>
               </div>
             </>

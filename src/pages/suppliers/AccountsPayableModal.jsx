@@ -298,7 +298,7 @@ export default function AccountsPayableModal({
     }
   }
 
-  const shopName = "ARUNAFELTZ COMPUTER PARTS AND ACCESSORIES SHOP"
+  const shopName = selectedBranch?.name || "POINTIFY CLOUD POS & BUSINESS MANAGEMENT"
   const shopAddress =
     selectedBranch?.address ||
     "KINGSPIRE BUSINESS CENTRE, MAC ARTHUR HIGHWAY, SAN ISIDRO, CITY OF SAN FERNANDO, PAMPANGA / 0961-873-5798"

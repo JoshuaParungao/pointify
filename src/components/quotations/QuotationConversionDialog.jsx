@@ -483,62 +483,26 @@ export default function QuotationConversionDialog({
             </div>
           )}
 
-          {/* PC Build Requirements Banner */}
+          {/* Bundle / Package Requirements Banner */}
           {isPcBuild ? (
             <div className="rounded-2xl border border-rose-200 bg-rose-50/70 p-3.5 space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                  📦 Bundle Item Requirements
+                  📦 Bundle / Package Summary
                 </span>
                 {systemUnitCompleteness?.isComplete ? (
                   <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 text-[10px] font-black text-emerald-800">
-                    <CheckCircle2 size={12} /> Complete (Ready to Convert)
+                    <CheckCircle2 size={12} /> Ready to Convert ({conversionLines.length} lines)
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 border border-rose-300 px-2.5 py-0.5 text-[10px] font-black text-rose-800">
-                    <AlertCircle size={12} /> Incomplete ({systemUnitCompleteness?.missingComponents?.length || 0} missing)
+                    <AlertCircle size={12} /> Bundle Empty
                   </span>
                 )}
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-1.5">
-                {CORE_SYSTEM_UNIT_PARTS.map((part) => {
-                  const isPresent = Boolean(
-                    systemUnitCompleteness?.hasPackage ||
-                    systemUnitCompleteness?.foundComponents[part.key]?.length > 0
-                  )
-                  const matchedCount = systemUnitCompleteness?.foundComponents[part.key]?.length || 0
-                  const matchedItem = systemUnitCompleteness?.foundComponents[part.key]?.[0]
-                  const titleText = matchedItem
-                    ? `${part.name}: ${matchedItem.description || matchedItem.itemNameSnapshot || "In build"}`
-                    : `Required: ${part.name} (Missing)`
-
-                  return (
-                    <div
-                      key={part.key}
-                      className={`flex items-center justify-between rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition ${
-                        isPresent
-                          ? "border-emerald-200 bg-white text-emerald-900"
-                          : "border-rose-200 bg-white text-rose-700"
-                      }`}
-                      title={titleText}
-                    >
-                      <span className="truncate">{part.shortName}</span>
-                      {isPresent ? (
-                        <span className="flex items-center gap-0.5 shrink-0 text-emerald-600 font-bold ml-1 text-[10px]">
-                          {matchedCount > 1 ? `x${matchedCount}` : ""}
-                          <Check size={12} />
-                        </span>
-                      ) : (
-                        <span className="shrink-0 text-[9px] font-black uppercase text-rose-600 ml-1">Need</span>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-
-              <p className="text-[10px] text-slate-500 italic">
-                💡 Peripherals (Monitor, Keyboard, Mouse) are optional. Only the 6 core system unit parts are required.
+              <p className="text-[10px] text-slate-600">
+                💡 All product lines in this quotation will be converted and tracked together as a Bundle / Package transaction.
               </p>
             </div>
           ) : null}

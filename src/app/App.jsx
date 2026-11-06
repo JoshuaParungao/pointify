@@ -492,7 +492,7 @@ function App() {
       <main className="grid min-h-svh place-items-center bg-[var(--color-page)] px-4">
         <section className="rounded-3xl border border-[var(--color-border)] bg-white p-6 text-center shadow-card">
           <p className="brand-text text-xl font-bold text-[var(--color-text-strong)]">
-            Arunafeltz
+            Pointify
           </p>
           <p className="mt-2 text-sm text-[var(--color-muted)]">Checking session...</p>
         </section>

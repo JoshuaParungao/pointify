@@ -325,7 +325,7 @@ export default function SaleReceiptModal({ sale: initialSale, saleId, onClose })
                 {/* Left Store Info */}
                 <div className="md:col-span-6 space-y-1">
                   <h1 className="text-sm font-black tracking-tight text-slate-950 uppercase leading-snug">
-                    ARUNAFELTZ COMPUTER PARTS AND ACCESSORIES SHOP
+                    {branch.name || "POINTIFY CLOUD POS & BUSINESS MANAGEMENT"}
                   </h1>
                   <p className="text-[11px] text-slate-700 leading-normal">
                     {branchAddress}
@@ -525,7 +525,7 @@ export default function SaleReceiptModal({ sale: initialSale, saleId, onClose })
               {/* Warranty Disclaimers */}
               <div className="border-t border-slate-200 pt-3 text-center space-y-1">
                 <p className="font-bold text-[11px] text-slate-900 uppercase">
-                  NO WARRANTY ON SOFTWARE/S (O.S. - WINDOWS and MS OFFICE), IF ANY
+                  CONSUMABLES, OPENED ITEMS &amp; SERVICE FEES ARE NON-REFUNDABLE UNLESS DEFECTIVE
                 </p>
                 <p className="text-[10px] text-slate-600">
                   Pls. read all WARRANTY GUIDELINES &amp; PROCEDURES at the back of this page. (BRING–IN WARRANTY)

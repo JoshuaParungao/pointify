@@ -978,7 +978,7 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
             </h1>
             <p className="mt-0.5 text-xs text-slate-500 max-w-2xl">
               {inventoryViewMode === "REPORTS"
-                ? "Comprehensive stock valuation, capital vs retail pricing, serial hardware tracking, and movements audit."
+                ? "Comprehensive stock valuation, capital vs retail pricing, serialized product tracking, and movements audit."
                 : "Monitor available stock, batches, serial count, and low-stock items in real time."}
             </p>
           </div>

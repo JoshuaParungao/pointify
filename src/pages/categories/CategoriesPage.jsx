@@ -50,16 +50,15 @@ function formatDate(value) {
 
 const POPULAR_ATTRIBUTE_PRESETS = [
   { name: "Brand", suggestions: [] },
-  { name: "Model", suggestions: [] },
-  { name: "Capacity", suggestions: ["8GB", "16GB", "32GB", "64GB", "500GB", "1TB", "2TB"] },
-  { name: "Speed / Frequency", suggestions: ["3200MHz", "3600MHz", "5200MHz", "5600MHz", "6000MHz"] },
-  { name: "Socket", suggestions: ["AM4", "AM5", "LGA1700", "LGA1851"] },
-  { name: "Form Factor", suggestions: ["ATX", "Micro-ATX", "Mini-ITX", "2.5-inch", "M.2 2280"] },
-  { name: "Interface", suggestions: ["PCIe 4.0", "PCIe 5.0", "SATA III", "USB 3.2"] },
-  { name: "Wattage", suggestions: ["550W", "650W", "750W", "850W", "1000W"] },
-  { name: "VRAM", suggestions: ["8GB", "12GB", "16GB", "24GB"] },
-  { name: "Color", suggestions: ["Black", "White", "Silver", "RGB"] },
-  { name: "Connectivity", suggestions: ["Wired", "Wireless 2.4GHz", "Bluetooth"] },
+  { name: "Model / Variant", suggestions: [] },
+  { name: "Size / Capacity", suggestions: ["Small", "Medium", "Large", "250ml", "500ml", "1L"] },
+  { name: "Weight / Volume", suggestions: ["100g", "250g", "500g", "1kg", "5kg"] },
+  { name: "Packaging / Form", suggestions: ["Box", "Bottle", "Pack", "Piece", "Set"] },
+  { name: "Material / Type", suggestions: ["Standard", "Premium", "Heavy Duty", "Organic"] },
+  { name: "Color", suggestions: ["Black", "White", "Silver", "Blue", "Red"] },
+  { name: "Dimensions", suggestions: ["Compact", "Standard", "Large"] },
+  { name: "Warranty / Shelf Life", suggestions: ["None", "7 Days", "30 Days", "6 Months", "1 Year"] },
+  { name: "Origin / Grade", suggestions: ["Local", "Imported", "Commercial Grade"] },
 ]
 
 export default function CategoriesPage({ selectedBranch, user }) {
@@ -1151,7 +1150,7 @@ export default function CategoriesPage({ selectedBranch, user }) {
                     <div>
                       <p className="text-xs font-bold text-slate-900">Subcategory</p>
                       <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
-                        Child category under a Main Category (e.g. Desktop RAM)
+                        Child category under a Main Category (e.g. Bottled Drinks, OTC Supplements)
                       </p>
                     </div>
                   </button>
@@ -1212,7 +1211,7 @@ export default function CategoriesPage({ selectedBranch, user }) {
                         setCatForm({ ...catForm, name: e.target.value })
                         if (formError) setFormError("")
                       }}
-                      placeholder="e.g. Desktop RAM"
+                      placeholder="e.g. Beverages, Medical Supplies, Electronics"
                       type="text"
                       value={catForm.name}
                     />
@@ -1223,7 +1222,7 @@ export default function CategoriesPage({ selectedBranch, user }) {
                       </p>
                     ) : (
                       <span className="text-[10px] text-slate-400 mt-0.5 block">
-                        Enter a clear, descriptive name (e.g. Desktop RAM, NVMe SSD)
+                        Enter a clear, descriptive name (e.g. Beverages, Personal Care, Office Supplies)
                       </span>
                     )}
                   </label>
@@ -1269,7 +1268,7 @@ export default function CategoriesPage({ selectedBranch, user }) {
                     onChange={(e) =>
                       setCatForm({ ...catForm, description: e.target.value })
                     }
-                    placeholder="e.g. Desktop memory sticks and high-performance modules."
+                    placeholder="e.g. General merchandise and retail product items."
                     type="text"
                     value={catForm.description}
                   />

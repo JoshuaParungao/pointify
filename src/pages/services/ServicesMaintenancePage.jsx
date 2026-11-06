@@ -37,27 +37,22 @@ const OWNER_ROLES = new Set([
 ])
 
 const DEVICE_TYPE_PRESETS = [
-  "LAPTOP",
-  "DESKTOP",
-  "GPU",
-  "MOTHERBOARD",
-  "MACBOOK",
-  "PRINTER",
-  "MONITOR",
-  "SMARTPHONE / TABLET",
-  "CONSOLE",
-  "PC COMPONENT",
+  "GENERAL EQUIPMENT",
+  "APPLIANCE / DEVICE",
+  "ELECTRONIC UNIT",
+  "MECHANICAL / TOOL",
+  "MEDICAL / OFFICE EQUIPMENT",
+  "COMMERCIAL UNIT",
   "OTHER",
 ]
 
 const PART_CATEGORY_PRESETS = [
-  "SCREEN",
-  "BATTERY",
-  "KEYBOARD",
-  "FAN",
-  "IC CHIP",
-  "PORT",
+  "REPLACEMENT PART",
   "CONSUMABLE",
+  "ACCESSORY",
+  "ELECTRICAL / POWER",
+  "MODULE / ASSEMBLY",
+  "FASTENER / SEAL",
   "OTHER",
 ]
 
@@ -67,7 +62,7 @@ function normalizeCategoryName(cat) {
 
 const EMPTY_SERVICE_FORM = {
   name: "",
-  deviceType: "LAPTOP",
+  deviceType: "GENERAL EQUIPMENT",
   repairType: "ORDINARY_REPAIR",
   basePrice: "0",
   markupPercent: "0",
@@ -78,8 +73,8 @@ const EMPTY_SERVICE_FORM = {
 
 const EMPTY_PART_FORM = {
   name: "",
-  deviceType: "LAPTOP",
-  category: "SCREEN",
+  deviceType: "GENERAL EQUIPMENT",
+  category: "REPLACEMENT PART",
   repairType: "ORDINARY_REPAIR",
   costPrice: "0",
   markupAmount: "0",
@@ -259,7 +254,7 @@ function ServiceEditorModal({
               className={inputClass}
               maxLength="120"
               onChange={(event) => onChange("name", event.target.value)}
-              placeholder="e.g. Laptop Deep Cleaning & Thermal Repaste"
+              placeholder="e.g. Preventive Maintenance & Calibration"
               required
               value={form.name}
             />
@@ -308,9 +303,9 @@ function ServiceEditorModal({
               >
                 <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-900">
                   <Wrench size={13} className="text-[var(--color-maroon)]" />
-                  <span>Standard Repair</span>
+                  <span>Standard Service</span>
                 </div>
-                <p className="text-[11px] text-slate-500 mt-0.5">Cleaning, OS installation, storage/RAM</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">Routine maintenance, cleaning, standard setup</p>
               </button>
 
               <button
@@ -324,9 +319,9 @@ function ServiceEditorModal({
               >
                 <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-900">
                   <Sparkles size={13} className="text-[var(--color-maroon)]" />
-                  <span>Board Level</span>
+                  <span>Complex / Specialized</span>
                 </div>
-                <p className="text-[11px] text-slate-500 mt-0.5">Micro-soldering, tracing, IC chips</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">Internal overhaul, precision repair, calibration</p>
               </button>
             </div>
           </div>
@@ -799,7 +794,7 @@ function PartEditorModal({
               className={inputClass}
               maxLength="150"
               onChange={(event) => onChange("name", event.target.value)}
-              placeholder="e.g. Laptop 15.6 FHD 144Hz IPS Screen (30-Pin EDP)"
+              placeholder="e.g. Standard Replacement Part / Consumable Material"
               required
               value={form.name}
             />
@@ -1349,7 +1344,7 @@ export default function ServicesMaintenancePage({ user }) {
     setServiceEditorError("")
     setServiceForm({
       name: item.name || "",
-      deviceType: item.deviceType || "LAPTOP",
+      deviceType: item.deviceType || "GENERAL EQUIPMENT",
       repairType: item.repairType || "ORDINARY_REPAIR",
       basePrice: item.basePrice != null ? String(item.basePrice) : "0",
       markupPercent: item.markupPercent != null ? String(item.markupPercent) : "0",
@@ -1454,8 +1449,8 @@ export default function ServicesMaintenancePage({ user }) {
     setPartEditorError("")
     setPartForm({
       name: item.name || "",
-      deviceType: item.deviceType || "LAPTOP",
-      category: item.category || "SCREEN",
+      deviceType: item.deviceType || "GENERAL EQUIPMENT",
+      category: item.category || "REPLACEMENT PART",
       repairType: item.repairType || "ORDINARY_REPAIR",
       costPrice: item.costPrice != null ? String(item.costPrice) : "0",
       markupAmount: item.markupAmount != null ? String(item.markupAmount) : "0",
@@ -1506,7 +1501,7 @@ export default function ServicesMaintenancePage({ user }) {
 
     const payload = {
       name: partForm.name.trim(),
-      deviceType: partForm.deviceType?.trim() || "LAPTOP",
+      deviceType: partForm.deviceType?.trim() || "GENERAL EQUIPMENT",
       category: categoryClean,
       repairType: partForm.repairType === "BOARD_LEVEL_REPAIR" ? "BOARD_LEVEL_REPAIR" : "ORDINARY_REPAIR",
       costPrice: costNum,

@@ -1046,7 +1046,7 @@ function ItemEditorModal({
                 onChange={(event) =>
                   onChange("itemName", event.target.value)
                 }
-                placeholder="e.g. Intel Core i5-12400F Processor"
+                placeholder="e.g. Standard Product Name / Variant"
                 required
                 value={form.itemName}
               />

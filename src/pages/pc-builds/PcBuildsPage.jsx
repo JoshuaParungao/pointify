@@ -119,7 +119,7 @@ function categorizeItem(description = "") {
   }
   return {
     key: "other",
-    label: "Component / Service",
+    label: "Product / Package Item",
     icon: Package,
     color: "text-slate-600 bg-slate-50 border-slate-200",
   }
@@ -344,13 +344,13 @@ export default function PcBuildsPage({ selectedBranch, user }) {
         "Sale Date",
         "Customer Name",
         "Contact",
-        "Assembled / Built By",
-        "Total Parts Count",
-        "Build Total (₱)",
-        "Component Name",
+        "Prepared / Assembled By",
+        "Total Items Count",
+        "Bundle Total (₱)",
+        "Item / Product Name",
         "Category",
         "Serial Number",
-        "Component Price (₱)",
+        "Item Price (₱)",
         "Warranty Duration",
       ]
 
@@ -495,7 +495,7 @@ export default function PcBuildsPage({ selectedBranch, user }) {
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-              Components Installed
+              Items Included
             </span>
             <div className="grid size-8 place-items-center rounded-xl bg-slate-100 text-slate-700">
               <Cpu size={16} />
@@ -505,14 +505,14 @@ export default function PcBuildsPage({ selectedBranch, user }) {
             {metrics.totalPartsCount}
           </p>
           <p className="mt-0.5 text-[11px] text-slate-500">
-            Individual hardware lines
+            Individual product lines
           </p>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-              Serialized Hardware
+              Serialized Products
             </span>
             <div className="grid size-8 place-items-center rounded-xl bg-amber-50 text-amber-700">
               <ShieldCheck size={16} />
@@ -544,7 +544,7 @@ export default function PcBuildsPage({ selectedBranch, user }) {
           <input
             className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs text-slate-800 outline-none focus:border-[var(--color-maroon)] placeholder:text-slate-400 font-medium"
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by receipt code, customer, CPU, GPU, RAM, SSD, or serial number…"
+            placeholder="Search by receipt code, customer, product name, brand, or serial number…"
             value={search}
           />
         </div>
@@ -595,13 +595,13 @@ export default function PcBuildsPage({ selectedBranch, user }) {
         </div>
       </section>
 
-      {/* Main PC Builds Feed */}
+      {/* Main Bundles Feed */}
       <section className="space-y-3.5">
         {isLoading ? (
           <div className="flex flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white p-12 text-slate-400 shadow-xs">
             <LoaderCircle size={32} className="animate-spin text-[var(--color-maroon)]" />
             <p className="mt-3 text-xs font-bold text-slate-600">
-              Loading PC builds and sales feed…
+              Loading item bundles and sales feed…
             </p>
           </div>
         ) : filteredBuilds.length === 0 ? (
@@ -669,7 +669,7 @@ export default function PcBuildsPage({ selectedBranch, user }) {
                   <div className="flex items-center gap-3">
                     <div className="text-right">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                        Build Total
+                        Bundle Total
                       </span>
                       <p className="font-mono text-base font-black text-slate-900">
                         {formatMoney(sale.grandTotal)}
@@ -703,14 +703,14 @@ export default function PcBuildsPage({ selectedBranch, user }) {
                   </div>
                 </div>
 
-                {/* Build Specifications & Parts Breakdown */}
+                {/* Bundle Specifications & Items Breakdown */}
                 {isExpanded ? (
                   <div className="p-4 sm:p-5 space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1">
                           <Cpu size={14} className="text-[var(--color-maroon)]" />
-                          Component Specifications ({items.length} Parts)
+                          Bundle Specifications ({items.length} Items)
                         </span>
                         <span className="text-[11px] text-slate-500">
                           · Cashier: {sale.cashier?.fullName || "Counter"}
@@ -718,25 +718,25 @@ export default function PcBuildsPage({ selectedBranch, user }) {
                         {builderName ? (
                           <span className="text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md flex items-center gap-1">
                             <Wrench size={11} />
-                            Assembled by: {builderName}
+                            Prepared by: {builderName}
                           </span>
                         ) : null}
                       </div>
                       <div className="flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
                         <ShieldCheck size={13} />
-                        <span>Existing Per-Part Hardware Warranty Tracked</span>
+                        <span>Per-Item Warranty Tracked</span>
                       </div>
                     </div>
 
-                    {/* Parts Table */}
+                    {/* Items Table */}
                     <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-2xs">
                       <table className="w-full text-left text-xs">
                         <thead className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-600">
                           <tr>
                             <th className="px-4 py-2.5">Category</th>
-                            <th className="px-4 py-2.5">Part Model & Description</th>
+                            <th className="px-4 py-2.5">Product &amp; Description</th>
                             <th className="px-4 py-2.5">Serial Number (S/N)</th>
-                            <th className="px-4 py-2.5">Warranty Term (By Part)</th>
+                            <th className="px-4 py-2.5">Warranty Term (By Item)</th>
                             <th className="px-4 py-2.5 text-center">Qty</th>
                             <th className="px-4 py-2.5 text-right">Price</th>
                             <th className="px-4 py-2.5 text-right">Line Total</th>

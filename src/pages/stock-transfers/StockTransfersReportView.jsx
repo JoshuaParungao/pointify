@@ -803,12 +803,12 @@ export default function StockTransfersReportView({
               <Boxes size={22} />
             </span>
             <span className="rounded-full bg-purple-100 dark:bg-purple-950/60 px-2.5 py-0.5 text-xs font-black text-purple-800 dark:text-purple-300">
-              Hardware
+              Serialized
             </span>
           </div>
           <div className="mt-4">
             <p className="text-xs font-bold uppercase tracking-wider text-[var(--color-muted)]">
-              Serialized Hardware
+              Serialized Products
             </p>
             <p className="mt-1 font-mono text-2xl font-black text-purple-600 dark:text-purple-400">
               {kpis.totalSerials.toLocaleString()} Serials

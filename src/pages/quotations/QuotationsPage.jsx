@@ -1634,60 +1634,24 @@ export default function QuotationsPage({ selectedBranch, user }) {
               </div>
 
               {isPcBuild ? (
-                <div className="mx-4 mt-2 rounded-xl border border-rose-200 bg-rose-50/60 p-2 space-y-1.5 shadow-2xs">
+                <div className="mx-4 mt-2 rounded-xl border border-rose-200 bg-rose-50/60 p-2.5 space-y-1.5 shadow-2xs">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[10px] font-black uppercase tracking-wider text-slate-700 flex items-center gap-1">
-                      🖥️ System Unit Requirements
+                      📦 Bundle / Package Configuration
                     </span>
                     {systemUnitCompleteness?.isComplete ? (
                       <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 border border-emerald-300 px-2 py-0.5 text-[9px] font-black text-emerald-800">
-                        <CheckCircle2 size={11} /> Complete (Ready)
+                        <CheckCircle2 size={11} /> Ready ({cart.filter((l) => l.type !== "SERVICE").length} item lines)
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 border border-rose-300 px-2 py-0.5 text-[9px] font-black text-rose-800">
-                        <AlertCircle size={11} /> Incomplete ({systemUnitCompleteness?.missingComponents?.length || 0} missing)
+                        <CircleAlert size={11} /> Add bundle items
                       </span>
                     )}
                   </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1">
-                    {CORE_SYSTEM_UNIT_PARTS.map((part) => {
-                      const isPresent = Boolean(
-                        systemUnitCompleteness?.hasPackage ||
-                        systemUnitCompleteness?.foundComponents[part.key]?.length > 0
-                      )
-                      const matchedCount = systemUnitCompleteness?.foundComponents[part.key]?.length || 0
-                      const matchedItem = systemUnitCompleteness?.foundComponents[part.key]?.[0]
-                      const titleText = matchedItem
-                        ? `${part.name}: ${matchedItem.item?.itemName || matchedItem.description || "In cart"}`
-                        : `Required: ${part.name} (Missing)`
-
-                      return (
-                        <div
-                          key={part.key}
-                          className={`flex items-center justify-between rounded-md border px-2 py-1 text-[10px] font-semibold transition ${
-                            isPresent
-                              ? "border-emerald-200 bg-emerald-50/80 text-emerald-900"
-                              : "border-rose-200 bg-white text-rose-700"
-                          }`}
-                          title={titleText}
-                        >
-                          <span className="truncate">{part.shortName}</span>
-                          {isPresent ? (
-                            <span className="flex items-center gap-0.5 shrink-0 text-emerald-600 font-bold ml-1 text-[9px]">
-                              {matchedCount > 1 ? `x${matchedCount}` : ""}
-                              <Check size={11} />
-                            </span>
-                          ) : (
-                            <span className="shrink-0 text-[8px] font-black uppercase text-rose-600 ml-1">Need</span>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-
-                  <p className="text-[9px] text-slate-500 italic">
-                    💡 Peripherals (Monitor, Keyboard, Mouse) are optional. Only the 6 core system unit parts are required.
+                  <p className="text-[9px] text-slate-600">
+                    💡 All products in this quotation will be grouped and tracked together as a Bundle / Package.
                   </p>
                 </div>
               ) : null}
@@ -1713,7 +1677,7 @@ export default function QuotationsPage({ selectedBranch, user }) {
                             </span>
                             {isPcBuild && line.type === "PRODUCT" ? (
                               <span className="rounded bg-rose-50 border border-rose-200 px-1.5 py-0.2 text-[9px] font-black text-[var(--color-maroon)]">
-                                PC Part
+                                Bundle Item
                               </span>
                             ) : null}
                           </div>
