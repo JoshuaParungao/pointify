@@ -67,7 +67,7 @@ function LoginPage({ onLogin }) {
               Pointify
             </h1>
             <p className="text-xs text-[var(--color-muted)]">
-              Cloud POS & Business Management System
+              Pointify Business Management System
             </p>
           </div>
         </div>

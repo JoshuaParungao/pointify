@@ -1097,7 +1097,7 @@ function SaleDetailDialog({
                   {/* Left Store Info */}
                   <div className="md:col-span-6 space-y-1">
                     <h1 className="text-sm font-black tracking-tight text-slate-950 uppercase leading-snug">
-                      {branch.name || "POINTIFY CLOUD POS & BUSINESS MANAGEMENT"}
+                      {branch.name || "POINTIFY BUSINESS MANAGEMENT"}
                     </h1>
                     <p className="text-[11px] text-slate-700 leading-normal">
                       {branchAddress}

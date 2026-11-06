@@ -257,7 +257,7 @@ export default function CustomerStatementOfAccountModal({
     })
   }
 
-  const shopName = selectedBranch?.name || "POINTIFY CLOUD POS & BUSINESS MANAGEMENT"
+  const shopName = selectedBranch?.name || "POINTIFY BUSINESS MANAGEMENT"
   const shopAddressLine1 =
     selectedBranch?.address ||
     "Kingspire Business Centre, Km.71, Mac Arthur Highway,"

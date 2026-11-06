@@ -144,7 +144,7 @@ function Sidebar({
         {!isCollapsed ? (
           <div className="min-w-0">
             <p className="brand-text text-base font-bold tracking-tight">Pointify</p>
-            <p className="truncate text-xs text-white/60">Cloud POS & Management</p>
+            <p className="truncate text-xs text-white/60">Business Management</p>
           </div>
         ) : null}
 

@@ -3,7 +3,7 @@
 export const INTAKE_RECORD_HEADER = "[INTAKE_RECORD_V1]:"
 
 export const DEFAULT_SHOP_INFO = {
-  name: "POINTIFY CLOUD POS & BUSINESS MANAGEMENT",
+  name: "POINTIFY BUSINESS MANAGEMENT",
   address: "Kingspire Business Centre, Km.71, Mac Arthur Highway, San Isidro, City of San Fernando, Pampanga",
   contactNo: "0997-732-7689 / 045-404-0673",
 }

@@ -303,7 +303,7 @@ function Topbar({
               {activeLabel}
             </p>
             <p className="hidden truncate text-xs text-[var(--color-muted)] xl:block">
-              Pointify Cloud POS & Management System
+              Pointify Business Management System
             </p>
           </div>
 
