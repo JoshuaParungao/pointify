@@ -1098,7 +1098,7 @@ function SaleDetailDialog({
                   {/* Left Store Info */}
                   <div className="md:col-span-6 space-y-1">
                     <h1 className="text-sm font-black tracking-tight text-slate-950 uppercase leading-snug">
-                      {branch.name || "POINTIFY BUSINESS MANAGEMENT"}
+                      {(isCheckoutPreview ? currentBranch?.name : sale?.branch?.name) || currentBranch?.name || "POINTIFY BUSINESS MANAGEMENT"}
                     </h1>
                     <p className="text-[11px] text-slate-700 leading-normal">
                       {branchAddress}
@@ -4481,10 +4481,12 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                 {
                   paymentMethod: isReceivableCheckout
                     ? settlementMethod
-                    : paymentMethod,
+                    : paymentMethod === "PAYMONGO"
+                      ? "GCASH"
+                      : paymentMethod,
                   amount: settlementAmount,
                   referenceNo: paymentReference.trim() || undefined,
-                  remarks: paymentRemarks.trim() || undefined,
+                  remarks: paymentRemarks.trim() || (paymentMethod === "PAYMONGO" ? "[PayMongo Digital QR Ph]" : undefined),
                 },
               ]
             : [],
@@ -9399,7 +9401,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
             methodUpper === "GCASH"
               ? "GCASH"
               : methodUpper.includes("CARD")
-                ? "CREDIT_CARD"
+                ? "CARD"
                 : "OTHER"
           setPaymentMethod(matchedMethod)
           setPaymentReference(res.referenceNo || "")
