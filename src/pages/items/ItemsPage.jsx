@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState, useCallback } from "react"
-import { AlertCircle, AlertTriangle, Check, CheckCircle2, Edit3, Layers, PackageSearch, Plus, RefreshCw, Save, Search, SlidersHorizontal, Sparkles, Tag, X } from "lucide-react"
+import { AlertCircle, AlertTriangle, Check, CheckCircle2, Edit3, Layers, PackageSearch, Plus, RefreshCw, Save, Search, SlidersHorizontal, Sparkles, Tag, Trash2, X } from "lucide-react"
 
 import { USER_ROLES } from "../../constants/roles"
-import { createItem, getItemCategories, getItems, getUnits, updateItemById } from "../../features/items/items.api"
+import { clearAllItems, createItem, deleteItemById, getItemCategories, getItems, getUnits, updateItemById } from "../../features/items/items.api"
 import { createItemCategory } from "../../features/categories/categories.api"
 import { createUnit } from "../../features/units/units.api"
 import { exportReportExcel } from "../../utils/businessDocumentExport"
@@ -1807,6 +1807,45 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
     setItemForm(itemToForm(item))
   }
 
+  const handleDeleteItem = async (item) => {
+    if (!item?.id || !canManageCatalog) return
+    const confirmed = window.confirm(
+      `Are you sure you want to delete "${item.itemName || item.itemCode}"?`
+    )
+    if (!confirmed) return
+
+    setErrorMessage("")
+    try {
+      await deleteItemById(item.id)
+      await loadItems()
+    } catch (error) {
+      setErrorMessage(
+        getItemApiError(error, "Unable to delete this item.")
+      )
+    }
+  }
+
+  const handleClearAllItems = async () => {
+    if (!canManageCatalog) return
+    const confirmed = window.confirm(
+      "Are you sure you want to clear all items in this branch catalog?"
+    )
+    if (!confirmed) return
+
+    setErrorMessage("")
+    setIsLoading(true)
+    try {
+      await clearAllItems(selectedBranchId ? { branchId: selectedBranchId } : {})
+      await loadItems()
+    } catch (error) {
+      setErrorMessage(
+        getItemApiError(error, "Unable to clear items.")
+      )
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   const closeItemEditor = () => {
     if (isSavingItem) return
 
@@ -2047,6 +2086,17 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
             >
               <Plus size={17} />
               New item
+            </button>
+          ) : null}
+
+          {canManageCatalog && items.length > 0 ? (
+            <button
+              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700 shadow-sm transition hover:bg-rose-100"
+              onClick={handleClearAllItems}
+              type="button"
+            >
+              <Trash2 size={16} />
+              Clear Items
             </button>
           ) : null}
 
@@ -2422,6 +2472,17 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
                               >
                                 <Edit3 size={14} />
                                 Edit prices
+                              </button>
+                            ) : null}
+
+                            {canManageCatalog ? (
+                              <button
+                                className="inline-flex items-center justify-center gap-1 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-100"
+                                onClick={() => handleDeleteItem(item)}
+                                type="button"
+                              >
+                                <Trash2 size={14} />
+                                Delete
                               </button>
                             ) : null}
                           </div>
