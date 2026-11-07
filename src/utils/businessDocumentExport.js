@@ -571,7 +571,7 @@ export function printBusinessDocument(rawConfig) {
           }
 
           .company {
-            color: #7a1f2b;
+            color: #1e60ff;
             font-size: 20px;
             font-weight: 800;
           }
@@ -615,9 +615,9 @@ export function printBusinessDocument(rawConfig) {
 
           th {
             padding: 7px 8px;
-            background: #7a1f2b;
+            background: #1e60ff;
             color: white;
-            border: 1px solid #7a1f2b;
+            border: 1px solid #1e60ff;
             text-align: left;
             font-size: 10px;
           }

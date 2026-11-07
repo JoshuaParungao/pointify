@@ -3372,7 +3372,7 @@ export default function ServicesPage({ onNavigate, selectedBranch, user }) {
             </button>
             {canCreate ? (
               <button
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[var(--color-maroon)] px-3.5 text-xs font-bold text-white shadow-2xs hover:bg-[#6b0810] transition cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[var(--color-maroon)] px-3.5 text-xs font-bold text-white shadow-2xs hover:bg-[var(--color-maroon-hover)] transition cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={user?.role === "SUPER_OWNER" && !branchId}
                 onClick={() => setShowCreate(true)}
                 type="button"

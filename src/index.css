@@ -1,9 +1,11 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *, [data-theme="dark"], [data-theme="dark"] *));
 
 :root {
   --color-page: #f8fafc;
   --color-card: #ffffff;
   --color-soft: #f1f5f9;
+  --color-elevated: #e2e8f0;
   --color-border: #e2e8f0;
 
   --color-text: #334155;
@@ -34,21 +36,22 @@
 html.dark,
 [data-theme="dark"] {
   --color-page: #0b1120;
-  --color-card: #111a2e;
-  --color-soft: #17233d;
-  --color-border: #1e293b;
+  --color-card: #111827;
+  --color-soft: #172133;
+  --color-elevated: #1e293b;
+  --color-border: #243247;
 
   --color-text: #cbd5e1;
-  --color-text-strong: #f8fafc;
+  --color-text-strong: #f1f5f9;
   --color-muted: #94a3b8;
 
   --color-sidebar: #070d19;
   --color-primary: #3b82f6;
-  --color-primary-hover: #60a5fa;
+  --color-primary-hover: #2563eb;
   --color-primary-soft: #172554;
 
   --color-maroon: #3b82f6;
-  --color-maroon-hover: #60a5fa;
+  --color-maroon-hover: #2563eb;
   --color-maroon-soft: #172554;
 
   color: var(--color-text);
@@ -223,7 +226,373 @@ html.dark textarea::placeholder,
 
 html.dark .shadow-card,
 [data-theme="dark"] .shadow-card {
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.4), 0 2px 10px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* =========================================================================
+   UNIFIED EYE-FRIENDLY DARK MODE NORMALIZATION ACROSS ALL MODULES
+   (Excludes print sheets so printed receipts/quotations/JOs remain white)
+   ========================================================================= */
+html.dark,
+[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+/* 1. Primary Card & Panel Surfaces */
+:is(html.dark, [data-theme="dark"]) :is(
+  .bg-white,
+  .bg-white\/95,
+  .bg-white\/90,
+  .bg-white\/88,
+  .bg-white\/85,
+  .bg-white\/80,
+  .bg-white\/70,
+  .bg-white\/60,
+  .bg-slate-900
+):not(:is(
+  .quotation-print-document, .quotation-print-document *,
+  .job-order-print-document, .job-order-print-document *,
+  .sale-receipt-print-document, .sale-receipt-print-document *,
+  .jo-dual-receipt-page, .jo-dual-receipt-page *,
+  .jo-intake-print-sheet, .jo-intake-print-sheet *,
+  .jo-official-print-sheet, .jo-official-print-sheet *,
+  button.bg-slate-900,
+  img
+)) {
+  background-color: var(--color-card) !important;
+  color: var(--color-text-strong);
+}
+
+/* Keep logo badge clean and visible in dark sidebar */
+:is(html.dark, [data-theme="dark"]) img.bg-white {
+  background-color: #ffffff !important;
+}
+
+/* 2. Recessed / Secondary Surfaces (bg-slate-50 variants, table headers, filter strips) */
+:is(html.dark, [data-theme="dark"]) :is(
+  .bg-slate-50,
+  .bg-slate-50\/30,
+  .bg-slate-50\/40,
+  .bg-slate-50\/50,
+  .bg-slate-50\/60,
+  .bg-slate-50\/70,
+  .bg-slate-50\/75,
+  .bg-slate-50\/80,
+  .bg-slate-50\/90,
+  .bg-gray-50
+):not(:is(
+  .quotation-print-document, .quotation-print-document *,
+  .job-order-print-document, .job-order-print-document *,
+  .sale-receipt-print-document, .sale-receipt-print-document *,
+  .jo-dual-receipt-page, .jo-dual-receipt-page *,
+  .jo-intake-print-sheet, .jo-intake-print-sheet *,
+  .jo-official-print-sheet, .jo-official-print-sheet *
+)) {
+  background-color: var(--color-soft) !important;
+}
+
+/* 3. Elevated / Chip / Pill / Segmented Bar Surfaces (bg-slate-100 & bg-slate-200) */
+:is(html.dark, [data-theme="dark"]) :is(
+  .bg-slate-100,
+  .bg-slate-100\/60,
+  .bg-slate-100\/70,
+  .bg-slate-100\/80,
+  .bg-slate-100\/90,
+  .bg-slate-200,
+  .bg-slate-200\/60,
+  .bg-slate-200\/70,
+  .bg-slate-200\/80,
+  .bg-gray-100,
+  .bg-gray-200
+):not(:is(
+  .quotation-print-document, .quotation-print-document *,
+  .job-order-print-document, .job-order-print-document *,
+  .sale-receipt-print-document, .sale-receipt-print-document *,
+  .jo-dual-receipt-page, .jo-dual-receipt-page *,
+  .jo-intake-print-sheet, .jo-intake-print-sheet *,
+  .jo-official-print-sheet, .jo-official-print-sheet *
+)) {
+  background-color: var(--color-elevated) !important;
+  color: #e2e8f0 !important;
+}
+
+/* Segmented toggle active buttons (e.g. bg-white inside bg-slate-100 container) */
+:is(html.dark, [data-theme="dark"]) :is(.bg-slate-100, .bg-slate-100\/80, .bg-slate-50) > button.bg-white {
+  background-color: var(--color-primary) !important;
+  color: #ffffff !important;
+}
+
+/* Active filter pill buttons that use bg-slate-900 in light mode */
+:is(html.dark, [data-theme="dark"]) button.bg-slate-900 {
+  background-color: var(--color-primary) !important;
+  color: #ffffff !important;
+  border-color: var(--color-primary) !important;
+}
+
+/* 4. Uniform Soft Borders & Table Dividers (eliminates harsh white borders) */
+:is(html.dark, [data-theme="dark"]) :is(
+  .border-slate-50,
+  .border-slate-100,
+  .border-slate-200,
+  .border-slate-200\/50,
+  .border-slate-200\/60,
+  .border-slate-200\/70,
+  .border-slate-200\/80,
+  .border-slate-200\/90,
+  .border-slate-300,
+  .border-slate-400,
+  .border-gray-100,
+  .border-gray-200,
+  .border-gray-300
+):not(:is(
+  .quotation-print-document, .quotation-print-document *,
+  .job-order-print-document, .job-order-print-document *,
+  .sale-receipt-print-document, .sale-receipt-print-document *,
+  .jo-dual-receipt-page, .jo-dual-receipt-page *,
+  .jo-intake-print-sheet, .jo-intake-print-sheet *,
+  .jo-official-print-sheet, .jo-official-print-sheet *
+)) {
+  border-color: var(--color-border) !important;
+}
+
+:is(html.dark, [data-theme="dark"]) :is(
+  .divide-slate-100 > :not([hidden]) ~ :not([hidden]),
+  .divide-slate-200 > :not([hidden]) ~ :not([hidden]),
+  .divide-gray-100 > :not([hidden]) ~ :not([hidden]),
+  .divide-gray-200 > :not([hidden]) ~ :not([hidden])
+):not(:is(
+  .quotation-print-document *,
+  .job-order-print-document *,
+  .sale-receipt-print-document *,
+  .jo-dual-receipt-page *,
+  .jo-intake-print-sheet *,
+  .jo-official-print-sheet *
+)) {
+  border-color: var(--color-border) !important;
+}
+
+/* 5. Balanced Typography Hierarchy (readable soft contrast, no black-on-navy text) */
+:is(html.dark, [data-theme="dark"]) :is(
+  .text-slate-950,
+  .text-slate-900,
+  .text-gray-900
+):not(:is(
+  .quotation-print-document, .quotation-print-document *,
+  .job-order-print-document, .job-order-print-document *,
+  .sale-receipt-print-document, .sale-receipt-print-document *,
+  .jo-dual-receipt-page, .jo-dual-receipt-page *,
+  .jo-intake-print-sheet, .jo-intake-print-sheet *,
+  .jo-official-print-sheet, .jo-official-print-sheet *
+)) {
+  color: var(--color-text-strong) !important;
+}
+
+:is(html.dark, [data-theme="dark"]) :is(
+  .text-slate-800,
+  .text-slate-700,
+  .text-gray-800,
+  .text-gray-700
+):not(:is(
+  .quotation-print-document, .quotation-print-document *,
+  .job-order-print-document, .job-order-print-document *,
+  .sale-receipt-print-document, .sale-receipt-print-document *,
+  .jo-dual-receipt-page, .jo-dual-receipt-page *,
+  .jo-intake-print-sheet, .jo-intake-print-sheet *,
+  .jo-official-print-sheet, .jo-official-print-sheet *
+)) {
+  color: #e2e8f0 !important;
+}
+
+:is(html.dark, [data-theme="dark"]) :is(
+  .text-slate-600,
+  .text-gray-600
+):not(:is(
+  .quotation-print-document, .quotation-print-document *,
+  .job-order-print-document, .job-order-print-document *,
+  .sale-receipt-print-document, .sale-receipt-print-document *,
+  .jo-dual-receipt-page, .jo-dual-receipt-page *,
+  .jo-intake-print-sheet, .jo-intake-print-sheet *,
+  .jo-official-print-sheet, .jo-official-print-sheet *
+)) {
+  color: #cbd5e1 !important;
+}
+
+:is(html.dark, [data-theme="dark"]) :is(
+  .text-slate-500,
+  .text-gray-500
+):not(:is(
+  .quotation-print-document, .quotation-print-document *,
+  .job-order-print-document, .job-order-print-document *,
+  .sale-receipt-print-document, .sale-receipt-print-document *,
+  .jo-dual-receipt-page, .jo-dual-receipt-page *,
+  .jo-intake-print-sheet, .jo-intake-print-sheet *,
+  .jo-official-print-sheet, .jo-official-print-sheet *
+)) {
+  color: #94a3b8 !important;
+}
+
+/* 6. Smooth Hover States in Dark Mode */
+:is(html.dark, [data-theme="dark"]) :is(
+  .hover\:bg-slate-50:hover,
+  .hover\:bg-slate-50\/50:hover,
+  .hover\:bg-slate-50\/80:hover,
+  .hover\:bg-slate-100:hover,
+  .hover\:bg-slate-200:hover,
+  .hover\:bg-slate-200\/70:hover,
+  .hover\:bg-gray-50:hover,
+  .hover\:bg-gray-100:hover
+):not(:is(
+  .quotation-print-document *,
+  .job-order-print-document *,
+  .sale-receipt-print-document *,
+  .jo-dual-receipt-page *,
+  .jo-intake-print-sheet *,
+  .jo-official-print-sheet *
+)) {
+  background-color: #1e293b !important;
+}
+
+/* 7. Inputs, Selects & Textareas in Dark Mode */
+:is(html.dark, [data-theme="dark"]) :is(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="range"]),
+  select,
+  textarea
+):not(:is(
+  .quotation-print-document *,
+  .job-order-print-document *,
+  .sale-receipt-print-document *,
+  .jo-dual-receipt-page *,
+  .jo-intake-print-sheet *,
+  .jo-official-print-sheet *
+)) {
+  background-color: #0d1526 !important;
+  color: var(--color-text-strong) !important;
+  border-color: var(--color-border) !important;
+}
+
+:is(html.dark, [data-theme="dark"]) :is(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="range"]):focus,
+  select:focus,
+  textarea:focus
+) {
+  border-color: var(--color-primary) !important;
+  background-color: #0f172a !important;
+}
+
+:is(html.dark, [data-theme="dark"]) select option {
+  background-color: #111827;
+  color: #f1f5f9;
+}
+
+/* 8. Soft Tinted Semantic Badges & Alert Banners (replaces glaring pastel-50/100 boxes) */
+/* Blue / Indigo / Sky */
+:is(html.dark, [data-theme="dark"]) :is(
+  .bg-blue-50, .bg-blue-50\/50, .bg-blue-50\/60, .bg-blue-50\/70, .bg-blue-50\/80, .bg-blue-100,
+  .bg-indigo-50, .bg-indigo-50\/50, .bg-indigo-100,
+  .bg-sky-50, .bg-sky-100
+):not(:is(.quotation-print-document *, .job-order-print-document *, .sale-receipt-print-document *)) {
+  background-color: rgba(59, 130, 246, 0.14) !important;
+}
+:is(html.dark, [data-theme="dark"]) :is(
+  .border-blue-100, .border-blue-200, .border-blue-200\/80, .border-blue-300,
+  .border-indigo-100, .border-indigo-200, .border-indigo-300,
+  .border-sky-200, .border-sky-300
+):not(:is(.quotation-print-document *, .job-order-print-document *, .sale-receipt-print-document *)) {
+  border-color: rgba(59, 130, 246, 0.32) !important;
+}
+:is(html.dark, [data-theme="dark"]) :is(
+  .text-blue-700, .text-blue-800, .text-blue-900,
+  .text-indigo-700, .text-indigo-800, .text-indigo-900,
+  .text-sky-700, .text-sky-800,
+  .text-\[\#002060\]
+):not(:is(.quotation-print-document *, .job-order-print-document *, .sale-receipt-print-document *)) {
+  color: #93c5fd !important;
+}
+
+/* Emerald / Green / Teal */
+:is(html.dark, [data-theme="dark"]) :is(
+  .bg-emerald-50, .bg-emerald-50\/50, .bg-emerald-50\/70, .bg-emerald-50\/80, .bg-emerald-100,
+  .bg-green-50, .bg-green-100,
+  .bg-teal-50, .bg-teal-100
+):not(:is(.quotation-print-document *, .job-order-print-document *, .sale-receipt-print-document *)) {
+  background-color: rgba(16, 185, 129, 0.14) !important;
+}
+:is(html.dark, [data-theme="dark"]) :is(
+  .border-emerald-200, .border-emerald-300,
+  .border-green-200, .border-green-300,
+  .border-teal-200, .border-teal-300
+):not(:is(.quotation-print-document *, .job-order-print-document *, .sale-receipt-print-document *)) {
+  border-color: rgba(16, 185, 129, 0.32) !important;
+}
+:is(html.dark, [data-theme="dark"]) :is(
+  .text-emerald-700, .text-emerald-800, .text-emerald-900,
+  .text-green-700, .text-green-800, .text-green-900,
+  .text-teal-700, .text-teal-800, .text-teal-900
+):not(:is(.quotation-print-document *, .job-order-print-document *, .sale-receipt-print-document *)) {
+  color: #6ee7b7 !important;
+}
+
+/* Amber / Yellow / Orange */
+:is(html.dark, [data-theme="dark"]) :is(
+  .bg-amber-50, .bg-amber-50\/50, .bg-amber-50\/70, .bg-amber-50\/80, .bg-amber-100,
+  .bg-yellow-50, .bg-yellow-100,
+  .bg-orange-50, .bg-orange-100
+):not(:is(.quotation-print-document *, .job-order-print-document *, .sale-receipt-print-document *)) {
+  background-color: rgba(245, 158, 11, 0.14) !important;
+}
+:is(html.dark, [data-theme="dark"]) :is(
+  .border-amber-200, .border-amber-200\/60, .border-amber-200\/80, .border-amber-300,
+  .border-yellow-200, .border-yellow-300,
+  .border-orange-200, .border-orange-300
+):not(:is(.quotation-print-document *, .job-order-print-document *, .sale-receipt-print-document *)) {
+  border-color: rgba(245, 158, 11, 0.32) !important;
+}
+:is(html.dark, [data-theme="dark"]) :is(
+  .text-amber-700, .text-amber-800, .text-amber-900,
+  .text-yellow-700, .text-yellow-800,
+  .text-orange-700, .text-orange-800
+):not(:is(.quotation-print-document *, .job-order-print-document *, .sale-receipt-print-document *)) {
+  color: #fcd34d !important;
+}
+
+/* Red / Rose */
+:is(html.dark, [data-theme="dark"]) :is(
+  .bg-red-50, .bg-red-50\/30, .bg-red-50\/50, .bg-red-100,
+  .bg-rose-50, .bg-rose-50\/40, .bg-rose-50\/50, .bg-rose-50\/80, .bg-rose-100
+):not(:is(.quotation-print-document *, .job-order-print-document *, .sale-receipt-print-document *)) {
+  background-color: rgba(244, 63, 94, 0.14) !important;
+}
+:is(html.dark, [data-theme="dark"]) :is(
+  .border-red-200, .border-red-300,
+  .border-rose-200, .border-rose-300
+):not(:is(.quotation-print-document *, .job-order-print-document *, .sale-receipt-print-document *)) {
+  border-color: rgba(244, 63, 94, 0.32) !important;
+}
+:is(html.dark, [data-theme="dark"]) :is(
+  .text-red-700, .text-red-800, .text-red-900,
+  .text-rose-700, .text-rose-800, .text-rose-900
+):not(:is(.quotation-print-document *, .job-order-print-document *, .sale-receipt-print-document *)) {
+  color: #fda4af !important;
+}
+
+/* Purple / Violet */
+:is(html.dark, [data-theme="dark"]) :is(
+  .bg-purple-50, .bg-purple-50\/50, .bg-purple-100,
+  .bg-violet-50, .bg-violet-100
+):not(:is(.quotation-print-document *, .job-order-print-document *, .sale-receipt-print-document *)) {
+  background-color: rgba(168, 85, 247, 0.14) !important;
+}
+:is(html.dark, [data-theme="dark"]) :is(
+  .border-purple-200, .border-purple-300,
+  .border-violet-200, .border-violet-300
+):not(:is(.quotation-print-document *, .job-order-print-document *, .sale-receipt-print-document *)) {
+  border-color: rgba(168, 85, 247, 0.32) !important;
+}
+:is(html.dark, [data-theme="dark"]) :is(
+  .text-purple-700, .text-purple-800, .text-purple-900,
+  .text-violet-700, .text-violet-800
+):not(:is(.quotation-print-document *, .job-order-print-document *, .sale-receipt-print-document *)) {
+  color: #d8b4fe !important;
 }
 
 .quotation-print-overlay {

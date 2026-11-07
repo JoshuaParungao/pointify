@@ -1063,7 +1063,7 @@ export default function CategoriesPage({ selectedBranch, user }) {
             {/* Clean Header */}
             <header className="flex items-center justify-between border-b border-slate-100 bg-white px-6 py-4">
               <div className="flex items-center gap-2.5">
-                <div className="rounded-xl bg-[#7A1F2B]/10 p-2 text-[#7A1F2B]">
+                <div className="rounded-xl bg-[var(--color-maroon)]/10 p-2 text-[var(--color-maroon)]">
                   <Tag size={18} />
                 </div>
                 <div>
@@ -1104,14 +1104,14 @@ export default function CategoriesPage({ selectedBranch, user }) {
                     onClick={() => setCatForm({ ...catForm, parentId: "" })}
                     className={`flex items-start gap-3 rounded-2xl border p-3.5 text-left transition ${
                       !catForm.parentId
-                        ? "border-[#7A1F2B] bg-[#7A1F2B]/5 ring-1 ring-[#7A1F2B]"
+                        ? "border-[var(--color-maroon)] bg-[var(--color-maroon)]/5 ring-1 ring-[var(--color-maroon)]"
                         : "border-slate-200 bg-white hover:border-slate-300"
                     }`}
                   >
                     <div
                       className={`rounded-xl p-2 ${
                         !catForm.parentId
-                          ? "bg-[#7A1F2B] text-white"
+                          ? "bg-[var(--color-maroon)] text-white"
                           : "bg-slate-100 text-slate-600"
                       }`}
                     >
@@ -1134,14 +1134,14 @@ export default function CategoriesPage({ selectedBranch, user }) {
                     }}
                     className={`flex items-start gap-3 rounded-2xl border p-3.5 text-left transition ${
                       catForm.parentId
-                        ? "border-[#7A1F2B] bg-[#7A1F2B]/5 ring-1 ring-[#7A1F2B]"
+                        ? "border-[var(--color-maroon)] bg-[var(--color-maroon)]/5 ring-1 ring-[var(--color-maroon)]"
                         : "border-slate-200 bg-white hover:border-slate-300"
                     }`}
                   >
                     <div
                       className={`rounded-xl p-2 ${
                         catForm.parentId
-                          ? "bg-[#7A1F2B] text-white"
+                          ? "bg-[var(--color-maroon)] text-white"
                           : "bg-slate-100 text-slate-600"
                       }`}
                     >
@@ -1175,7 +1175,7 @@ export default function CategoriesPage({ selectedBranch, user }) {
                       Select Parent Main Category:
                     </label>
                     <select
-                      className="w-full rounded-xl border border-blue-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-900 outline-none transition focus:border-[#7A1F2B] focus:ring-1 focus:ring-[#7A1F2B]"
+                      className="w-full rounded-xl border border-blue-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-900 outline-none transition focus:border-[var(--color-maroon)] focus:ring-1 focus:ring-[var(--color-maroon)]"
                       onChange={(e) => setCatForm({ ...catForm, parentId: e.target.value })}
                       value={catForm.parentId}
                     >
@@ -1205,7 +1205,7 @@ export default function CategoriesPage({ selectedBranch, user }) {
                       className={`w-full rounded-xl border px-3.5 py-2.5 text-xs font-bold text-slate-900 outline-none transition ${
                         formError && !catForm.name.trim()
                           ? "border-red-500 bg-red-50/30 ring-2 ring-red-200"
-                          : "border-slate-300 bg-white focus:border-[#7A1F2B] focus:ring-1 focus:ring-[#7A1F2B] hover:border-slate-400"
+                          : "border-slate-300 bg-white focus:border-[var(--color-maroon)] focus:ring-1 focus:ring-[var(--color-maroon)] hover:border-slate-400"
                       }`}
                       onChange={(e) => {
                         setCatForm({ ...catForm, name: e.target.value })
@@ -1233,7 +1233,7 @@ export default function CategoriesPage({ selectedBranch, user }) {
                         Status
                       </span>
                       <select
-                        className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-bold text-slate-900 outline-none transition focus:border-[#7A1F2B] focus:ring-1 focus:ring-[#7A1F2B]"
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-bold text-slate-900 outline-none transition focus:border-[var(--color-maroon)] focus:ring-1 focus:ring-[var(--color-maroon)]"
                         onChange={(e) => setCatForm({ ...catForm, status: e.target.value })}
                         value={catForm.status}
                       >
@@ -1247,7 +1247,7 @@ export default function CategoriesPage({ selectedBranch, user }) {
                         Category Code <span className="text-slate-400 font-normal">(Optional)</span>
                       </span>
                       <input
-                        className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-mono font-bold text-slate-900 outline-none transition focus:border-[#7A1F2B] focus:ring-1 focus:ring-[#7A1F2B]"
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-mono font-bold text-slate-900 outline-none transition focus:border-[var(--color-maroon)] focus:ring-1 focus:ring-[var(--color-maroon)]"
                         onChange={(e) =>
                           setCatForm({ ...catForm, categoryCode: e.target.value })
                         }
@@ -1264,7 +1264,7 @@ export default function CategoriesPage({ selectedBranch, user }) {
                     Description <span className="text-slate-400 font-normal">(Optional)</span>
                   </span>
                   <input
-                    className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-medium text-slate-800 outline-none transition focus:border-[#7A1F2B] focus:ring-1 focus:ring-[#7A1F2B] hover:border-slate-400"
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-medium text-slate-800 outline-none transition focus:border-[var(--color-maroon)] focus:ring-1 focus:ring-[var(--color-maroon)] hover:border-slate-400"
                     onChange={(e) =>
                       setCatForm({ ...catForm, description: e.target.value })
                     }
@@ -1295,7 +1295,7 @@ export default function CategoriesPage({ selectedBranch, user }) {
                     Cancel
                   </button>
                   <button
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-[#7A1F2B] px-5 py-2 text-xs font-bold text-white shadow-soft hover:bg-[#601822] transition disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--color-maroon)] px-5 py-2 text-xs font-bold text-white shadow-soft hover:bg-[var(--color-maroon-hover)] transition disabled:opacity-50"
                     disabled={isSaving}
                     type="submit"
                   >
