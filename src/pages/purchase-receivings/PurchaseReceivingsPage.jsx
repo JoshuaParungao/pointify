@@ -40,6 +40,7 @@ import {
   printReceiving,
 } from "../../utils/businessDocumentExport"
 import ExportExcelButton from "../../components/common/ExportExcelButton"
+import { canUserAccessPurchases } from "../../constants/appModules"
 const EMPTY_LINE = { itemId: "", purchaseOrderItemId: "", description: "", quantityReceived: "1", unitCost: "0", discountAmount: "0", batchCode: "", expiryDate: "", serialText: "" }
 
 function apiError(error, fallback) {
@@ -746,6 +747,7 @@ function ReceivingForm({ initial, suppliers, purchaseOrders, catalogItems, isSav
 }
 
 export default function PurchaseReceivingsPage({ initialContext, selectedBranch, user }) {
+  const canManageReceiving = canUserAccessPurchases(user)
   const [viewMode, setViewMode] = useState("OPERATIONS")
   const branchId = selectedBranch?.id || user?.branchId || user?.branch?.id || ""
   const handledInitialContextRef = useRef(null)
@@ -1099,6 +1101,11 @@ export default function PurchaseReceivingsPage({ initialContext, selectedBranch,
         </div>
       </section>
 
+      {!canManageReceiving ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold text-amber-800">
+          Account restricted: Cashiers and junior technicians cannot receive deliveries. Only senior staff, admin, and main admin have access.
+        </div>
+      ) : null}
       {message ? <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-bold text-rose-700">{message}</div> : null}
       {notice ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold text-emerald-700">{notice}</div> : null}
 

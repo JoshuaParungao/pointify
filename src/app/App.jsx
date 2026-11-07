@@ -107,21 +107,24 @@ function App() {
   const isCashBoxStaff = [
     USER_ROLES.CASHIER,
     USER_ROLES.TECHNICIAN,
+    USER_ROLES.CASH_CUSTODIAN,
   ].includes(user?.role)
 
   const isCashBoxManager = [
     USER_ROLES.SUPER_OWNER,
+    USER_ROLES.BRANCH_OWNER,
     USER_ROLES.ADMIN,
   ].includes(user?.role)
 
   const canAccessCashBox =
     isCashBoxManager ||
-    (isCashBoxStaff && hasAssignedCashBoxAccess)
+    user?.role === USER_ROLES.CASH_CUSTODIAN ||
+    hasAssignedCashBoxAccess
 
   const allowedModules = user
     ? APP_MODULES.filter(
       (item) =>
-        canRoleAccessModule(user.role, item.key) ||
+        canRoleAccessModule(user, item.key) ||
         (item.key === "cash-box" && canAccessCashBox),
     )
     : []
@@ -132,7 +135,7 @@ function App() {
     if (!currentUser) return
 
     const canAccessRequestedPage =
-      canRoleAccessModule(currentUser.role, pageKey) ||
+      canRoleAccessModule(currentUser, pageKey) ||
       (pageKey === "cash-box" && canAccessCashBox)
 
     if (canAccessRequestedPage) {
@@ -169,7 +172,7 @@ function App() {
         setUser(authenticatedUser)
 
         const savedPage = getActivePage(authenticatedUser.id)
-        if (savedPage && canRoleAccessModule(authenticatedUser.role, savedPage)) {
+        if (savedPage && canRoleAccessModule(authenticatedUser, savedPage)) {
           setActivePage(savedPage)
         } else {
           setActivePage(getDefaultModuleForRole(authenticatedUser.role))
@@ -263,7 +266,7 @@ function App() {
 
     const savedPage = getActivePage(currentUser.id)
     const targetPage =
-      savedPage && canRoleAccessModule(currentUser.role, savedPage)
+      savedPage && canRoleAccessModule(currentUser, savedPage)
         ? savedPage
         : getDefaultModuleForRole(currentUser.role)
 

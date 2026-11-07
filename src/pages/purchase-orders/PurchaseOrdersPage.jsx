@@ -18,6 +18,7 @@ import {
   printPurchaseOrder,
 } from "../../utils/businessDocumentExport"
 import ExportExcelButton from "../../components/common/ExportExcelButton"
+import { canUserAccessPurchases } from "../../constants/appModules"
 const EMPTY_LINE = { itemId: "", description: "", quantity: "1", unitCost: "0", discountAmount: "0" }
 
 function apiError(error, fallback) {
@@ -903,6 +904,7 @@ function PurchaseOrderForm({
 }
 
 export default function PurchaseOrdersPage({ selectedBranch, user, onNavigate }) {
+  const canManagePO = canUserAccessPurchases(user)
   const [viewMode, setViewMode] = useState("OPERATIONS")
   const branchId = selectedBranch?.id || user?.branchId || user?.branch?.id || ""
   const [orders, setOrders] = useState([])
@@ -1135,6 +1137,11 @@ export default function PurchaseOrdersPage({ selectedBranch, user, onNavigate })
         </div>
       </section>
 
+      {!canManagePO ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold text-amber-800">
+          Account restricted: Cashiers and junior technicians cannot create or edit purchase orders. Only senior staff, admin, and main admin have access.
+        </div>
+      ) : null}
       {message ? <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-bold text-rose-700">{message}</div> : null}
       {notice ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold text-emerald-700">{notice}</div> : null}
 
