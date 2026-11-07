@@ -1585,8 +1585,8 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
   const [isSavingItem, setIsSavingItem] = useState(false)
 
   const canManageCatalog = useMemo(() => OWNER_ROLES.has(user?.role), [user?.role])
-  const canAdjustPrices = true
-  const canManagePrices = true
+  const canAdjustPrices = useMemo(() => OWNER_ROLES.has(user?.role), [user?.role])
+  const canManagePrices = useMemo(() => OWNER_ROLES.has(user?.role), [user?.role])
   const canViewCost = true
 
   const mainCategories = useMemo(() => {
@@ -1981,6 +1981,11 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
     }
   }
   const openPriceEditor = (item) => {
+    if (!canManagePrices) {
+      setErrorMessage("Account restricted: Only owner or admin accounts can change item prices.")
+      return
+    }
+
     setSelectedItem(item)
     setPriceErrorMessage("")
     setPriceForm({
@@ -2009,6 +2014,11 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
   const savePrices = async () => {
     if (!selectedItem) return
 
+    if (!canManagePrices) {
+      setPriceErrorMessage("Account restricted: Only owner or admin accounts can change item prices.")
+      return
+    }
+
     setIsSavingPrices(true)
     setPriceErrorMessage("")
 
@@ -2032,8 +2042,12 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
         currentItems.map((item) => (item.id === updatedItem.id ? updatedItem : item)),
       )
       setSelectedItem(null)
-    } catch {
-      setPriceErrorMessage("Unable to save prices. Please check the values and try again.")
+    } catch (error) {
+      const errorMsg =
+        error?.response?.data?.message ||
+        error?.message ||
+        "Unable to save prices. Please check the values and try again."
+      setPriceErrorMessage(errorMsg)
     } finally {
       setIsSavingPrices(false)
     }

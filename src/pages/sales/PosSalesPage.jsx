@@ -494,7 +494,7 @@ function hasCashPayment(sale) {
 
 const ERROR_CODE_TRANSLATIONS = {
   CASH_SOURCE_CONFLICT: "A cash register conflict occurred while recording this payment.",
-  STAFF_CUSTOM_PRICE_NOT_ALLOWED: "Custom pricing is not permitted for staff accounts.",
+  STAFF_CUSTOM_PRICE_NOT_ALLOWED: "Account restricted: Custom pricing is not permitted for staff accounts.",
   CANNOT_APPEND_TO_SALE_IN_CURRENT_STATUS: "Items cannot be added to a sale in its current status.",
   INSUFFICIENT_PAYMENT_FOR_ADDED_ITEMS: "The tendered payment is less than the total for the added items.",
   SERIAL_NOT_AVAILABLE: "The entered serial number is not available or has already been sold.",
@@ -506,17 +506,24 @@ const ERROR_CODE_TRANSLATIONS = {
   CANNOT_APPEND_TO_INACTIVE_CREDIT_ACCOUNT: "Cannot add items to an inactive or cancelled credit account.",
   RECEIVABLE_INITIAL_SETTLEMENT_EXCEEDS_TOTAL: "Downpayment cannot exceed the total purchase price.",
   SALE_NOT_FOUND: "Sale record not found.",
-  BRANCH_ACCESS_DENIED: "You do not have access to records from another branch.",
+  BRANCH_ACCESS_DENIED: "Account restricted: You do not have access to records from another branch.",
+  SALE_CANCEL_FORBIDDEN: "Account restricted: Only owner or admin accounts can cancel sales.",
+  SALE_RETURN_FORBIDDEN: "Account restricted: Only owner or admin accounts can return sale items.",
 }
 
 function getApiErrorMessage(error, fallback) {
+  const is403 = error?.response?.status === 403
   const raw =
     error?.response?.data?.message ||
     error?.response?.data?.error?.message ||
     (typeof error?.response?.data?.error === "string" ? error.response.data.error : null) ||
     error?.message ||
     fallback
-  return ERROR_CODE_TRANSLATIONS[raw] || raw
+  let translated = ERROR_CODE_TRANSLATIONS[raw] || raw
+  if (is403 && translated && !String(translated).toLowerCase().includes("account restricted")) {
+    translated = `Account restricted: ${translated}`
+  }
+  return translated
 }
 
 function getCatalogRows(response) {
@@ -2591,6 +2598,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
   const branchId = activeBranch?.id
   const canCreateSale = SALE_MANAGER_ROLES.has(user?.role)
   const canCancelSale = SALE_CANCELLER_ROLES.has(user?.role)
+  const canChangePrice = SALE_CANCELLER_ROLES.has(user?.role)
 
   const [posViewMode, setPosViewMode] = useState(
     initialContext?.viewMode || (initialContext?.saleId ? "SALES_HISTORY" : "REGISTER")
@@ -4103,6 +4111,19 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
   }, [initialContext, branchId])
 
   const updateCartLine = (localId, patch) => {
+    if (
+      !canChangePrice &&
+      (Object.hasOwn(patch, "baseUnitPrice") ||
+        Object.hasOwn(patch, "unitPrice") ||
+        Object.hasOwn(patch, "markupPercent"))
+    ) {
+      const targetLine = cart.find((l) => l.localId === localId)
+      if (targetLine && !targetLine.isJobOrder && targetLine.type !== "SERVICE") {
+        setCartMessage("Account restricted: Only owner or admin accounts can change product prices.")
+        return
+      }
+    }
+
     setCart((current) =>
       current.map((line) => {
         if (line.localId !== localId) return line
@@ -7265,15 +7286,51 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                                 {line.isJobOrder ? "Price (Editable)" : "Base Price"}
                               </span>
                               <input
-                                className={`mt-0.5 w-full rounded-lg border px-2 py-1 text-xs font-mono font-bold ${line.isJobOrder ? "border-rose-300 bg-rose-50/50 text-[var(--color-maroon)] focus:border-[var(--color-maroon)] focus:bg-white" : "border-slate-200 bg-white"}`}
+                                className={`mt-0.5 w-full rounded-lg border px-2 py-1 text-xs font-mono font-bold ${
+                                  line.isJobOrder
+                                    ? "border-rose-300 bg-rose-50/50 text-[var(--color-maroon)] focus:border-[var(--color-maroon)] focus:bg-white"
+                                    : !canChangePrice && line.type !== "SERVICE"
+                                    ? "border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed"
+                                    : "border-slate-200 bg-white"
+                                }`}
                                 min="0"
+                                readOnly={!canChangePrice && !line.isJobOrder && line.type !== "SERVICE"}
+                                title={!canChangePrice && !line.isJobOrder && line.type !== "SERVICE" ? "Account restricted: Only owner or admin accounts can change price." : ""}
+                                onClick={() => {
+                                  if (!canChangePrice && !line.isJobOrder && line.type !== "SERVICE") {
+                                    setCartMessage("Account restricted: Only owner or admin accounts can change item prices.")
+                                  }
+                                }}
                                 onChange={(event) => updateCartLine(line.localId, { baseUnitPrice: event.target.value })}
                                 step="0.01"
                                 type="number"
                                 value={line.baseUnitPrice ?? line.unitPrice}
                               />
                             </label>
-                            <label className="block"><span className="text-[10px] font-bold uppercase text-slate-500 block">Markup %</span><input className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1 text-xs" max="99.9999" min="0" onChange={(event) => updateCartLine(line.localId, { markupPercent: event.target.value })} placeholder="0" step="0.01" type="number" value={line.markupPercent ?? ""} /></label>
+                            <label className="block">
+                              <span className="text-[10px] font-bold uppercase text-slate-500 block">Markup %</span>
+                              <input
+                                className={`mt-0.5 w-full rounded-lg border px-2 py-1 text-xs ${
+                                  !canChangePrice && line.type !== "SERVICE"
+                                    ? "border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed"
+                                    : "border-slate-200 bg-white"
+                                }`}
+                                max="99.9999"
+                                min="0"
+                                readOnly={!canChangePrice && line.type !== "SERVICE"}
+                                title={!canChangePrice && line.type !== "SERVICE" ? "Account restricted: Only owner or admin accounts can set markup." : ""}
+                                onClick={() => {
+                                  if (!canChangePrice && line.type !== "SERVICE") {
+                                    setCartMessage("Account restricted: Only owner or admin accounts can change item markup.")
+                                  }
+                                }}
+                                onChange={(event) => updateCartLine(line.localId, { markupPercent: event.target.value })}
+                                placeholder="0"
+                                step="0.01"
+                                type="number"
+                                value={line.markupPercent ?? ""}
+                              />
+                            </label>
                             <label className="block"><span className="text-[10px] font-bold uppercase text-slate-500 block">Discount</span><input className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1 text-xs font-mono" min="0" onChange={(event) => updateCartLine(line.localId, { discountAmount: event.target.value })} step="0.01" type="number" value={line.discountAmount} /></label>
                           </div>
                           <div className="flex items-center justify-between pt-1">

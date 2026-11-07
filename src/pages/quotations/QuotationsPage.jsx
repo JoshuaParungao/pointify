@@ -220,6 +220,8 @@ function getRoleLabel(role) {
 export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
   const branchName = selectedBranch?.name || user?.branch?.name || "Selected Branch"
   const branchId = selectedBranch?.id || user?.branch?.id || user?.branchId || ""
+  const CAN_CHANGE_PRICE_ROLES = new Set(["SUPER_OWNER", "BRANCH_OWNER", "ADMIN"])
+  const canChangePrice = CAN_CHANGE_PRICE_ROLES.has(user?.role)
 
   // Main Page View Mode: "HISTORY" or "BUILDER"
   const [viewMode, setViewMode] = useState("HISTORY") // "HISTORY" | "BUILDER"
@@ -795,6 +797,19 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
   }
 
   const updateCartLine = (localId, patch) => {
+    if (
+      !canChangePrice &&
+      (Object.hasOwn(patch, "baseUnitPrice") ||
+        Object.hasOwn(patch, "unitPrice") ||
+        Object.hasOwn(patch, "markupPercent"))
+    ) {
+      const targetLine = cart.find((l) => l.localId === localId)
+      if (targetLine && targetLine.type !== "SERVICE") {
+        setBuilderMessage("Account restricted: Only owner or admin accounts can change product prices.")
+        return
+      }
+    }
+
     setCart((current) =>
       current.map((line) => {
         if (line.localId !== localId) return line
@@ -1816,8 +1831,19 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
                           <label className="block">
                             <span className="text-[10px] font-bold uppercase text-slate-500 block">Base (₱)</span>
                             <input
-                              className="mt-0.5 w-full rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-xs font-mono"
+                              className={`mt-0.5 w-full rounded-lg border px-1.5 py-1 text-xs font-mono ${
+                                !canChangePrice && line.type !== "SERVICE"
+                                  ? "border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed"
+                                  : "border-slate-200 bg-white"
+                              }`}
                               min="0"
+                              readOnly={!canChangePrice && line.type !== "SERVICE"}
+                              title={!canChangePrice && line.type !== "SERVICE" ? "Account restricted: Only owner or admin accounts can change price." : ""}
+                              onClick={() => {
+                                if (!canChangePrice && line.type !== "SERVICE") {
+                                  setBuilderMessage("Account restricted: Only owner or admin accounts can change item prices.")
+                                }
+                              }}
                               onChange={(e) => updateCartLine(line.localId, { baseUnitPrice: e.target.value })}
                               step="0.01"
                               type="number"
@@ -1827,9 +1853,20 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
                           <label className="block">
                             <span className="text-[10px] font-bold uppercase text-slate-500 block">Markup %</span>
                             <input
-                              className="mt-0.5 w-full rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-xs"
+                              className={`mt-0.5 w-full rounded-lg border px-1.5 py-1 text-xs ${
+                                !canChangePrice && line.type !== "SERVICE"
+                                  ? "border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed"
+                                  : "border-slate-200 bg-white"
+                              }`}
                               max="99.99"
                               min="0"
+                              readOnly={!canChangePrice && line.type !== "SERVICE"}
+                              title={!canChangePrice && line.type !== "SERVICE" ? "Account restricted: Only owner or admin accounts can set markup." : ""}
+                              onClick={() => {
+                                if (!canChangePrice && line.type !== "SERVICE") {
+                                  setBuilderMessage("Account restricted: Only owner or admin accounts can change item markup.")
+                                }
+                              }}
                               onChange={(e) => updateCartLine(line.localId, { markupPercent: e.target.value })}
                               placeholder="0"
                               step="0.01"
