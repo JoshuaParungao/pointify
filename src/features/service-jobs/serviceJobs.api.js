@@ -48,9 +48,51 @@ export async function cancelServicePayment(paymentId, payload) {
   return response.data
 }
 
+const LEGACY_SERVICE_CATALOG_IDS = new Set([
+  "sc-clean-laptop",
+  "sc-clean-desktop",
+  "sc-format-os",
+  "sc-screen-laptop",
+  "sc-gpu-repaste",
+  "sc-board-power",
+  "sc-macbook-liquid",
+  "sc-printer-clean",
+  "sc-monitor-board",
+  "sc-smartphone-lcd",
+  "sc-console-clean",
+  "sc-pccomponent-diagnosis",
+  "sc-pms-general",
+  "sc-setup-config",
+  "sc-part-install",
+  "sc-advanced-overhaul",
+  "sc-bench-diagnosis",
+])
+
+const LEGACY_SERVICE_PART_IDS = new Set([
+  "sp-lcd-156-slim-30p",
+  "sp-lcd-140-slim-30p",
+  "sp-thermal-paste-paste",
+  "sp-thermal-pad-kit",
+  "sp-laptop-battery-std",
+  "sp-laptop-keyboard-std",
+  "sp-power-ic-chip",
+  "sp-dc-jack-port",
+  "sp-std-module",
+  "sp-maint-consumable",
+  "sp-power-unit",
+  "sp-precision-part",
+])
+
 export async function getServiceCatalog() {
   const response = await apiClient.get("/service-jobs/catalog")
-  return response.data
+  const raw = response.data
+  if (raw && Array.isArray(raw.data)) {
+    return {
+      ...raw,
+      data: raw.data.filter((item) => item && !LEGACY_SERVICE_CATALOG_IDS.has(item.id)),
+    }
+  }
+  return raw
 }
 
 export async function createServiceCatalogItem(payload) {
@@ -70,7 +112,14 @@ export async function deleteServiceCatalogItem(id) {
 
 export async function getServicePartsCatalog() {
   const response = await apiClient.get("/service-jobs/parts-catalog")
-  return response.data
+  const raw = response.data
+  if (raw && Array.isArray(raw.data)) {
+    return {
+      ...raw,
+      data: raw.data.filter((item) => item && !LEGACY_SERVICE_PART_IDS.has(item.id)),
+    }
+  }
+  return raw
 }
 
 export async function createServicePartsCatalogItem(payload) {

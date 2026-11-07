@@ -1437,6 +1437,24 @@ export default function ServicesMaintenancePage({ user }) {
     }
   }
 
+  const handleClearAllServices = async () => {
+    if (catalogItems.length === 0) return
+    if (!window.confirm(`Delete all ${catalogItems.length} service rate(s)?`)) {
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      for (const item of catalogItems) {
+        await deleteServiceCatalogItem(item.id).catch(() => null)
+      }
+      await fetchCatalog()
+    } catch (error) {
+      setErrorMessage(error?.response?.data?.message || "Failed to clear service rates.")
+      setIsLoading(false)
+    }
+  }
+
   // Parts Catalog actions
   const openNewPart = () => {
     setEditingPartItem(null)
@@ -1546,6 +1564,24 @@ export default function ServicesMaintenancePage({ user }) {
     }
   }
 
+  const handleClearAllParts = async () => {
+    if (partsCatalogItems.length === 0) return
+    if (!window.confirm(`Delete all ${partsCatalogItems.length} service part(s)?`)) {
+      return
+    }
+
+    setIsPartsLoading(true)
+    try {
+      for (const item of partsCatalogItems) {
+        await deleteServicePartsCatalogItem(item.id).catch(() => null)
+      }
+      await fetchPartsCatalog()
+    } catch (error) {
+      setPartsErrorMessage(error?.response?.data?.message || "Failed to clear service parts.")
+      setIsPartsLoading(false)
+    }
+  }
+
   // Filtered Labor List
   const filteredCatalog = useMemo(() => {
     return catalogItems.filter((item) => {
@@ -1650,23 +1686,49 @@ export default function ServicesMaintenancePage({ user }) {
 
           {canManageCatalog ? (
             activeTab === "LABOR" ? (
-              <button
-                className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--color-maroon)] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[var(--color-maroon-hover)] transition shadow-2xs cursor-pointer"
-                onClick={openNewService}
-                type="button"
-              >
-                <Plus size={14} />
-                New Service Rate
-              </button>
+              <>
+                {catalogItems.length > 0 ? (
+                  <button
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 transition shadow-2xs cursor-pointer"
+                    disabled={isLoading}
+                    onClick={handleClearAllServices}
+                    type="button"
+                  >
+                    <Trash2 size={13} />
+                    Clear All Rates
+                  </button>
+                ) : null}
+                <button
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--color-maroon)] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[var(--color-maroon-hover)] transition shadow-2xs cursor-pointer"
+                  onClick={openNewService}
+                  type="button"
+                >
+                  <Plus size={14} />
+                  New Service Rate
+                </button>
+              </>
             ) : (
-              <button
-                className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--color-maroon)] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[var(--color-maroon-hover)] transition shadow-2xs cursor-pointer"
-                onClick={openNewPart}
-                type="button"
-              >
-                <Plus size={14} />
-                New Service Part
-              </button>
+              <>
+                {partsCatalogItems.length > 0 ? (
+                  <button
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 transition shadow-2xs cursor-pointer"
+                    disabled={isPartsLoading}
+                    onClick={handleClearAllParts}
+                    type="button"
+                  >
+                    <Trash2 size={13} />
+                    Clear All Parts
+                  </button>
+                ) : null}
+                <button
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--color-maroon)] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[var(--color-maroon-hover)] transition shadow-2xs cursor-pointer"
+                  onClick={openNewPart}
+                  type="button"
+                >
+                  <Plus size={14} />
+                  New Service Part
+                </button>
+              </>
             )
           ) : null}
         </div>
@@ -2143,7 +2205,7 @@ export default function ServicesMaintenancePage({ user }) {
                     setPartsSearchText(event.target.value)
                     setPartsPage(1)
                   }}
-                  placeholder="Search replacement part (e.g. LCD Screen, IC chip, battery, fan)..."
+                  placeholder="Search replacement part, consumable, or material..."
                   value={partsSearchText}
                 />
                 {partsSearchText ? (
@@ -2325,7 +2387,7 @@ export default function ServicesMaintenancePage({ user }) {
                   No matching service parts found
                 </p>
                 <p className="mt-0.5 text-[11px] text-slate-400">
-                  Add replacement screens, chips, or materials to your catalog.
+                  Add replacement parts, consumables, or materials to your catalog.
                 </p>
               </div>
             ) : (
