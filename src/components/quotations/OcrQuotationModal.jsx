@@ -89,7 +89,7 @@ export default function OcrQuotationModal({
       }
     } catch (err) {
       const msg =
-        err?.response?.data?.message ||
+        err?.response?.data?.message || err?.response?.data?.error?.message ||
         err?.message ||
         "An error occurred while running OCR on the quotation PDF."
       setErrorMsg(msg)
