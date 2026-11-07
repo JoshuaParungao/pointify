@@ -4197,7 +4197,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
     setShowServiceForm(false)
   }
 
-  const validateCart = () => {
+  const validateCart = (overrideCustomerName = null, overridePaymentDetails = null) => {
     if (!branchId) return "Select a branch before creating a sale."
     if (cart.length === 0) return "Cart is empty."
 
@@ -4208,7 +4208,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
       }
     }
 
-    const hasCustomer = Boolean(selectedCustomerId || customerSearch.trim())
+    const hasCustomer = Boolean(overrideCustomerName || selectedCustomerId || customerSearch.trim())
     if (!hasCustomer) {
       customerInputRef.current?.focus()
       return "Customer name is required before proceeding. Please enter or select a customer."
@@ -4284,7 +4284,10 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
     const additionalCharge = Number(serviceCharge || 0)
     if (!Number.isFinite(additionalCharge) || additionalCharge < 0) return "Additional service/delivery charge cannot be negative."
 
-    const tendered = Number(effectivePaymentAmount || 0)
+    const finalMethod = overridePaymentDetails?.paymentMethod || paymentMethod
+    const tendered = overridePaymentDetails?.amount !== undefined
+      ? Number(overridePaymentDetails.amount)
+      : Number(effectivePaymentAmount || 0)
     if (!Number.isFinite(tendered) || tendered < 0) return "Payment amount cannot be negative."
 
     if (isReceivableCheckout) {
@@ -4309,7 +4312,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
       }
     } else if (tendered < totals.grandTotal) {
       return "Immediate settlements must cover the transaction total, or select an AR provider."
-    } else if (paymentMethod !== "CASH" && tendered > totals.grandTotal) {
+    } else if (finalMethod !== "CASH" && tendered > totals.grandTotal) {
       return "Only cash checkout can include overpayment and customer change."
     }
 
@@ -4504,30 +4507,36 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
     setSaleCheckoutPreview(previewSaleDoc)
   }
 
-  const submitSale = async (overrideCustomerDetails = null) => {
+  const submitSale = async (overrideCustomerDetails = null, overridePaymentDetails = null) => {
     if (!canCreateSale || isSubmittingSale) return
 
-    const validationMessage = validateCart()
+    const matchedCustomer = customers.find((c) => c.id === selectedCustomerId)
+    const effectiveName = (
+      overrideCustomerDetails?.customerName ??
+      (matchedCustomer?.fullName || customerSearch.trim() || "Walk-in Customer")
+    ).trim()
+    const effectiveAddress = (
+      overrideCustomerDetails?.customerAddress ??
+      (matchedCustomer?.address || customerAddress)
+    ).trim()
+    const effectivePhone = (
+      overrideCustomerDetails?.customerPhone ??
+      (matchedCustomer?.mobileNumber || customerPhone)
+    ).trim()
+    const effectiveCompany = (
+      overrideCustomerDetails?.customerCompany ??
+      (matchedCustomer?.companyName || customerCompany || "")
+    ).trim()
+    const effectiveEmail = (
+      overrideCustomerDetails?.customerEmail ??
+      (matchedCustomer?.email || customerEmail)
+    ).trim()
+
+    const validationMessage = validateCart(effectiveName, overridePaymentDetails)
     if (validationMessage) {
       setCheckoutMessage(validationMessage)
       return
     }
-
-    const effectiveName = (
-      overrideCustomerDetails?.customerName ?? customerSearch
-    ).trim()
-    const effectiveAddress = (
-      overrideCustomerDetails?.customerAddress ?? customerAddress
-    ).trim()
-    const effectivePhone = (
-      overrideCustomerDetails?.customerPhone ?? customerPhone
-    ).trim()
-    const effectiveCompany = (
-      overrideCustomerDetails?.customerCompany ?? customerCompany ?? ""
-    ).trim()
-    const effectiveEmail = (
-      overrideCustomerDetails?.customerEmail ?? customerEmail
-    ).trim()
 
     if (!effectiveName) {
       setCheckoutMessage("Customer name is required before completing the sale.")
@@ -4613,7 +4622,24 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
       ).trim()
       setRemarks(effectiveRemarks)
 
-      const settlementAmount = Number(effectivePaymentAmount || 0)
+      const finalMethod = overridePaymentDetails?.paymentMethod || paymentMethod
+      const finalAmount = overridePaymentDetails?.amount !== undefined
+        ? Number(overridePaymentDetails.amount)
+        : Number(effectivePaymentAmount || 0)
+      const finalRef = overridePaymentDetails?.referenceNo !== undefined
+        ? String(overridePaymentDetails.referenceNo)
+        : paymentReference
+      const finalRemarks = overridePaymentDetails?.remarks !== undefined
+        ? String(overridePaymentDetails.remarks)
+        : paymentRemarks
+
+      setPaymentMethod(finalMethod)
+      setPaymentAmount(String(finalAmount))
+      setPaymentAmountTouched(true)
+      setPaymentReference(finalRef)
+      setPaymentRemarks(finalRemarks)
+
+      const settlementAmount = finalAmount
       const termTag = pricingTerm !== "CASH" ? `[Term: ${PRICING_TERMS[pricingTerm]?.label || pricingTerm}]` : ""
       const builderStaff = serviceStaffList.find((s) => s.id === selectedBuilderId)
       const rawBuildRemarks = isPcBuild
@@ -4670,23 +4696,23 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
           }
         }),
         payments:
-          settlementAmount > 0
+          finalAmount > 0
             ? [
                 {
                   paymentMethod: isReceivableCheckout
                     ? settlementMethod
-                    : paymentMethod === "PAYMONGO"
+                    : finalMethod === "PAYMONGO"
                       ? "GCASH"
-                      : paymentMethod,
-                  amount: settlementAmount,
-                  referenceNo: paymentReference.trim() || undefined,
-                  remarks: paymentRemarks.trim() || (paymentMethod === "PAYMONGO" ? "[PayMongo Digital QR Ph]" : undefined),
+                      : finalMethod,
+                  amount: finalAmount,
+                  referenceNo: finalRef.trim() || undefined,
+                  remarks: finalRemarks.trim() || (finalMethod === "PAYMONGO" ? "[PayMongo Digital QR Ph]" : undefined),
                 },
               ]
             : [],
         receivable: isReceivableCheckout
           ? {
-              provider: paymentMethod,
+              provider: finalMethod,
               providerReferenceNo: providerReference.trim() || undefined,
               term: creditTerm,
               dueDay:
@@ -4734,7 +4760,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
 
       const isCredit = isReceivableCheckout
       const termBasis = isCredit ? (installmentCalculation?.termBasis || 1) : 1
-      const downpayment = Number(effectivePaymentAmount || 0)
+      const downpayment = finalAmount
       const financedBalance = isCredit ? (installmentCalculation?.financedBalance || 0) : 0
       const regularTotal = isCredit ? (installmentCalculation?.regularPriceTotalAmount || totals.grandTotal) : totals.grandTotal
 
@@ -9604,20 +9630,26 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
         customerPhone={customerPhone}
         isOpen={isPayMongoModalOpen}
         onClose={() => setIsPayMongoModalOpen(false)}
-        onPaymentSuccess={(res) => {
+        onPaymentSuccess={async (res) => {
+          setIsPayMongoModalOpen(false)
           const methodUpper = String(res.paymentMethod || "").toUpperCase()
           const matchedMethod =
             methodUpper === "GCASH"
               ? "GCASH"
-              : methodUpper.includes("CARD")
-                ? "CARD"
-                : "OTHER"
-          setPaymentMethod(matchedMethod)
-          setPaymentReference(res.referenceNo || "")
-          setPaymentRemarks(res.remarks || `[PayMongo Verified: ${res.paymentMethod || "ONLINE"}]`)
-          setPaymentAmount(String(totals.grandTotal))
-          setPaymentAmountTouched(true)
-          setNoticeMessage(`🔔 PayMongo Payment Verified: ₱${Number(totals.grandTotal).toLocaleString("en-PH", { minimumFractionDigits: 2 })} via ${res.paymentMethod || "Digital"} (Ref: ${res.referenceNo || "PAID"}). Tender filled!`)
+              : methodUpper === "PAYMAYA" || methodUpper === "MAYA"
+                ? "PAYMAYA"
+                : methodUpper.includes("CARD")
+                  ? "CARD"
+                  : "OTHER"
+          const paymentRef = res.referenceNo || `PM-${matchedMethod}-${Date.now().toString().slice(-6)}`
+          const remarks = res.remarks || `[PayMongo Verified: ${matchedMethod}]`
+
+          await submitSale(null, {
+            paymentMethod: matchedMethod,
+            amount: totals.grandTotal,
+            referenceNo: paymentRef,
+            remarks,
+          })
         }}
         referenceNumber={`POS-${Date.now().toString().slice(-6)}`}
       />

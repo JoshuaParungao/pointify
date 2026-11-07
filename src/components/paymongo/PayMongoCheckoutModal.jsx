@@ -92,6 +92,7 @@ export default function PayMongoCheckoutModal({
   const [session, setSession] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isSimulating, setIsSimulating] = useState(false)
+  const [isProcessing, setIsProcessing] = useState(false)
   const [errorMsg, setErrorMsg] = useState("")
   const [copiedLink, setCopiedLink] = useState(false)
   const [paymentStatus, setPaymentStatus] = useState("PENDING") // PENDING | PAID
@@ -102,7 +103,13 @@ export default function PayMongoCheckoutModal({
 
   // Initialize PayMongo Session when modal opens
   useEffect(() => {
-    if (!isOpen) return
+    if (!isOpen) {
+      setIsProcessing(false)
+      setPaymentStatus("PENDING")
+      setVerifiedDetails(null)
+      setErrorMsg("")
+      return
+    }
 
     if (!amount || Number(amount) < 20) {
       setErrorMsg("PayMongo minimum transaction amount is ₱20.00.")
@@ -191,7 +198,9 @@ export default function PayMongoCheckoutModal({
   }
 
   // Instant confirmation for thesis / live defense demo
-  const handleConfirmDemo = (method = "GCASH") => {
+  const handleConfirmDemo = async (method = "GCASH") => {
+    if (isProcessing) return
+    setIsProcessing(true)
     if (pollIntervalRef.current) clearInterval(pollIntervalRef.current)
 
     const ref = `PM-${method}-${Date.now().toString().slice(-6)}`
@@ -209,31 +218,44 @@ export default function PayMongoCheckoutModal({
       `₱${Number(amount).toLocaleString("en-PH", { minimumFractionDigits: 2 })} received via ${method}.`
     )
 
-    // Notify parent immediately
+    // Notify parent to complete sale and display receipt
     if (onPaymentSuccess) {
-      onPaymentSuccess({
-        paymentMethod: method,
-        referenceNo: ref,
-        remarks: `[PayMongo QR Ph Confirmed: ${method}]`,
-        amount: Number(amount),
-      })
+      try {
+        await onPaymentSuccess({
+          paymentMethod: method,
+          referenceNo: ref,
+          remarks: `[PayMongo QR Ph Confirmed: ${method}]`,
+          amount: Number(amount),
+        })
+      } catch (err) {
+        setErrorMsg(err?.message || "Failed to auto-complete sale.")
+        setIsProcessing(false)
+        return
+      }
     }
 
-    // Auto close after brief celebration
-    setTimeout(() => {
-      onClose()
-    }, 700)
+    setIsProcessing(false)
+    onClose()
   }
 
-  const handleFinishAndComplete = () => {
+  const handleFinishAndComplete = async () => {
+    if (isProcessing) return
+    setIsProcessing(true)
     if (onPaymentSuccess) {
-      onPaymentSuccess({
-        paymentMethod: verifiedDetails?.paymentMethod === "CARD" ? "CARD" : "GCASH",
-        referenceNo: verifiedDetails?.referenceNo || verifiedDetails?.sessionId || session?.sessionId || referenceNumber,
-        remarks: `[PayMongo Verified: ${verifiedDetails?.paymentMethod || "GCASH"}]`,
-        amount: Number(amount),
-      })
+      try {
+        await onPaymentSuccess({
+          paymentMethod: verifiedDetails?.paymentMethod === "CARD" ? "CARD" : "GCASH",
+          referenceNo: verifiedDetails?.referenceNo || verifiedDetails?.sessionId || session?.sessionId || referenceNumber,
+          remarks: `[PayMongo Verified: ${verifiedDetails?.paymentMethod || "GCASH"}]`,
+          amount: Number(amount),
+        })
+      } catch (err) {
+        setErrorMsg(err?.message || "Failed to auto-complete sale.")
+        setIsProcessing(false)
+        return
+      }
     }
+    setIsProcessing(false)
     onClose()
   }
 
@@ -316,11 +338,16 @@ export default function PayMongoCheckoutModal({
 
               <button
                 type="button"
+                disabled={isProcessing}
                 onClick={handleFinishAndComplete}
-                className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
+                className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition shadow-sm flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <CheckCircle2 size={15} />
-                Proceed to Complete Sale
+                {isProcessing ? (
+                  <Loader2 size={15} className="animate-spin" />
+                ) : (
+                  <CheckCircle2 size={15} />
+                )}
+                <span>{isProcessing ? "Completing Sale & Issuing Receipt..." : "Proceed to Complete Sale"}</span>
               </button>
             </div>
           ) : (
@@ -393,26 +420,33 @@ export default function PayMongoCheckoutModal({
               {/* PROMINENT DEMO CONFIRMATION BUTTON */}
               <button
                 type="button"
+                disabled={isProcessing}
                 onClick={() => handleConfirmDemo("GCASH")}
-                className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition shadow-sm flex items-center justify-center gap-2 cursor-pointer my-2"
+                className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition shadow-sm flex items-center justify-center gap-2 cursor-pointer my-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <CheckCircle2 size={15} />
-                <span>Confirm Payment Received (Demo Checkout)</span>
+                {isProcessing ? (
+                  <Loader2 size={15} className="animate-spin" />
+                ) : (
+                  <CheckCircle2 size={15} />
+                )}
+                <span>{isProcessing ? "Completing Sale & Issuing Receipt..." : "Confirm Payment Received (Demo Checkout)"}</span>
               </button>
 
               {/* Other demo methods */}
               <div className="grid grid-cols-2 gap-1.5 pt-1">
                 <button
                   type="button"
+                  disabled={isProcessing}
                   onClick={() => handleConfirmDemo("PAYMAYA")}
-                  className="rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 py-1.5 text-[11px] font-medium text-slate-700 dark:text-slate-300 transition cursor-pointer"
+                  className="rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 py-1.5 text-[11px] font-medium text-slate-700 dark:text-slate-300 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Pay with Maya
                 </button>
                 <button
                   type="button"
+                  disabled={isProcessing}
                   onClick={() => handleConfirmDemo("CARD")}
-                  className="rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 py-1.5 text-[11px] font-medium text-slate-700 dark:text-slate-300 transition cursor-pointer"
+                  className="rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 py-1.5 text-[11px] font-medium text-slate-700 dark:text-slate-300 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Pay with Card
                 </button>
