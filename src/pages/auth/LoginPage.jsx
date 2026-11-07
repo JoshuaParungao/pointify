@@ -8,6 +8,7 @@ function getErrorMessage(error) {
     return "Maling username o password. Pakisuri at subukan muli."
   }
   return (
+    error?.response?.data?.error?.message ||
     error?.response?.data?.message ||
     error?.message ||
     "Login failed. Please check your username and password."

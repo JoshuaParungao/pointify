@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Edit3,
   Eye,
+  EyeOff,
   Plus,
   RefreshCw,
   Search,
@@ -25,6 +26,8 @@ import {
   resolveAccountType,
 } from "../../constants/roles"
 import { getBranches } from "../../features/branches/branches.api"
+import { updateCurrentUserProfile } from "../../features/auth/auth.api"
+import { saveUser } from "../../lib/sessionStorage"
 import {
   approveUser,
   createUser,
@@ -54,6 +57,7 @@ const ASSIGNABLE_ROLES = {
   ],
 
   [USER_ROLES.ADMIN]: [
+    USER_ROLES.ADMIN,
     USER_ROLES.CASHIER,
     USER_ROLES.TECHNICIAN,
   ],
@@ -69,6 +73,7 @@ const ASSIGNABLE_ACCOUNT_TYPES = {
   ],
 
   [USER_ROLES.ADMIN]: [
+    ACCOUNT_TYPES.ADMIN,
     ACCOUNT_TYPES.SALES_AGENT,
     ACCOUNT_TYPES.SENIOR_SALES_AGENT,
     ACCOUNT_TYPES.TECHNICIAN,
@@ -140,12 +145,13 @@ function toNullableText(value) {
 
 function canEditUser(actor, target) {
   if (!actor || !target) return false
+  if (actor.id === target.id) return true
 
   if (
     target.role === USER_ROLES.BRANCH_OWNER ||
     target.role === USER_ROLES.CASH_CUSTODIAN
   ) {
-    return false
+    return actor.role === USER_ROLES.SUPER_OWNER
   }
 
   if (actor.role === USER_ROLES.SUPER_OWNER) return true
@@ -281,6 +287,7 @@ function UserEditorModal({ actor, branches, mode, onClose, onSaved, selectedBran
   }))
 
   const [isSaving, setIsSaving] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
   const [errorMessage, setErrorMessage] = useState("")
 
   const updateField = (field, value) => {
@@ -356,16 +363,45 @@ function UserEditorModal({ actor, branches, mode, onClose, onSaved, selectedBran
       payload.password = form.password.trim()
     }
 
+    if (
+      isEdit &&
+      (target?.email === "calix@arunafeltz.local" ||
+        target?.email === "calix@pointify.local")
+    ) {
+      payload.email = null
+    }
+
     setIsSaving(true)
 
     try {
-      const response = isEdit
-        ? await updateUserById(target.id, payload)
-        : await createUser(payload)
-      const savedUser = response?.data
+      let response
+      if (isEdit && (target.id === actor?.id || isEditingMainAdmin)) {
+        const profilePayload = {
+          firstName: payload.firstName,
+          lastName: payload.lastName,
+          username: payload.username,
+          ...(payload.email !== undefined ? { email: payload.email } : {}),
+          ...(payload.password ? { password: payload.password } : {}),
+        }
+        try {
+          response = await updateUserById(target.id, payload)
+        } catch {
+          response = await updateCurrentUserProfile(profilePayload)
+        }
+      } else {
+        response = isEdit
+          ? await updateUserById(target.id, payload)
+          : await createUser(payload)
+      }
+
+      const savedUser = response?.data?.user || response?.data
 
       if (!response?.success || !savedUser) {
         throw new Error("Invalid user response")
+      }
+
+      if (isEdit && target.id === actor?.id) {
+        saveUser(savedUser)
       }
 
       onSaved(savedUser, isEdit ? "updated" : "created")
@@ -447,16 +483,27 @@ function UserEditorModal({ actor, branches, mode, onClose, onSaved, selectedBran
               label={isEdit ? "Change / Reset Password (Optional)" : "Temporary password"}
               required={!isEdit}
             >
-              <input
-                autoComplete="new-password"
-                className={inputClassName}
-                maxLength={128}
-                minLength={8}
-                onChange={(event) => updateField("password", event.target.value)}
-                placeholder={isEdit ? "Leave blank to keep unchanged, or min. 8 chars" : "Min. 8 characters"}
-                type="password"
-                value={form.password}
-              />
+              <div className="relative">
+                <input
+                  autoComplete="new-password"
+                  className={`${inputClassName} pr-9`}
+                  maxLength={128}
+                  minLength={8}
+                  onChange={(event) => updateField("password", event.target.value)}
+                  placeholder={isEdit ? "Leave blank to keep unchanged, or min. 8 chars" : "Min. 8 characters"}
+                  type={showPassword ? "text" : "password"}
+                  value={form.password}
+                />
+                <button
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  className="absolute right-2.5 top-[calc(50%+2px)] -translate-y-1/2 rounded p-1 text-slate-400 hover:text-slate-700"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  tabIndex="-1"
+                  type="button"
+                >
+                  {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                </button>
+              </div>
             </FormField>
             <FormField label="Account type" required>
               <select
