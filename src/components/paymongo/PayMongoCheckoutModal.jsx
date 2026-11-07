@@ -130,10 +130,10 @@ export default function PayMongoCheckoutModal({
           customerName: customerName || "Walk-in Customer",
           customerEmail: customerEmail || undefined,
           customerPhone: customerPhone || undefined,
-          lineItems: (cartItems || []).map((item) => ({
-            name: item.name || item.itemName || "Item",
-            quantity: Number(item.quantity) || 1,
-            amount: Number(item.price || item.unitPrice || 0),
+          lineItems: (cartItems || []).map((line) => ({
+            name: line.description || line.itemNameSnapshot || line.item?.itemName || "Item",
+            quantity: Math.max(1, Number(line.quantity) || 1),
+            amount: Number(line.unitPrice || line.customUnitPrice || line.item?.price1 || 0),
           })),
         })
 

@@ -736,10 +736,9 @@ function SaleDetailDialog({
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [onClose])
 
-  const branchAddress =
-    sale?.branch?.address ||
-    currentBranch?.address || "Main Branch"
-  const branchContact = sale?.branch?.contactNo || "0961-873-5798 / 045-404-0673"
+  const branchObj = sale?.branch || {}
+  const branchAddress = branchObj.address || branchObj.name || "Main Branch"
+  const branchContact = branchObj.contactNo || "—"
 
   const paymentType = useMemo(() => {
     if (sale?.creditAccount) {
@@ -1098,7 +1097,7 @@ function SaleDetailDialog({
                   {/* Left Store Info */}
                   <div className="md:col-span-6 space-y-1">
                     <h1 className="text-sm font-black tracking-tight text-slate-950 uppercase leading-snug">
-                      {(isCheckoutPreview ? currentBranch?.name : sale?.branch?.name) || currentBranch?.name || "POINTIFY BUSINESS MANAGEMENT"}
+                      {sale?.branch?.name || "POINTIFY BUSINESS MANAGEMENT"}
                     </h1>
                     <p className="text-[11px] text-slate-700 leading-normal">
                       {branchAddress}
