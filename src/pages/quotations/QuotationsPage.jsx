@@ -334,34 +334,43 @@ export default function QuotationsPage({ selectedBranch, user }) {
     }
 
     if (Array.isArray(data.items) && data.items.length > 0) {
-      const newLines = data.items.map((item) => {
+      const newLines = data.items.map((item, idx) => {
+        const resolvedPrice = Number(item.unitPrice || item.catalogPrice || 0)
+        const resolvedQty = Math.max(1, Number(item.quantity || 1))
+
         if (item.matchedItemId) {
           return {
-            itemId: item.matchedItemId,
-            description: item.matchedItemName || item.rawDescription,
-            quantity: Number(item.quantity || 1),
-            priceTier: 1,
-            unitPrice: Number(item.unitPrice || item.catalogPrice || 0),
-            markupPercent: 0,
-            discountAmount: 0,
-            type: "ITEM",
+            localId: `product-ocr-${item.matchedItemId}-${Date.now()}-${idx}`,
+            type: "PRODUCT",
             item: {
               id: item.matchedItemId,
-              itemName: item.matchedItemName || item.rawDescription,
-              itemCode: item.matchedItemCode || "",
-              price1: item.unitPrice,
+              itemName: item.matchedItemName || item.rawDescription || "Catalog Item",
+              itemCode: item.matchedItemCode || item.rawItemCode || "",
+              price1: resolvedPrice,
+              price2: resolvedPrice,
+              price3: resolvedPrice,
+              isSerialized: false,
+              hasWarranty: false,
             },
+            quantity: String(resolvedQty),
+            selectedTier: "1",
+            customUnitPrice: String(resolvedPrice),
+            markupPercent: "",
+            discountAmount: "0",
+            warrantyDuration: "1 YEAR WARRANTY",
           }
         }
         return {
-          itemId: null,
-          description: item.rawDescription,
-          quantity: Number(item.quantity || 1),
-          priceTier: 1,
-          unitPrice: Number(item.unitPrice || 0),
-          markupPercent: 0,
-          discountAmount: 0,
+          localId: `service-ocr-${Date.now()}-${idx}`,
           type: "SERVICE",
+          description: item.rawDescription || "Imported Line Item",
+          quantity: String(resolvedQty),
+          baseUnitPrice: String(resolvedPrice),
+          unitPrice: String(resolvedPrice),
+          markupPercent: "",
+          discountAmount: "0",
+          serviceDoneByUserId: "",
+          serviceStaffName: "",
         }
       })
       setCart(newLines)
@@ -370,6 +379,28 @@ export default function QuotationsPage({ selectedBranch, user }) {
     setViewMode("BUILDER")
     setNoticeMessage(
       `OCR Extraction Complete: Loaded customer and ${data.items?.length || 0} line item(s)!`
+    )
+  }
+
+  const handleDirectPosFromOcr = async (data) => {
+    if (!data) return
+
+    if (data.matchedQuotationId) {
+      try {
+        const response = await getQuotationById(data.matchedQuotationId)
+        const fullQuotation = getQuotationData(response)
+        if (fullQuotation?.id) {
+          setQuotationToConvert(fullQuotation)
+          return
+        }
+      } catch {
+        // Fallback to builder import if lookup fails
+      }
+    }
+
+    handleImportOcrData(data)
+    setNoticeMessage(
+      "OCR data loaded into Quotation Builder. Save the quotation first to proceed with POS Checkout."
     )
   }
 
@@ -2340,6 +2371,7 @@ export default function QuotationsPage({ selectedBranch, user }) {
         branchId={branchId}
         isOpen={isOcrModalOpen}
         onClose={() => setIsOcrModalOpen(false)}
+        onDirectPosCheckout={handleDirectPosFromOcr}
         onImportToQuotation={handleImportOcrData}
       />
     </section>
