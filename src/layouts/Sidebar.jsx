@@ -132,34 +132,46 @@ function Sidebar({
 
   return (
     <aside
-      className={`h-svh shrink-0 overflow-y-auto border-r border-[var(--color-border)] bg-[var(--color-sidebar)] py-5 text-white ${isCollapsed ? "w-20 px-3" : "w-72 px-4"} ${className}`}
+      className={`h-svh shrink-0 overflow-y-auto border-r border-white/8 bg-[var(--color-sidebar)] py-3.5 text-white transition-all duration-200 select-none ${
+        isCollapsed ? "w-16 px-2" : "w-58 px-3"
+      } ${className}`}
     >
-      <div className="flex items-center gap-3 px-1">
+      {/* Compact Minimalist Brand Header */}
+      <div
+        className={`flex items-center border-b border-white/8 pb-3 ${
+          isCollapsed ? "justify-center px-0" : "gap-2.5 px-1.5"
+        }`}
+      >
         <img
           alt="Pointify Logo"
-          className="size-11 shrink-0 rounded-2xl bg-white p-1 object-contain shadow-soft"
+          className="size-8 shrink-0 rounded-xl bg-white p-1 object-contain shadow-xs"
           src="/pointify-logo.png"
         />
 
         {!isCollapsed ? (
-          <div className="min-w-0">
-            <p className="brand-text text-base font-bold tracking-tight">Pointify</p>
-            <p className="truncate text-xs text-white/60">Business Management</p>
+          <div className="min-w-0 flex-1">
+            <p className="brand-text text-sm font-bold leading-tight tracking-tight text-white">
+              Pointify
+            </p>
+            <p className="truncate text-[11px] font-medium text-slate-400">
+              Business Management
+            </p>
           </div>
         ) : null}
 
         {onClose ? (
           <button
-            className="ml-auto grid size-9 shrink-0 place-items-center rounded-xl bg-white/10 text-white lg:hidden"
+            className="ml-auto grid size-7 shrink-0 place-items-center rounded-lg bg-white/8 text-slate-300 hover:bg-white/15 hover:text-white lg:hidden"
             onClick={onClose}
             type="button"
           >
-            <X className="size-4" />
+            <X className="size-3.5" />
           </button>
         ) : null}
       </div>
 
-      <nav className="mt-7 space-y-4">
+      {/* Minimalist Navigation List */}
+      <nav className="mt-3 space-y-3">
         {Object.entries(groups).map(([group, items]) => {
           const isOpen = isCollapsed ? true : (openGroups[group] ?? true)
           const hasActiveItem = items.some((item) => item.key === activePage)
@@ -170,48 +182,58 @@ function Sidebar({
                 <button
                   type="button"
                   onClick={() => toggleGroup(group)}
-                  className={`mb-1.5 flex w-full items-center justify-between rounded-xl px-3 py-1.5 text-left text-[11px] font-bold uppercase tracking-[0.16em] transition cursor-pointer ${
+                  className={`mb-1 flex w-full items-center justify-between rounded-lg px-2 py-1 text-left text-[10px] font-bold uppercase tracking-wider transition cursor-pointer ${
                     hasActiveItem
-                      ? "text-white/80 hover:bg-white/8 hover:text-white"
-                      : "text-white/40 hover:bg-white/8 hover:text-white/75"
+                      ? "text-slate-300 hover:bg-white/5 hover:text-white"
+                      : "text-slate-500 hover:bg-white/5 hover:text-slate-300"
                   }`}
                 >
                   <span className="truncate">{group}</span>
                   <div className="flex items-center gap-1.5 shrink-0">
                     {!isOpen && hasActiveItem ? (
-                      <span className="size-1.5 rounded-full bg-[var(--color-maroon)]" />
+                      <span className="size-1.5 rounded-full bg-[var(--color-primary)]" />
                     ) : null}
                     <ChevronDown
-                      className={`size-3.5 transition-transform duration-200 ${
+                      className={`size-3 text-slate-500 transition-transform duration-200 ${
                         isOpen ? "rotate-0" : "-rotate-90"
                       }`}
                     />
                   </div>
                 </button>
-              ) : null}
+              ) : (
+                <div className="my-1.5 border-t border-white/6" />
+              )}
 
               {isOpen ? (
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   {items.map((item) => {
                     const Icon = ICONS[item.key] || ShoppingCart
                     const isActive = activePage === item.key
 
                     return (
                       <button
-                        className={`flex w-full min-w-0 items-center gap-3 rounded-2xl px-3 py-2.5 text-left text-sm font-semibold transition cursor-pointer ${
-                          isCollapsed ? "justify-center" : ""
+                        className={`group relative flex w-full min-w-0 items-center gap-2.5 rounded-xl px-2.5 py-1.5 text-left text-[12.5px] font-medium transition cursor-pointer ${
+                          isCollapsed ? "justify-center px-0 py-2" : ""
                         } ${
                           isActive
-                            ? "bg-[var(--color-maroon)] text-white shadow-soft"
-                            : "text-white/72 hover:bg-white/10 hover:text-white"
+                            ? "bg-[var(--color-primary)] text-white font-semibold shadow-xs"
+                            : "text-slate-300/85 hover:bg-white/7 hover:text-white"
                         }`}
                         key={item.key}
                         onClick={() => handleChangePage(item.key)}
                         title={item.label}
                         type="button"
                       >
-                        <Icon className="size-4 shrink-0" />
-                        {!isCollapsed ? <span className="truncate">{item.label}</span> : null}
+                        <Icon
+                          className={`size-4 shrink-0 transition ${
+                            isActive
+                              ? "text-white"
+                              : "text-slate-400 group-hover:text-slate-200"
+                          }`}
+                        />
+                        {!isCollapsed ? (
+                          <span className="truncate leading-snug">{item.label}</span>
+                        ) : null}
                       </button>
                     )
                   })}
