@@ -20,6 +20,7 @@ import {
   PackageSearch,
   Plus,
   Printer,
+  QrCode,
   ReceiptText,
   RefreshCw,
   RotateCcw,
@@ -1553,6 +1554,7 @@ function AppendSaleItemsDialog({ installmentRates, isSaving, onClose, onConfirm,
   const [paymentReference, setPaymentReference] = useState("")
   const [remarks, setRemarks] = useState("")
   const [message, setMessage] = useState("")
+  const [isPayMongoOpen, setIsPayMongoOpen] = useState(false)
 
   const termBasis = useMemo(() => {
     if (!isCreditSale) return 1
@@ -1744,13 +1746,16 @@ function AppendSaleItemsDialog({ installmentRates, isSaving, onClose, onConfirm,
 
     const tender = Number(paymentAmount || 0)
     if (!isCreditSale && tender < addedGrandTotal) {
-      setMessage(`Payment amount must be at least ₱${formatMoney(addedGrandTotal)}.`)
+      setMessage(`Payment amount must be at least ${formatMoney(addedGrandTotal)}.`)
       return
     }
     if (isCreditSale && tender < 0) {
       setMessage("Downpayment amount cannot be negative.")
       return
     }
+
+    const finalMethod = paymentMethod === "PAYMONGO" ? "GCASH" : paymentMethod
+    const finalRemarks = remarks.trim() || (paymentMethod === "PAYMONGO" ? "[PayMongo Digital QR Ph]" : undefined)
 
     const payload = {
       items: items.map((it) => ({
@@ -1763,13 +1768,14 @@ function AppendSaleItemsDialog({ installmentRates, isSaving, onClose, onConfirm,
       })),
       payments: tender > 0 ? [
         {
-          paymentMethod,
+          paymentMethod: finalMethod,
           amount: tender,
           referenceNo: paymentReference.trim() || undefined,
+          remarks: finalRemarks,
         },
       ] : [],
       term: isCreditSale ? selectedTerm : undefined,
-      remarks: remarks.trim() || undefined,
+      remarks: finalRemarks,
     }
 
     try {
@@ -1805,7 +1811,7 @@ function AppendSaleItemsDialog({ installmentRates, isSaving, onClose, onConfirm,
               Add Items to Sale #{sale.receiptCode}
             </h2>
             <p className="text-xs text-slate-500">
-              Customer: <strong className="text-slate-700">{sale.customer?.fullName || "Walk-in customer"}</strong> · Current Total: <strong className="text-slate-900 font-mono">₱{formatMoney(sale.grandTotal)}</strong>
+              Customer: <strong className="text-slate-700">{sale.customer?.fullName || "Walk-in customer"}</strong> · Current Total: <strong className="text-slate-900 font-mono">{formatMoney(sale.grandTotal)}</strong>
             </p>
           </div>
           <button
@@ -1857,8 +1863,8 @@ function AppendSaleItemsDialog({ installmentRates, isSaving, onClose, onConfirm,
                   </div>
                   <div className="rounded-xl bg-white border border-blue-100 p-2">
                     <span className="text-[10px] text-slate-400 block font-bold uppercase">Current Financed Balance</span>
-                    <span className="font-mono font-bold text-blue-900 text-sm">₱{formatMoney(sale.creditAccount.remainingBalance)}</span>
-                    <span className="text-[10px] text-slate-400 block">Due: ₱{formatMoney(sale.creditAccount.monthlyDueAmount || 0)}/mo</span>
+                    <span className="font-mono font-bold text-blue-900 text-sm">{formatMoney(sale.creditAccount.remainingBalance)}</span>
+                    <span className="text-[10px] text-slate-400 block">Due: {formatMoney(sale.creditAccount.monthlyDueAmount || 0)}/mo</span>
                   </div>
                   <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-2">
                     <span className="text-[10px] text-emerald-800 block font-bold uppercase">Additional Downpayment</span>
@@ -1904,7 +1910,7 @@ function AppendSaleItemsDialog({ installmentRates, isSaving, onClose, onConfirm,
                         <p className="text-[10px] text-slate-400">{item.itemCode} {item.brand ? `· ${item.brand}` : ""} {item.isSerialized ? "· Serialized" : ""}</p>
                       </div>
                       <div className="text-right">
-                        <p className="font-mono font-bold text-emerald-700">₱{formatMoney(item.price1)}</p>
+                        <p className="font-mono font-bold text-emerald-700">{formatMoney(item.price1)}</p>
                         <p className="text-[10px] text-slate-500">{Number(item.quantityAvailable ?? item.totalStock ?? item.stockQuantity ?? 0)} available</p>
                       </div>
                     </button>
@@ -1956,11 +1962,11 @@ function AppendSaleItemsDialog({ installmentRates, isSaving, onClose, onConfirm,
                               onChange={(e) => updateLine(line.id, "priceTier", e.target.value)}
                               value={line.priceTier}
                             >
-                              <option value="1">P1 (₱{formatMoney(line.item?.price1)})</option>
-                              <option value="2">P2 (₱{formatMoney(line.item?.price2)})</option>
-                              <option value="3">P3 (₱{formatMoney(line.item?.price3)})</option>
-                              <option value="4">P4 (₱{formatMoney(line.item?.price4)})</option>
-                              <option value="5">P5 (₱{formatMoney(line.item?.price5)})</option>
+                              <option value="1">P1 ({formatMoney(line.item?.price1)})</option>
+                              <option value="2">P2 ({formatMoney(line.item?.price2)})</option>
+                              <option value="3">P3 ({formatMoney(line.item?.price3)})</option>
+                              <option value="4">P4 ({formatMoney(line.item?.price4)})</option>
+                              <option value="5">P5 ({formatMoney(line.item?.price5)})</option>
                             </select>
                           </td>
                           <td className="p-2.5">
@@ -1973,20 +1979,20 @@ function AppendSaleItemsDialog({ installmentRates, isSaving, onClose, onConfirm,
                             />
                           </td>
                           <td className="p-2.5 text-right font-mono">
-                            <p className="font-semibold text-slate-700">₱{formatMoney(line.unitPrice)}</p>
+                            <p className="font-semibold text-slate-700">{formatMoney(line.unitPrice)}</p>
                             {isCreditSale && termBasis < 1 ? (
                               <p className="text-[10px] text-blue-700 font-bold">
-                                Financed: ₱{formatMoney(Math.round((line.unitPrice / termBasis) * 100) / 100)}
+                                Financed: {formatMoney(Math.round((line.unitPrice / termBasis) * 100) / 100)}
                               </p>
                             ) : null}
                           </td>
                           <td className="p-2.5 text-right font-mono">
                             <p className="font-bold text-slate-900">
-                              ₱{formatMoney(Number(line.quantity || 0) * Number(line.unitPrice || 0))}
+                              {formatMoney(Number(line.quantity || 0) * Number(line.unitPrice || 0))}
                             </p>
                             {isCreditSale && termBasis < 1 ? (
                               <p className="text-[10px] text-blue-900 font-black">
-                                Financed: ₱{formatMoney(Math.round(((Number(line.quantity || 0) * Number(line.unitPrice || 0)) / termBasis) * 100) / 100)}
+                                Financed: {formatMoney(Math.round(((Number(line.quantity || 0) * Number(line.unitPrice || 0)) / termBasis) * 100) / 100)}
                               </p>
                             ) : null}
                           </td>
@@ -2022,7 +2028,7 @@ function AppendSaleItemsDialog({ installmentRates, isSaving, onClose, onConfirm,
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
                     <div className="rounded-xl bg-white border border-blue-100 p-2">
                       <span className="text-[10px] text-slate-500 block">Added Items (Cash Price)</span>
-                      <span className="font-mono font-bold text-slate-900">₱{formatMoney(addedGrandTotal)}</span>
+                      <span className="font-mono font-bold text-slate-900">{formatMoney(addedGrandTotal)}</span>
                     </div>
                     <div className="rounded-xl bg-white border border-blue-100 p-2">
                       <span className="text-[10px] text-blue-700 block">Term Interest / Adjustment</span>
@@ -2030,14 +2036,14 @@ function AppendSaleItemsDialog({ installmentRates, isSaving, onClose, onConfirm,
                     </div>
                     <div className="rounded-xl bg-white border border-blue-100 p-2">
                       <span className="text-[10px] text-indigo-700 block">Added Items Financed Value</span>
-                      <span className="font-mono font-bold text-indigo-900">₱{formatMoney(financingSummary.addedFinancedAmount)}</span>
+                      <span className="font-mono font-bold text-indigo-900">{formatMoney(financingSummary.addedFinancedAmount)}</span>
                     </div>
                   </div>
 
                   <div className="rounded-xl bg-white border border-blue-100 p-2.5 space-y-1 text-xs">
                     <div className="flex justify-between text-slate-600">
                       <span>Current Financed Balance:</span>
-                      <span className="font-mono font-semibold text-slate-700">₱{formatMoney(financingSummary.prevRemainingBalance)}</span>
+                      <span className="font-mono font-semibold text-slate-700">{formatMoney(financingSummary.prevRemainingBalance)}</span>
                     </div>
                     <div className="flex justify-between text-blue-900 font-bold">
                       <span>Added to Financed Balance (after DP):</span>
@@ -2047,23 +2053,23 @@ function AppendSaleItemsDialog({ installmentRates, isSaving, onClose, onConfirm,
                       <div className="flex justify-between text-indigo-700 text-xs">
                         <span>Term Restructure Adjustment (on previous items):</span>
                         <span className="font-mono font-bold text-indigo-800">
-                          {financingSummary.termRestructureAdj > 0 ? "+" : "−"}₱{formatMoney(Math.abs(financingSummary.termRestructureAdj))}
+                          {financingSummary.termRestructureAdj > 0 ? "+" : "−"}{formatMoney(Math.abs(financingSummary.termRestructureAdj))}
                         </span>
                       </div>
                     ) : null}
                     {Number(paymentAmount || 0) > 0 ? (
                       <div className="flex justify-between text-emerald-700 text-xs">
                         <span>Additional Downpayment Paid:</span>
-                        <span className="font-mono font-bold text-emerald-800">−₱{formatMoney(Number(paymentAmount || 0))}</span>
+                        <span className="font-mono font-bold text-emerald-800">−{formatMoney(Number(paymentAmount || 0))}</span>
                       </div>
                     ) : null}
                     <div className="flex justify-between text-slate-900 font-black pt-1.5 border-t border-blue-100 text-sm">
                       <span>New Total Financed Balance:</span>
-                      <span className="font-mono text-base text-blue-950">₱{formatMoney(financingSummary.newRemainingBalance)}</span>
+                      <span className="font-mono text-base text-blue-950">{formatMoney(financingSummary.newRemainingBalance)}</span>
                     </div>
                     <div className="flex justify-between text-emerald-800 font-bold pt-1 border-t border-blue-100">
                       <span>New Monthly Amortization ({months} months):</span>
-                      <span className="font-mono text-sm text-emerald-900">₱{formatMoney(financingSummary.newMonthlyDue)} / mo</span>
+                      <span className="font-mono text-sm text-emerald-900">{formatMoney(financingSummary.newMonthlyDue)} / mo</span>
                     </div>
                   </div>
                 </div>
@@ -2071,15 +2077,15 @@ function AppendSaleItemsDialog({ installmentRates, isSaving, onClose, onConfirm,
                 <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 space-y-2">
                   <div className="flex justify-between text-xs text-slate-600">
                     <span>Additional Items Total:</span>
-                    <span className="font-mono font-bold text-emerald-800 text-sm">₱{formatMoney(addedGrandTotal)}</span>
+                    <span className="font-mono font-bold text-emerald-800 text-sm">{formatMoney(addedGrandTotal)}</span>
                   </div>
                   <div className="flex justify-between text-xs text-slate-600 pt-1 border-t border-emerald-200">
                     <span>Original Receipt Total:</span>
-                    <span className="font-mono font-semibold text-slate-700">₱{formatMoney(sale.grandTotal)}</span>
+                    <span className="font-mono font-semibold text-slate-700">{formatMoney(sale.grandTotal)}</span>
                   </div>
                   <div className="flex justify-between text-xs text-slate-900 font-black pt-1 border-t border-emerald-200">
                     <span>New Overall Receipt Grand Total:</span>
-                    <span className="font-mono text-base text-emerald-900">₱{formatMoney(newReceiptTotal)}</span>
+                    <span className="font-mono text-base text-emerald-900">{formatMoney(newReceiptTotal)}</span>
                   </div>
                 </div>
               )
@@ -2089,7 +2095,7 @@ function AppendSaleItemsDialog({ installmentRates, isSaving, onClose, onConfirm,
               <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <p className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
-                    {isCreditSale ? "Additional Downpayment (Optional)" : `Payment for Added Items (₱${formatMoney(addedGrandTotal)})`}
+                    {isCreditSale ? "Additional Downpayment (Optional)" : `Payment for Added Items (${formatMoney(addedGrandTotal)})`}
                   </p>
                   {isCreditSale ? (
                     <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
@@ -2104,10 +2110,17 @@ function AppendSaleItemsDialog({ installmentRates, isSaving, onClose, onConfirm,
                     <select
                       className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 outline-none"
                       disabled={isSaving}
-                      onChange={(e) => setPaymentMethod(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value
+                        setPaymentMethod(val)
+                        if (val === "PAYMONGO") {
+                          setIsPayMongoOpen(true)
+                        }
+                      }}
                       value={paymentMethod}
                     >
                       <option value="CASH">Cash</option>
+                      <option value="PAYMONGO">PayMongo (QR Ph / GCash / Maya / Card)</option>
                       <option value="GCASH">GCash</option>
                       <option value="BANK_TRANSFER">Bank Transfer</option>
                       <option value="OTHER">Other</option>
@@ -2125,7 +2138,7 @@ function AppendSaleItemsDialog({ installmentRates, isSaving, onClose, onConfirm,
                           onClick={() => setPaymentAmount(String(addedGrandTotal))}
                           className="text-[10px] font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-1.5 py-0.5 rounded transition cursor-pointer"
                         >
-                          Exact (₱{formatMoney(addedGrandTotal)})
+                          Exact ({formatMoney(addedGrandTotal)})
                         </button>
                       ) : null}
                     </div>
@@ -2141,6 +2154,37 @@ function AppendSaleItemsDialog({ installmentRates, isSaving, onClose, onConfirm,
                     />
                   </label>
                 </div>
+
+                
+                {paymentMethod === "PAYMONGO" ? (
+                  <div className="col-span-full rounded-2xl border border-emerald-300 bg-emerald-50/80 p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 bg-emerald-700 text-white rounded-xl shadow-xs">
+                        <QrCode size={20} />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
+                          <span>PayMongo Digital Checkout</span>
+                          <span className="text-[10px] font-mono bg-emerald-200/80 text-emerald-900 px-1.5 py-0.5 rounded font-bold">QR Ph / E-Wallets</span>
+                        </p>
+                        <p className="text-[11px] text-emerald-800">
+                          {paymentReference
+                            ? `Verified: ${paymentReference}`
+                            : "Customer scans QR Ph code or clicks PayMongo checkout link"}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-700 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-800 transition cursor-pointer"
+                      disabled={isSaving || addedGrandTotal <= 0}
+                      onClick={() => setIsPayMongoOpen(true)}
+                      type="button"
+                    >
+                      <Sparkles size={14} />
+                      {paymentReference ? "Re-open PayMongo QR" : "Open PayMongo Checkout"}
+                    </button>
+                  </div>
+                ) : null}
 
                 {Number(paymentAmount || 0) > 0 && paymentMethod !== "CASH" ? (
                   <label className="block">
@@ -2158,7 +2202,7 @@ function AppendSaleItemsDialog({ installmentRates, isSaving, onClose, onConfirm,
                 {paymentMethod === "CASH" && changeAmount > 0 ? (
                   <div className="flex items-center justify-between text-xs font-bold text-slate-700 bg-slate-50 p-2.5 rounded-xl">
                     <span>Change:</span>
-                    <span className="font-mono text-sm text-emerald-700">₱{formatMoney(changeAmount)}</span>
+                    <span className="font-mono text-sm text-emerald-700">{formatMoney(changeAmount)}</span>
                   </div>
                 ) : null}
 
@@ -2196,15 +2240,77 @@ function AppendSaleItemsDialog({ installmentRates, isSaving, onClose, onConfirm,
               {isSaving
                 ? "Appending items…"
                 : isCreditSale && financingSummary
-                  ? `Confirm & Append to Financing (+₱${formatMoney(financingSummary.netAddedToBalance)})`
-                  : `Confirm & Append (₱${formatMoney(addedGrandTotal)})`}
+                  ? `Confirm & Append to Financing (+${formatMoney(financingSummary.netAddedToBalance)})`
+                  : `Confirm & Append (${formatMoney(addedGrandTotal)})`}
             </button>
           </div>
         </form>
+        <PayMongoCheckoutModal
+          amount={addedGrandTotal}
+          cartItems={items.map((it) => ({
+            name: it.description || it.item?.itemName || "Item",
+            quantity: Math.max(1, Number(it.quantity) || 1),
+            amount: Number(it.unitPrice || 0),
+          }))}
+          customerEmail={sale.customer?.email}
+          customerName={sale.customer?.fullName || "Walk-in Customer"}
+          customerPhone={sale.customer?.contactNo || sale.customer?.mobileNumber}
+          isOpen={isPayMongoOpen}
+          onClose={() => setIsPayMongoOpen(false)}
+          onPaymentSuccess={async (res) => {
+            setIsPayMongoOpen(false)
+            const methodUpper = String(res.paymentMethod || "").toUpperCase()
+            const matchedMethod =
+              methodUpper === "GCASH"
+                ? "GCASH"
+                : methodUpper === "PAYMAYA" || methodUpper === "MAYA"
+                  ? "PAYMAYA"
+                  : methodUpper.includes("CARD")
+                    ? "CARD"
+                    : "OTHER"
+            const paymentRef = res.referenceNo || `PM-${matchedMethod}-${Date.now().toString().slice(-6)}`
+            const paymentNote = res.remarks || `[PayMongo Verified: ${matchedMethod}]`
+
+            setPaymentMethod(matchedMethod)
+            setPaymentReference(paymentRef)
+            setPaymentAmount(String(addedGrandTotal))
+            const updatedRemarks = remarks.trim() ? `${remarks.trim()} · ${paymentNote}` : paymentNote
+            setRemarks(updatedRemarks)
+
+            const payload = {
+              items: items.map((it) => ({
+                itemId: it.item?.id,
+                description: it.item ? undefined : it.description,
+                priceTier: it.item ? Number(it.priceTier || 1) : undefined,
+                quantity: Number(it.quantity),
+                unitPrice: it.item ? undefined : Number(it.unitPrice),
+                serialNumber: it.serialNumber?.trim() || undefined,
+              })),
+              payments: [
+                {
+                  paymentMethod: matchedMethod,
+                  amount: addedGrandTotal,
+                  referenceNo: paymentRef,
+                  remarks: paymentNote,
+                },
+              ],
+              term: isCreditSale ? selectedTerm : undefined,
+              remarks: updatedRemarks,
+            }
+
+            try {
+              await onConfirm(payload)
+            } catch (err) {
+              setMessage(getApiErrorMessage(err, "Unable to add items to this sale."))
+            }
+          }}
+          referenceNumber={`ADDON-${sale.receiptCode || "SALE"}-${Date.now().toString().slice(-4)}`}
+        />
       </div>
     </div>
   )
 }
+
 
 function ReturnSaleItemsDialog({ isSaving, onClose, onConfirm, sale }) {
   const eligibleItems = (sale.items || []).filter(

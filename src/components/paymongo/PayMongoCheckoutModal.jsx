@@ -111,7 +111,11 @@ export default function PayMongoCheckoutModal({
       return
     }
 
-    if (!amount || Number(amount) < 20) {
+    const numericAmount = typeof amount === "number"
+      ? amount
+      : parseFloat(String(amount || "").replace(/[^0-9.]/g, "")) || 0
+
+    if (!numericAmount || numericAmount < 20) {
       setErrorMsg("PayMongo minimum transaction amount is ₱20.00.")
       return
     }
@@ -132,7 +136,7 @@ export default function PayMongoCheckoutModal({
 
       try {
         const response = await createPayMongoCheckoutSession({
-          amount: Number(amount),
+          amount: numericAmount,
           description: `Pointify Sale - Ref #${referenceNumber || "POS"}`,
           customerName: customerName || "Walk-in Customer",
           customerEmail: customerEmail || undefined,

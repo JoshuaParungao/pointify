@@ -358,7 +358,7 @@ export default function QuotationConversionDialog({
       }
     } else {
       if (numPaid < grandTotal) {
-        setErrorMessage(`Full payment of ₱${formatMoney(grandTotal)} is required for immediate settlement, or switch to Accounts Receivable.`)
+        setErrorMessage(`Full payment of ${formatMoney(grandTotal)} is required for immediate settlement, or switch to Accounts Receivable.`)
         return
       }
       if (paymentMethod !== "CASH" && numPaid > grandTotal) {

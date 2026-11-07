@@ -131,24 +131,35 @@ function App() {
 
   const page = APP_MODULES.find((item) => item.key === activePage)
 
-  const setSafeActivePage = (pageKey, currentUser = user, context = null) => {
-    if (!currentUser) return
+  const setSafeActivePage = (pageKey, arg2 = user, arg3 = null) => {
+    let effectiveUser = user
+    let effectiveContext = null
+
+    if (arg2 && typeof arg2 === "object" && (arg2.role || arg2.id) && !arg2.loadOcr && !arg2.viewMode && !arg2.saleId) {
+      effectiveUser = arg2
+      effectiveContext = arg3
+    } else {
+      effectiveUser = user
+      effectiveContext = arg2 !== undefined && arg2 !== null ? arg2 : arg3
+    }
+
+    if (!effectiveUser) return
 
     const canAccessRequestedPage =
-      canRoleAccessModule(currentUser, pageKey) ||
+      canRoleAccessModule(effectiveUser, pageKey) ||
       (pageKey === "cash-box" && canAccessCashBox)
 
     if (canAccessRequestedPage) {
       setActivePage(pageKey)
-      setPageContext(context)
-      saveActivePage(currentUser.id, pageKey)
+      setPageContext(effectiveContext)
+      saveActivePage(effectiveUser.id, pageKey)
       return
     }
 
-    const defaultPage = getDefaultModuleForRole(currentUser.role)
+    const defaultPage = getDefaultModuleForRole(effectiveUser.role)
     setActivePage(defaultPage)
     setPageContext(null)
-    saveActivePage(currentUser.id, defaultPage)
+    saveActivePage(effectiveUser.id, defaultPage)
   }
 
   useEffect(() => {
@@ -387,7 +398,7 @@ function App() {
     }
 
     if (activePage === "quotations") {
-      return <QuotationsPage onNavigate={setSafeActivePage} selectedBranch={selectedBranch} user={user} />
+      return <QuotationsPage onNavigate={(pageKey, ctx) => setSafeActivePage(pageKey, user, ctx)} selectedBranch={selectedBranch} user={user} />
     }
 
     if (activePage === "pc-builds") {
