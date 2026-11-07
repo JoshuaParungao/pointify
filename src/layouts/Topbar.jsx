@@ -356,7 +356,7 @@ function Topbar({
               aria-label={`Action Alerts (${totalAlerts} pending)`}
               className={`relative grid size-10 shrink-0 place-items-center rounded-2xl border transition shadow-card cursor-pointer ${
                 totalAlerts > 0
-                  ? "border-rose-300 bg-rose-50/80 text-rose-700 hover:bg-rose-100/90 dark:border-rose-900/60 dark:bg-rose-950/50 dark:text-rose-400"
+                  ? "border-blue-300 bg-blue-50/80 text-blue-700 hover:bg-blue-100/90 dark:border-blue-800/60 dark:bg-blue-950/50 dark:text-blue-400"
                   : "border-[var(--color-border)] bg-white text-[var(--color-text-strong)] hover:bg-[var(--color-soft)]"
               }`}
               onClick={() => setIsAlertsDropdownOpen((prev) => !prev)}
@@ -365,8 +365,8 @@ function Topbar({
             >
               {totalAlerts > 0 ? (
                 <>
-                  <BellRing className="size-4 animate-bounce text-rose-600 dark:text-rose-400" />
-                  <span className="absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full bg-rose-600 text-[10px] font-black text-white shadow-xs">
+                  <BellRing className="size-4 animate-bounce text-blue-600 dark:text-blue-400" />
+                  <span className="absolute -top-1.5 -right-1.5 flex size-5 items-center justify-center rounded-full bg-blue-600 text-[10px] font-black text-white shadow-xs">
                     {totalAlerts > 9 ? "9+" : totalAlerts}
                   </span>
                 </>
@@ -380,7 +380,7 @@ function Topbar({
               <div className="fixed sm:absolute right-3 left-3 sm:left-auto sm:right-0 top-16 sm:top-12 z-50 max-w-[calc(100vw-1.5rem)] sm:w-96 rounded-3xl border border-slate-200 bg-white p-4 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-3 dark:border-slate-800">
                   <div className="flex items-center gap-2">
-                    <span className="grid size-7 place-items-center rounded-xl bg-rose-50 text-[var(--color-maroon)] dark:bg-rose-950/60 dark:text-rose-400">
+                    <span className="grid size-7 place-items-center rounded-xl bg-blue-50 text-[var(--color-maroon)] dark:bg-blue-950/60 dark:text-blue-400">
                       <BellRing size={14} />
                     </span>
                     <div>
@@ -395,7 +395,7 @@ function Topbar({
                       title="Refresh alerts"
                       type="button"
                     >
-                      <RefreshCw className={`size-3.5 ${isLoadingAlerts ? "animate-spin text-rose-600" : ""}`} />
+                      <RefreshCw className={`size-3.5 ${isLoadingAlerts ? "animate-spin text-blue-600" : ""}`} />
                     </button>
                     <button
                       className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 transition cursor-pointer"
@@ -412,7 +412,7 @@ function Topbar({
                   <div className="mt-3 flex flex-wrap gap-1.5 border-b border-slate-100 pb-3 dark:border-slate-800">
                     {categoryPills.map((pill) => (
                       <button
-                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-bold text-slate-700 hover:border-rose-300 hover:bg-rose-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 transition cursor-pointer"
+                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-bold text-slate-700 hover:border-blue-300 hover:bg-blue-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 transition cursor-pointer"
                         key={pill.key}
                         onClick={() => {
                           setIsAlertsDropdownOpen(false)
@@ -421,7 +421,7 @@ function Topbar({
                         type="button"
                       >
                         <span>{pill.label}</span>
-                        <span className="rounded-full bg-rose-600/15 px-1.5 py-0.2 text-[9px] font-black text-rose-700 dark:text-rose-300">
+                        <span className="rounded-full bg-blue-600/15 px-1.5 py-0.2 text-[9px] font-black text-blue-700 dark:text-blue-300">
                           {pill.count}
                         </span>
                       </button>
@@ -447,7 +447,7 @@ function Topbar({
                       >
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-1.5">
-                            <span className={`size-1.5 rounded-full ${item.isCritical ? "bg-rose-500 animate-pulse" : "bg-amber-500"}`} />
+                            <span className={`size-1.5 rounded-full ${item.isCritical ? "bg-blue-500 animate-pulse" : "bg-amber-500"}`} />
                             <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
                               {item.categoryLabel}
                             </span>
@@ -470,7 +470,7 @@ function Topbar({
                 {/* Footer Action */}
                 <div className="mt-3 border-t border-slate-100 pt-3 dark:border-slate-800">
                   <button
-                    className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-[var(--color-maroon)] py-2 text-xs font-bold text-white shadow-xs hover:bg-[#5c131d] transition cursor-pointer"
+                    className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-[var(--color-maroon)] py-2 text-xs font-bold text-white shadow-xs hover:bg-[var(--color-maroon-hover)] transition cursor-pointer"
                     onClick={() => {
                       setIsAlertsDropdownOpen(false)
                       onNavigate?.("alerts")
@@ -504,7 +504,7 @@ function Topbar({
             title="Click to edit your profile name"
             className="hidden min-w-0 items-center gap-2 rounded-2xl border border-[var(--color-border)] bg-white px-3 py-1.5 shadow-card xl:flex hover:border-[var(--color-maroon)] hover:bg-slate-50 transition cursor-pointer text-left"
           >
-            <div className="grid size-7 place-items-center rounded-xl bg-red-100 text-[var(--color-maroon)]">
+            <div className="grid size-7 place-items-center rounded-xl bg-blue-50 text-[var(--color-maroon)] dark:bg-blue-950/60 dark:text-blue-400">
               <User size={15} />
             </div>
             <div className="min-w-0">
@@ -701,14 +701,14 @@ function Topbar({
 
       {/* Floating Prompt on Login / Unopened Alerts */}
       {showLoginToast && totalAlerts > 0 && (
-        <div className="fixed bottom-5 right-5 z-50 w-full max-w-sm rounded-3xl border border-rose-200 bg-white p-4 shadow-2xl dark:border-rose-900/60 dark:bg-slate-900 animate-in slide-in-from-bottom-5 duration-300">
+        <div className="fixed bottom-5 right-5 z-50 w-full max-w-sm rounded-3xl border border-blue-200 bg-white p-4 shadow-2xl dark:border-blue-800/60 dark:bg-slate-900 animate-in slide-in-from-bottom-5 duration-300">
           <div className="flex items-start gap-3">
-            <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-400">
+            <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400">
               <BellRing className="size-5 animate-pulse" />
             </span>
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between gap-1">
-                <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10px] font-black text-rose-700 uppercase tracking-wider dark:bg-rose-950 dark:text-rose-300">
+                <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-black text-blue-700 uppercase tracking-wider dark:bg-blue-950 dark:text-blue-300">
                   {totalAlerts} Action Alerts
                 </span>
                 <button
@@ -728,7 +728,7 @@ function Topbar({
 
               <div className="mt-3 flex items-center gap-2">
                 <button
-                  className="flex-1 rounded-xl bg-[var(--color-maroon)] py-1.5 text-xs font-bold text-white hover:bg-[#5c131d] transition cursor-pointer shadow-xs"
+                  className="flex-1 rounded-xl bg-[var(--color-maroon)] py-1.5 text-xs font-bold text-white hover:bg-[var(--color-maroon-hover)] transition cursor-pointer shadow-xs"
                   onClick={() => {
                     dismissToast()
                     onNavigate?.("alerts")

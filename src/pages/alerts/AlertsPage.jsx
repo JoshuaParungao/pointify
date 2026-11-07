@@ -197,7 +197,7 @@ export default function AlertsPage({ selectedBranch, user, onNavigate }) {
       <section className="rounded-3xl border border-slate-200/90 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <div className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-rose-700 dark:bg-rose-950/60 dark:text-rose-300">
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-blue-700 dark:bg-blue-950/60 dark:text-blue-300">
               <ShieldAlert size={13} className="shrink-0" />
               Live Operational Monitoring
             </div>
@@ -210,7 +210,7 @@ export default function AlertsPage({ selectedBranch, user, onNavigate }) {
           </div>
           <div className="flex items-center gap-2 self-start md:self-auto">
             <button
-              className="inline-flex items-center gap-2 rounded-2xl bg-[var(--color-maroon)] px-5 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-[#5c131d] transition disabled:opacity-50 cursor-pointer"
+              className="inline-flex items-center gap-2 rounded-2xl bg-[var(--color-maroon)] px-5 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-[var(--color-maroon-hover)] transition disabled:opacity-50 cursor-pointer"
               disabled={isLoading}
               onClick={loadAlerts}
               type="button"
@@ -236,7 +236,7 @@ export default function AlertsPage({ selectedBranch, user, onNavigate }) {
             label: "Total Alerts",
             value: totals.totalAlerts,
             icon: Bell,
-            color: "text-rose-600 bg-rose-50 dark:bg-rose-950/50 dark:text-rose-400 border-rose-200",
+            color: "text-blue-600 bg-blue-50 dark:bg-blue-950/50 dark:text-blue-400 border-blue-200",
             page: null,
           },
           {
@@ -260,7 +260,7 @@ export default function AlertsPage({ selectedBranch, user, onNavigate }) {
             label: "Warranty",
             value: totals.warrantyAlerts,
             icon: ShieldAlert,
-            color: "text-rose-600 bg-rose-50 dark:bg-rose-950/50 dark:text-rose-400 border-rose-200",
+            color: "text-blue-600 bg-blue-50 dark:bg-blue-950/50 dark:text-blue-400 border-blue-200",
             page: "warranty",
           },
           {
@@ -316,8 +316,8 @@ export default function AlertsPage({ selectedBranch, user, onNavigate }) {
                     <IconComp size={18} />
                   </span>
                   {count > 0 ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-black text-rose-700 dark:bg-rose-950 dark:text-rose-400">
-                      <span className="size-1.5 rounded-full bg-rose-500 animate-pulse" />
+                    <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-black text-blue-700 dark:bg-blue-950 dark:text-blue-400">
+                      <span className="size-1.5 rounded-full bg-blue-500 animate-pulse" />
                       Attention
                     </span>
                   ) : (
@@ -340,7 +340,7 @@ export default function AlertsPage({ selectedBranch, user, onNavigate }) {
                 </span>
                 {card.page ? (
                   <button
-                    className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-bold text-[var(--color-maroon)] hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
+                    className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-bold text-[var(--color-maroon)] hover:bg-blue-50 dark:hover:bg-blue-950/40 transition"
                     onClick={(e) => {
                       e.stopPropagation()
                       onNavigate?.(card.page)
@@ -496,7 +496,7 @@ export default function AlertsPage({ selectedBranch, user, onNavigate }) {
                     </button>
 
                     <button
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--color-maroon)] px-3.5 py-1.5 text-xs font-bold text-white hover:bg-[#5c131d] transition cursor-pointer shadow-2xs"
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--color-maroon)] px-3.5 py-1.5 text-xs font-bold text-white hover:bg-[var(--color-maroon-hover)] transition cursor-pointer shadow-2xs"
                       onClick={() => onNavigate?.(item.targetPage)}
                       type="button"
                     >
@@ -527,7 +527,7 @@ export default function AlertsPage({ selectedBranch, user, onNavigate }) {
             ["credits", "Open Credits", ClockAlert],
           ].map(([page, label, Icon]) => (
             <button
-              className="inline-flex items-center gap-1.5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-bold text-slate-700 hover:border-[var(--color-maroon)] hover:bg-rose-50/50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 transition cursor-pointer"
+              className="inline-flex items-center gap-1.5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-bold text-slate-700 hover:border-[var(--color-maroon)] hover:bg-blue-50/50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 transition cursor-pointer"
               key={page}
               onClick={() => onNavigate?.(page)}
               type="button"
@@ -547,7 +547,7 @@ export default function AlertsPage({ selectedBranch, user, onNavigate }) {
             {/* Modal Header */}
             <div className="flex items-start justify-between border-b border-slate-100 pb-4 dark:border-slate-800">
               <div>
-                <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-0.5 text-[10px] font-black text-rose-700 uppercase tracking-wider dark:bg-rose-950 dark:text-rose-300">
+                <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-[10px] font-black text-blue-700 uppercase tracking-wider dark:bg-blue-950 dark:text-blue-300">
                   {activeModalItem.categoryLabel} Alert
                 </span>
                 <h3 className="mt-1.5 text-lg font-black text-slate-900 dark:text-white">
@@ -748,7 +748,7 @@ export default function AlertsPage({ selectedBranch, user, onNavigate }) {
                 Close
               </button>
               <button
-                className="inline-flex items-center gap-1.5 rounded-2xl bg-[var(--color-maroon)] px-5 py-2 text-xs font-bold text-white shadow-xs hover:bg-[#5c131d] transition cursor-pointer"
+                className="inline-flex items-center gap-1.5 rounded-2xl bg-[var(--color-maroon)] px-5 py-2 text-xs font-bold text-white shadow-xs hover:bg-[var(--color-maroon-hover)] transition cursor-pointer"
                 onClick={() => {
                   const target = activeModalItem.targetPage
                   setActiveModalItem(null)
