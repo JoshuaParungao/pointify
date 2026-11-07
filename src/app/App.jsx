@@ -384,7 +384,7 @@ function App() {
     }
 
     if (activePage === "quotations") {
-      return <QuotationsPage selectedBranch={selectedBranch} user={user} />
+      return <QuotationsPage onNavigate={setSafeActivePage} selectedBranch={selectedBranch} user={user} />
     }
 
     if (activePage === "pc-builds") {

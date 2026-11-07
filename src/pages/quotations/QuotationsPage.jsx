@@ -217,7 +217,7 @@ function getRoleLabel(role) {
   return role.replace(/_/g, " ")
 }
 
-export default function QuotationsPage({ selectedBranch, user }) {
+export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
   const branchName = selectedBranch?.name || user?.branch?.name || "Selected Branch"
   const branchId = selectedBranch?.id || user?.branch?.id || user?.branchId || ""
 
@@ -390,26 +390,27 @@ export default function QuotationsPage({ selectedBranch, user }) {
     )
   }
 
-  const handleDirectPosFromOcr = async (data) => {
+  const handleDirectPosFromOcr = (data) => {
     if (!data) return
-
-    if (data.matchedQuotationId) {
-      try {
-        const response = await getQuotationById(data.matchedQuotationId)
-        const fullQuotation = getQuotationData(response)
-        if (fullQuotation?.id) {
-          setQuotationToConvert(fullQuotation)
-          return
-        }
-      } catch {
-        // Fallback to builder import if lookup fails
-      }
+    if (!Array.isArray(data.items) || data.items.length === 0) {
+      setNoticeMessage("No line items detected in the scanned quotation. Nothing to load into POS.")
+      return
     }
 
+    try {
+      sessionStorage.setItem("pos_load_ocr", JSON.stringify(data))
+    } catch {
+      // Ignore storage errors; context is also passed directly
+    }
+
+    if (typeof onNavigate === "function") {
+      onNavigate("pos", undefined, { loadOcr: data, viewMode: "REGISTER" })
+      return
+    }
+
+    // Fallback when navigation is unavailable
     handleImportOcrData(data)
-    setNoticeMessage(
-      "OCR data loaded into Quotation Builder. Save the quotation first to proceed with POS Checkout."
-    )
+    setNoticeMessage("OCR data loaded into Quotation Builder. Open POS Cashiering to complete the sale.")
   }
 
   // Load Quotation History

@@ -41,7 +41,7 @@ import {
   getInventoryBatches,
   getInventorySerials,
 } from "../../features/inventory/inventory.api"
-import { getItems } from "../../features/items/items.api"
+import { getItemById, getItems } from "../../features/items/items.api"
 import { parseItemWarranty } from "../items/ItemsPage"
 import {
   createQuotation,
@@ -2780,64 +2780,6 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
 
   const [itemsViewMode, setItemsViewMode] = useState("RECEIPTS") // "RECEIPTS" | "ITEMS"
 
-  const [isRefreshingCartStock, setIsRefreshingCartStock] = useState(false)
-
-  const refreshCartStock = useCallback(async () => {
-    if (!branchId || cart.length === 0) return
-    const productLines = cart.filter((line) => line.type === "PRODUCT" && line.itemId)
-    if (productLines.length === 0) return
-
-    setIsRefreshingCartStock(true)
-    try {
-      const updatedLines = await Promise.all(
-        cart.map(async (line) => {
-          if (line.type !== "PRODUCT" || !line.itemId) return line
-          try {
-            const [batchRes, serialRes] = await Promise.all([
-              getInventoryBatches({
-                branchId,
-                itemId: line.itemId,
-                status: "ACTIVE",
-                limit: 100,
-              }),
-              line.item?.isSerialized
-                ? getInventorySerials({
-                    branchId,
-                    itemId: line.itemId,
-                    status: "AVAILABLE",
-                    limit: 100,
-                  })
-                : Promise.resolve({ data: [] }),
-            ])
-            const freshBatches = getInventoryRows(batchRes).filter(
-              (b) => Number(b.quantityAvailable || 0) > 0
-            )
-            const freshSerials = line.item?.isSerialized
-              ? getInventoryRows(serialRes)
-              : []
-
-            let currentBatchId = line.batchId
-            if (currentBatchId && !freshBatches.some((b) => b.id === currentBatchId)) {
-              currentBatchId = freshBatches[0]?.id || ""
-            }
-
-            return {
-              ...line,
-              batches: freshBatches,
-              serials: freshSerials,
-              batchId: currentBatchId,
-            }
-          } catch {
-            return line
-          }
-        })
-      )
-      setCart(updatedLines)
-    } finally {
-      setIsRefreshingCartStock(false)
-    }
-  }, [branchId, cart])
-
   const [itemSearch, setItemSearch] = useState("")
   const [itemResults, setItemResults] = useState([])
   const [jobOrderResults, setJobOrderResults] = useState([])
@@ -2926,6 +2868,65 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
     return Array.isArray(draft?.cart) ? draft.cart : []
   })
   const [cartMessage, setCartMessage] = useState("")
+
+  const [isRefreshingCartStock, setIsRefreshingCartStock] = useState(false)
+
+  const refreshCartStock = useCallback(async () => {
+    if (!branchId || cart.length === 0) return
+    const productLines = cart.filter((line) => line.type === "PRODUCT" && line.itemId)
+    if (productLines.length === 0) return
+
+    setIsRefreshingCartStock(true)
+    try {
+      const updatedLines = await Promise.all(
+        cart.map(async (line) => {
+          if (line.type !== "PRODUCT" || !line.itemId) return line
+          try {
+            const [batchRes, serialRes] = await Promise.all([
+              getInventoryBatches({
+                branchId,
+                itemId: line.itemId,
+                status: "ACTIVE",
+                limit: 100,
+              }),
+              line.item?.isSerialized
+                ? getInventorySerials({
+                    branchId,
+                    itemId: line.itemId,
+                    status: "AVAILABLE",
+                    limit: 100,
+                  })
+                : Promise.resolve({ data: [] }),
+            ])
+            const freshBatches = getInventoryRows(batchRes).filter(
+              (b) => Number(b.quantityAvailable || 0) > 0
+            )
+            const freshSerials = line.item?.isSerialized
+              ? getInventoryRows(serialRes)
+              : []
+
+            let currentBatchId = line.batchId
+            if (currentBatchId && !freshBatches.some((b) => b.id === currentBatchId)) {
+              currentBatchId = freshBatches[0]?.id || ""
+            }
+
+            return {
+              ...line,
+              batches: freshBatches,
+              serials: freshSerials,
+              batchId: currentBatchId,
+            }
+          } catch {
+            return line
+          }
+        })
+      )
+      setCart(updatedLines)
+    } finally {
+      setIsRefreshingCartStock(false)
+    }
+  }, [branchId, cart])
+
   const [showServiceForm, setShowServiceForm] = useState(false)
   const [showJobOrderLookup, setShowJobOrderLookup] = useState(false)
   const [serviceDescription, setServiceDescription] = useState("")
@@ -3963,6 +3964,142 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
         })
         .catch(() => {})
     }
+  }, [initialContext, branchId])
+
+  // Load OCR-extracted quotation lines into the POS cart
+  const loadOcrIntoCart = async (data) => {
+    const ocrItems = Array.isArray(data?.items) ? data.items : []
+    if (ocrItems.length === 0) {
+      setCartMessage("The scanned quotation has no line items to load into POS.")
+      return
+    }
+
+    // Customer details
+    const matched = data.matchedCustomer
+    if (matched?.id) {
+      setSelectedCustomerId(matched.id)
+      setCustomerSearch(matched.fullName || data.customer?.name || "")
+      setCustomerPhone(matched.mobileNumber || data.customer?.contactNumber || "")
+      setCustomerAddress(matched.address || data.customer?.address || "")
+      setCustomerEmail(matched.email || data.customer?.email || "")
+    } else if (data.customer?.name) {
+      setSelectedCustomerId("")
+      setCustomerSearch(data.customer.name)
+      setCustomerPhone(data.customer.contactNumber || "")
+      setCustomerAddress(data.customer.address || "")
+      setCustomerEmail(data.customer.email || "")
+    }
+
+    const round2 = (value) => Math.round(Number(value || 0) * 100) / 100
+    const newLines = []
+    const stamp = Date.now()
+
+    for (const [idx, ocrLine] of ocrItems.entries()) {
+      const qty = Math.max(1, Number(ocrLine.quantity || 1))
+      const quotedUnit = Number(ocrLine.unitPrice || ocrLine.catalogPrice || 0)
+      const quotedTotal = Number(ocrLine.lineTotal || quotedUnit * qty)
+      let loadedAsProduct = false
+
+      if (ocrLine.matchedItemId) {
+        try {
+          const itemRes = await getItemById(ocrLine.matchedItemId)
+          const item = itemRes?.data || itemRes
+          if (item?.id) {
+            const [batchRes, serialRes] = await Promise.all([
+              getInventoryBatches({ branchId, itemId: item.id, status: "ACTIVE", limit: 100 }),
+              item.isSerialized
+                ? getInventorySerials({ branchId, itemId: item.id, status: "AVAILABLE", limit: 100 })
+                : Promise.resolve(null),
+            ])
+            const batches = getInventoryRows(batchRes).filter(
+              (batch) => Number(batch.quantityAvailable || 0) > 0,
+            )
+            const serials = item.isSerialized ? getInventoryRows(serialRes) : []
+
+            const tiers = availablePriceTiers(item)
+            const matchedTier = tiers.find(
+              (tier) => Math.abs(Number(item[`price${tier}`] || 0) - quotedUnit) < 0.01,
+            )
+            const tier = matchedTier || defaultPriceTier(item)
+            const tierPrice = Number(item[`price${tier}`] || 0)
+            const totalDiscount = Math.max(0, round2(tierPrice * qty - quotedTotal))
+
+            const unitLines = item.isSerialized ? Math.round(qty) : 1
+            for (let u = 0; u < unitLines; u += 1) {
+              const serial = item.isSerialized ? serials[u] || null : null
+              newLines.push({
+                localId: `product-ocr-${stamp}-${idx}-${u}`,
+                type: "PRODUCT",
+                item,
+                itemId: item.id,
+                priceTier: tier,
+                isRememberedTier: false,
+                quantity: String(item.isSerialized ? 1 : qty),
+                markupPercent: "",
+                discountAmount: String(item.isSerialized ? round2(totalDiscount / unitLines) : totalDiscount),
+                batchId: item.isSerialized ? serial?.batch?.id || "" : batches[0]?.id || "",
+                serialId: serial?.id || "",
+                customSerialNumber: serial?.serialNumber || "",
+                isCustomSerial: item.isSerialized ? !serial : false,
+                customBatchCode: "",
+                isCustomBatch: !item.isSerialized && batches.length === 0,
+                warrantyType: item.isSerialized ? "MAJOR_PARTS" : "ACCESSORIES",
+                warrantyDuration: parseItemWarranty(item),
+                batches,
+                serials,
+              })
+            }
+            loadedAsProduct = true
+          }
+        } catch {
+          loadedAsProduct = false
+        }
+      }
+
+      if (!loadedAsProduct) {
+        newLines.push({
+          localId: `service-ocr-${stamp}-${idx}`,
+          type: "SERVICE",
+          description: ocrLine.rawDescription || ocrLine.matchedItemName || "Imported Line Item",
+          quantity: String(qty),
+          baseUnitPrice: String(quotedUnit),
+          markupPercent: "0",
+          unitPrice: String(quotedUnit),
+          discountAmount: String(Math.max(0, round2(quotedUnit * qty - quotedTotal))),
+          serviceStaffId: null,
+          serviceStaffName: null,
+          serviceStaffRole: null,
+          warrantyDuration: "NO WARRANTY",
+        })
+      }
+    }
+
+    setCart((current) => [...current, ...newLines])
+    setPosViewMode("REGISTER")
+    const ref = data.documentInfo?.quotationNumber ? ` from Quotation #${data.documentInfo.quotationNumber}` : ""
+    setNoticeMessage(`Loaded ${newLines.length} line(s)${ref} into the POS cart. Review and complete the sale.`)
+  }
+
+  const ocrLoadedRef = useRef(false)
+  useEffect(() => {
+    if (!branchId || ocrLoadedRef.current) return
+    let ocrData = initialContext?.loadOcr || null
+    if (!ocrData) {
+      try {
+        const raw = sessionStorage.getItem("pos_load_ocr")
+        if (raw) ocrData = JSON.parse(raw)
+      } catch {
+        // Ignore
+      }
+    }
+    if (!ocrData) return
+    ocrLoadedRef.current = true
+    try {
+      sessionStorage.removeItem("pos_load_ocr")
+    } catch {
+      // Ignore
+    }
+    loadOcrIntoCart(ocrData)
   }, [initialContext, branchId])
 
   const updateCartLine = (localId, patch) => {
