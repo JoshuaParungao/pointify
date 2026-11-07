@@ -135,9 +135,14 @@ export default function CashBoxesPage({
   const [isSaving, setIsSaving] = useState(false)
   const [message, setMessage] = useState("")
   const [notice, setNotice] = useState("")
+  const [modalError, setModalError] = useState("")
 
   // Modals state
   const [modalType, setModalType] = useState(null) // "EXPENSE" | "BANK_DEPOSIT" | "CASH_IN" | "HANDOVER" | null
+  const openModal = (type) => {
+    setModalError("")
+    setModalType(type)
+  }
 
   // Form states
   const [expenseForm, setExpenseForm] = useState({
@@ -593,21 +598,23 @@ export default function CashBoxesPage({
   // Handlers
   const handleRecordExpense = async (e) => {
     e.preventDefault()
-    if (!selectedBox || isSaving) return
+    if (isSaving) return
     const amt = Number(expenseForm.amount)
     if (!amt || amt <= 0) {
-      setMessage("Please enter a valid expense amount.")
+      setModalError("Please enter a valid expense amount.")
       return
     }
 
+    const boxId = selectedBox?.id || boxes[0]?.id || "default"
     const catObj = EXPENSE_CATEGORIES.find((c) => c.id === expenseForm.category)
     const catLabel = catObj?.label || "Store Expense"
     const description = `[EXPENSE: ${catLabel}] ${expenseForm.description.trim()}`
 
     setIsSaving(true)
+    setModalError("")
     setMessage("")
     try {
-      await createCashTransaction(selectedBox.id, {
+      await createCashTransaction(boxId, {
         type: "CASH_OUT",
         amount: amt,
         description,
@@ -625,7 +632,9 @@ export default function CashBoxesPage({
       setModalType(null)
       await reloadActive()
     } catch (err) {
-      setMessage(apiError(err, "Could not record expense."))
+      const errMsg = apiError(err, "Could not record expense.")
+      setModalError(errMsg)
+      setMessage(errMsg)
     } finally {
       setIsSaving(false)
     }
@@ -633,20 +642,22 @@ export default function CashBoxesPage({
 
   const handleBankDeposit = async (e) => {
     e.preventDefault()
-    if (!selectedBox || isSaving) return
+    if (isSaving) return
     const amt = Number(bankDepositForm.amount)
     if (!amt || amt <= 0) {
-      setMessage("Please enter a valid deposit amount.")
+      setModalError("Please enter a valid deposit amount.")
       return
     }
 
+    const boxId = selectedBox?.id || boxes[0]?.id || "default"
     const effectiveBank = bankDepositForm.bankName === "Other Bank" ? bankDepositForm.customBankName.trim() : bankDepositForm.bankName
     const description = `[BANK DEPOSIT - ${effectiveBank || "Bank"}] ${bankDepositForm.notes.trim() || `Cash deposited to ${effectiveBank} account ${bankDepositForm.accountNo || ""}`}`
 
     setIsSaving(true)
+    setModalError("")
     setMessage("")
     try {
-      await createCashTransaction(selectedBox.id, {
+      await createCashTransaction(boxId, {
         type: "CASH_OUT",
         amount: amt,
         description,
@@ -666,7 +677,9 @@ export default function CashBoxesPage({
       setModalType(null)
       await reloadActive()
     } catch (err) {
-      setMessage(apiError(err, "Could not record bank deposit."))
+      const errMsg = apiError(err, "Could not record bank deposit.")
+      setModalError(errMsg)
+      setMessage(errMsg)
     } finally {
       setIsSaving(false)
     }
@@ -674,17 +687,20 @@ export default function CashBoxesPage({
 
   const handleCashIn = async (e) => {
     e.preventDefault()
-    if (!selectedBox || isSaving) return
+    if (isSaving) return
     const amt = Number(cashInForm.amount)
     if (!amt || amt <= 0) {
-      setMessage("Please enter a valid cash amount.")
+      setModalError("Please enter a valid cash amount.")
       return
     }
 
+    const boxId = selectedBox?.id || boxes[0]?.id || "default"
+
     setIsSaving(true)
+    setModalError("")
     setMessage("")
     try {
-      await createCashTransaction(selectedBox.id, {
+      await createCashTransaction(boxId, {
         type: "CASH_IN",
         amount: amt,
         description: `[CASH IN] ${cashInForm.reason.trim()}`,
@@ -701,7 +717,9 @@ export default function CashBoxesPage({
       setModalType(null)
       await reloadActive()
     } catch (err) {
-      setMessage(apiError(err, "Could not add cash."))
+      const errMsg = apiError(err, "Could not add cash.")
+      setModalError(errMsg)
+      setMessage(errMsg)
     } finally {
       setIsSaving(false)
     }
@@ -709,17 +727,20 @@ export default function CashBoxesPage({
 
   const handleCreateHandover = async (e) => {
     e.preventDefault()
-    if (!selectedBox || isSaving) return
+    if (isSaving) return
     const amt = Number(handoverForm.amount)
     if (!amt || amt <= 0) {
-      setMessage("Please enter a valid handover amount.")
+      setModalError("Please enter a valid handover amount.")
       return
     }
 
+    const boxId = selectedBox?.id || boxes[0]?.id || "default"
+
     setIsSaving(true)
+    setModalError("")
     setMessage("")
     try {
-      await createCashHandover(selectedBox.id, {
+      await createCashHandover(boxId, {
         amount: amt,
         toUserId: handoverForm.toUserId || undefined,
         remarks: handoverForm.remarks.trim() || undefined,
@@ -730,7 +751,9 @@ export default function CashBoxesPage({
       setTab("handovers")
       await reloadActive()
     } catch (err) {
-      setMessage(apiError(err, "Could not create cash handover."))
+      const errMsg = apiError(err, "Could not create cash handover.")
+      setModalError(errMsg)
+      setMessage(errMsg)
     } finally {
       setIsSaving(false)
     }
@@ -820,7 +843,7 @@ export default function CashBoxesPage({
               <>
                 <button
                   className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50/70 px-3 py-2 text-xs font-bold text-rose-800 hover:bg-rose-100 transition shadow-2xs"
-                  onClick={() => setModalType("EXPENSE")}
+                  onClick={() => openModal("EXPENSE")}
                   type="button"
                 >
                   <Receipt size={14} className="text-rose-600" />
@@ -829,7 +852,7 @@ export default function CashBoxesPage({
 
                 <button
                   className="inline-flex items-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50/70 px-3 py-2 text-xs font-bold text-sky-800 hover:bg-sky-100 transition shadow-2xs"
-                  onClick={() => setModalType("BANK_DEPOSIT")}
+                  onClick={() => openModal("BANK_DEPOSIT")}
                   type="button"
                 >
                   <Building2 size={14} className="text-sky-600" />
@@ -838,7 +861,7 @@ export default function CashBoxesPage({
 
                 <button
                   className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-700 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-800 transition shadow-2xs"
-                  onClick={() => setModalType("CASH_IN")}
+                  onClick={() => openModal("CASH_IN")}
                   type="button"
                 >
                   <Plus size={14} />
@@ -847,7 +870,7 @@ export default function CashBoxesPage({
 
                 <button
                   className="inline-flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2 text-xs font-bold text-amber-900 hover:bg-amber-100 transition shadow-2xs"
-                  onClick={() => setModalType("HANDOVER")}
+                  onClick={() => openModal("HANDOVER")}
                   type="button"
                 >
                   <HandCoins size={14} className="text-amber-700" />
@@ -1627,6 +1650,12 @@ export default function CashBoxesPage({
 
             <form onSubmit={handleRecordExpense}>
               <div className="max-h-[75vh] overflow-y-auto p-5 space-y-3.5">
+                {modalError && (
+                  <div className="flex items-center justify-between rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-bold text-rose-800 dark:border-rose-900 dark:bg-rose-950/50 dark:text-rose-300">
+                    <span>{modalError}</span>
+                    <button onClick={() => setModalError("")} type="button"><X size={14} /></button>
+                  </div>
+                )}
                 <div>
                   <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600 block">Select Category</label>
                   <div className="mt-1.5 grid grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-0.5">
@@ -1744,6 +1773,12 @@ export default function CashBoxesPage({
 
             <form onSubmit={handleBankDeposit}>
               <div className="max-h-[75vh] overflow-y-auto p-5 space-y-3.5">
+                {modalError && (
+                  <div className="flex items-center justify-between rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-bold text-rose-800 dark:border-rose-900 dark:bg-rose-950/50 dark:text-rose-300">
+                    <span>{modalError}</span>
+                    <button onClick={() => setModalError("")} type="button"><X size={14} /></button>
+                  </div>
+                )}
                 <div>
                   <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600 block">Select Bank Account</label>
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -1865,6 +1900,12 @@ export default function CashBoxesPage({
 
             <form onSubmit={handleCashIn}>
               <div className="max-h-[75vh] overflow-y-auto p-5 space-y-3.5">
+                {modalError && (
+                  <div className="flex items-center justify-between rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-bold text-rose-800 dark:border-rose-900 dark:bg-rose-950/50 dark:text-rose-300">
+                    <span>{modalError}</span>
+                    <button onClick={() => setModalError("")} type="button"><X size={14} /></button>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600 block">Cash Amount (₱) <span className="text-red-600">*</span></label>
@@ -1955,6 +1996,12 @@ export default function CashBoxesPage({
 
             <form onSubmit={handleCreateHandover}>
               <div className="max-h-[75vh] overflow-y-auto p-5 space-y-3.5">
+                {modalError && (
+                  <div className="flex items-center justify-between rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-bold text-rose-800 dark:border-rose-900 dark:bg-rose-950/50 dark:text-rose-300">
+                    <span>{modalError}</span>
+                    <button onClick={() => setModalError("")} type="button"><X size={14} /></button>
+                  </div>
+                )}
                 <div>
                   <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600 block">Handover Amount (₱) <span className="text-red-600">*</span></label>
                   <input
