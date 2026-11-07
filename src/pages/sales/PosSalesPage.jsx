@@ -110,9 +110,6 @@ const SALE_CANCELLER_ROLES = new Set([
 const IMMEDIATE_PAYMENT_METHODS = [
   ["CASH", "Cash (Physical)"],
   ["PAYMONGO", "PayMongo Digital (QR Ph / GCash / Maya / Card)"],
-  ["GCASH", "GCash (Manual / Direct)"],
-  ["BANK_TRANSFER", "Bank Transfer (Any Bank)"],
-  ["OTHER", "Maya / PayMaya / Other Online"],
 ]
 
 const RECEIVABLE_PROVIDERS = [
