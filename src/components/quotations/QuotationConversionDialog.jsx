@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { AlertCircle, Check, CheckCircle2, DollarSign, FileText, LoaderCircle, Package, X } from "lucide-react"
 import { getInventoryBatches, getInventorySerials } from "../../features/inventory/inventory.api"
 import { getQuotationById } from "../../features/quotations/quotations.api"
+import { generateUUID } from "../../utils/uuid"
 import { createSale } from "../../features/sales/sales.api"
 import { parseQuotationSettlement, stripSettlementTag } from "../../utils/quotationSettlement"
 import {
@@ -56,10 +57,7 @@ function formatMoney(value) {
 }
 
 function createRequestKey() {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID()
-  }
-  return `req-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+  return generateUUID()
 }
 
 export default function QuotationConversionDialog({
@@ -392,7 +390,12 @@ export default function QuotationConversionDialog({
           numPaid > 0
             ? [
                 {
-                  paymentMethod: isReceivable ? settlementMethod : paymentMethod,
+                  paymentMethod: (() => {
+                    const rawM = isReceivable ? settlementMethod : paymentMethod;
+                    if (rawM === "CREDIT_CARD" || rawM === "DEBIT_CARD") return "CARD";
+                    if (rawM === "PAYMAYA" || rawM === "MAYA") return "GCASH";
+                    return rawM;
+                  })(),
                   amount: numPaid,
                   referenceNo: referenceNo.trim() || undefined,
                   remarks: remarks.trim() || undefined,
@@ -559,7 +562,7 @@ export default function QuotationConversionDialog({
                           )}
                         </div>
                         <p className="mt-0.5 text-[11px] text-slate-500">
-                          Qty: <span className="font-semibold">{line.quantity}</span> • Unit: ₱{formatMoney(line.unitPrice)} • Total: ₱{formatMoney(Number(line.quantity) * Number(line.unitPrice))}
+                          Qty: <span className="font-semibold">{line.quantity}</span> • Unit: {formatMoney(line.unitPrice)} • Total: {formatMoney(Number(line.quantity) * Number(line.unitPrice))}
                         </p>
                       </div>
 
@@ -749,19 +752,19 @@ export default function QuotationConversionDialog({
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                   <div className="rounded-lg border border-blue-100 bg-white p-2 text-center">
                     <span className="text-[10px] uppercase font-bold text-slate-500">Cash Promo Total</span>
-                    <p className="font-black text-slate-900">₱{formatMoney(grandTotal)}</p>
+                    <p className="font-black text-slate-900">{formatMoney(grandTotal)}</p>
                   </div>
                   <div className="rounded-lg border border-blue-100 bg-white p-2 text-center">
                     <span className="text-[10px] uppercase font-bold text-blue-700">Interest / Rate Adj</span>
-                    <p className="font-black text-blue-900">+₱{formatMoney(installmentCalculation?.interestAmount || 0)}</p>
+                    <p className="font-black text-blue-900">+{formatMoney(installmentCalculation?.interestAmount || 0)}</p>
                   </div>
                   <div className="rounded-lg border border-blue-100 bg-white p-2 text-center">
                     <span className="text-[10px] uppercase font-bold text-amber-700">Financed Total</span>
-                    <p className="font-black text-amber-900">₱{formatMoney(installmentCalculation?.regularPriceTotalAmount || grandTotal)}</p>
+                    <p className="font-black text-amber-900">{formatMoney(installmentCalculation?.regularPriceTotalAmount || grandTotal)}</p>
                   </div>
                   <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-center">
                     <span className="text-[10px] uppercase font-bold text-emerald-800">Monthly ({installmentCalculation?.months} mos)</span>
-                    <p className="font-black text-emerald-950">₱{formatMoney(installmentCalculation?.monthlyDueAmount || 0)}/mo</p>
+                    <p className="font-black text-emerald-950">{formatMoney(installmentCalculation?.monthlyDueAmount || 0)}/mo</p>
                   </div>
                 </div>
 
@@ -813,7 +816,7 @@ export default function QuotationConversionDialog({
           <div>
             <span className="text-xs font-bold text-slate-500 uppercase">Sale Grand Total:</span>
             <span className="ml-2 font-mono text-lg font-black text-slate-900">
-              ₱{formatMoney(isReceivable ? (installmentCalculation?.regularPriceTotalAmount || grandTotal) : grandTotal)}
+              {formatMoney(isReceivable ? (installmentCalculation?.regularPriceTotalAmount || grandTotal) : grandTotal)}
             </span>
           </div>
 

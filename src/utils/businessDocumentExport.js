@@ -1279,14 +1279,14 @@ export function exportWarrantyReceiptPdf(sale, options = {}) {
   doc.setTextColor(50, 50, 50)
   const branchAddress = sanitizeForPdf(
     branch.address ||
-      "Kingspire Business Centre, Km.71, Mac Arthur Highway, San Isidro, City of San Fernando, Pampanga"
+      branch?.address || branch?.name || "Main Branch"
   )
   const addressLines = doc.splitTextToSize(branchAddress, leftColWidth)
   doc.text(addressLines, leftColX, leftY)
 
   leftY += addressLines.length * 3.4 + 1
   const branchContact = sanitizeForPdf(
-    branch.contactNo || "0961-873-5798 / 045-404-0673"
+    branch.contactNo || branch?.contactNo || "—"
   )
   doc.text(branchContact, leftColX, leftY)
   leftY += 4
@@ -1768,14 +1768,14 @@ export function exportCustomerQuotationPdf(quotation, options = {}) {
   doc.setTextColor(50, 50, 50)
   const branchAddress = sanitizeForPdf(
     branch.address ||
-      "Kingspire Business Centre, Km.71, Mac Arthur Highway, San Isidro, City of San Fernando, Pampanga"
+      branch?.address || branch?.name || "Main Branch"
   )
   const addressLines = doc.splitTextToSize(branchAddress, leftColWidth)
   doc.text(addressLines, leftColX, leftY)
 
   leftY += addressLines.length * 3.4 + 1
   const branchContact = sanitizeForPdf(
-    branch.contactNo || "0961-873-5798 / 045-404-0673"
+    branch.contactNo || branch?.contactNo || "—"
   )
   doc.text(branchContact, leftColX, leftY)
   leftY += 4
@@ -2542,7 +2542,7 @@ export function exportStatementOfAccountPdf({
 
   // 1. TOP RIGHT: Official Shop Letterhead
   const shopName = sanitizeForPdf(branch?.name || "POINTIFY BUSINESS MANAGEMENT")
-  const shopAddr1 = branch?.address || "Kingspire Business Centre, Km.71, Mac Arthur Highway,"
+  const shopAddr1 = branch?.address || branch?.name || "Main Branch"
   const shopAddr2 = "San Isidro, City of San Fernando, Pampanga"
   const shopContact = branch?.contactNo || "0997-732-7689/ 045-404-0673"
 

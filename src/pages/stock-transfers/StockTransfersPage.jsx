@@ -2470,7 +2470,7 @@ export default function StockTransfersPage({ initialContext, selectedBranch, use
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <label className="block">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 block">
-                          Authorized Person / Staff Name
+                          Authorized Person / Staff Name (Opsyonal)
                         </span>
                         <input
                           className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 outline-none transition focus:border-[var(--color-maroon)]"
@@ -2502,8 +2502,8 @@ export default function StockTransfersPage({ initialContext, selectedBranch, use
                 <ProofPhotoUploader
                   label={
                     transferOutMethod === "DELIVERY"
-                      ? "Litrato ng Patunay (Proof of Delivery / Waybill / Package Picture) *"
-                      : "Litrato ng Pag-Release / Claimant (Pick up Release Photo) *"
+                      ? "Litrato ng Patunay (Proof of Delivery / Waybill / Package Picture) (Opsyonal)"
+                      : "Litrato ng Pag-Release / Claimant (Pick up Release Photo) (Opsyonal)"
                   }
                   value={transferOutProofPhoto}
                   onChange={setTransferOutProofPhoto}
@@ -2665,7 +2665,7 @@ export default function StockTransfersPage({ initialContext, selectedBranch, use
 
               {/* Upload Receiver Proof Photo */}
               <ProofPhotoUploader
-                label="Litrato ng Natanggap na Items / Package Condition (Receive Proof Photo) *"
+                label="Litrato ng Natanggap na Items / Package Condition (Receive Proof Photo) (Opsyonal)"
                 value={receiveProofPhoto}
                 onChange={setReceiveProofPhoto}
                 disabled={isReceiving}

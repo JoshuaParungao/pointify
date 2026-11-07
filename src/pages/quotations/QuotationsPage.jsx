@@ -126,6 +126,7 @@ function getCatalogRows(response) {
 }
 
 function getItemCount(quotation) {
+  if (Number.isFinite(quotation?._count?.items)) return quotation._count.items
   if (Number.isFinite(quotation?.itemCount)) return quotation.itemCount
   if (Number.isFinite(quotation?.totalItems)) return quotation.totalItems
   if (Array.isArray(quotation?.items)) return quotation.items.length
@@ -339,6 +340,10 @@ export default function QuotationsPage({ selectedBranch, user }) {
         const resolvedQty = Math.max(1, Number(item.quantity || 1))
 
         if (item.matchedItemId) {
+          const itemWarranty = item.hasWarranty
+            ? (item.warrantyDuration || "1 YEAR WARRANTY")
+            : (item.warrantyDuration && item.warrantyDuration !== "1 YEAR WARRANTY" ? item.warrantyDuration : "NO WARRANTY")
+
           return {
             localId: `product-ocr-${item.matchedItemId}-${Date.now()}-${idx}`,
             type: "PRODUCT",
@@ -346,18 +351,21 @@ export default function QuotationsPage({ selectedBranch, user }) {
               id: item.matchedItemId,
               itemName: item.matchedItemName || item.rawDescription || "Catalog Item",
               itemCode: item.matchedItemCode || item.rawItemCode || "",
-              price1: resolvedPrice,
-              price2: resolvedPrice,
-              price3: resolvedPrice,
-              isSerialized: false,
-              hasWarranty: false,
+              price1: item.price1 !== undefined ? Number(item.price1) : resolvedPrice,
+              price2: item.price2 !== undefined ? Number(item.price2) : resolvedPrice,
+              price3: item.price3 !== undefined ? Number(item.price3) : resolvedPrice,
+              price4: item.price4 !== undefined ? Number(item.price4) : resolvedPrice,
+              price5: item.price5 !== undefined ? Number(item.price5) : resolvedPrice,
+              availableQuantity: Number(item.availableQuantity || item.availableStock || 0),
+              isSerialized: Boolean(item.isSerialized),
+              hasWarranty: Boolean(item.hasWarranty),
             },
             quantity: String(resolvedQty),
             selectedTier: "1",
             customUnitPrice: String(resolvedPrice),
             markupPercent: "",
             discountAmount: "0",
-            warrantyDuration: "1 YEAR WARRANTY",
+            warrantyDuration: itemWarranty,
           }
         }
         return {

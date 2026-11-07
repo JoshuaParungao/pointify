@@ -738,7 +738,7 @@ function SaleDetailDialog({
 
   const branchAddress =
     sale?.branch?.address ||
-    "Kingspire Business Centre, Km.71, Mac Arthur Highway, San Isidro, City of San Fernando, Pampanga"
+    currentBranch?.address || "Main Branch"
   const branchContact = sale?.branch?.contactNo || "0961-873-5798 / 045-404-0673"
 
   const paymentType = useMemo(() => {
@@ -2780,6 +2780,64 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
   }
 
   const [itemsViewMode, setItemsViewMode] = useState("RECEIPTS") // "RECEIPTS" | "ITEMS"
+
+  const [isRefreshingCartStock, setIsRefreshingCartStock] = useState(false)
+
+  const refreshCartStock = useCallback(async () => {
+    if (!branchId || cart.length === 0) return
+    const productLines = cart.filter((line) => line.type === "PRODUCT" && line.itemId)
+    if (productLines.length === 0) return
+
+    setIsRefreshingCartStock(true)
+    try {
+      const updatedLines = await Promise.all(
+        cart.map(async (line) => {
+          if (line.type !== "PRODUCT" || !line.itemId) return line
+          try {
+            const [batchRes, serialRes] = await Promise.all([
+              getInventoryBatches({
+                branchId,
+                itemId: line.itemId,
+                status: "ACTIVE",
+                limit: 100,
+              }),
+              line.item?.isSerialized
+                ? getInventorySerials({
+                    branchId,
+                    itemId: line.itemId,
+                    status: "AVAILABLE",
+                    limit: 100,
+                  })
+                : Promise.resolve({ data: [] }),
+            ])
+            const freshBatches = getInventoryRows(batchRes).filter(
+              (b) => Number(b.quantityAvailable || 0) > 0
+            )
+            const freshSerials = line.item?.isSerialized
+              ? getInventoryRows(serialRes)
+              : []
+
+            let currentBatchId = line.batchId
+            if (currentBatchId && !freshBatches.some((b) => b.id === currentBatchId)) {
+              currentBatchId = freshBatches[0]?.id || ""
+            }
+
+            return {
+              ...line,
+              batches: freshBatches,
+              serials: freshSerials,
+              batchId: currentBatchId,
+            }
+          } catch {
+            return line
+          }
+        })
+      )
+      setCart(updatedLines)
+    } finally {
+      setIsRefreshingCartStock(false)
+    }
+  }, [branchId, cart])
 
   const [itemSearch, setItemSearch] = useState("")
   const [itemResults, setItemResults] = useState([])
@@ -4883,6 +4941,9 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
         try {
           const newCustRes = await createCustomer({
             fullName: trimmedCustomerName,
+            address: customerAddress.trim() || undefined,
+            mobileNumber: customerPhone.trim() || undefined,
+            email: customerEmail.trim() || undefined,
             branchId,
             priceTier: selectedPriceTier || 1,
           })
@@ -6294,7 +6355,8 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                   aria-label="Search products or job orders by barcode, code, or JO number"
                   autoComplete="off"
                   className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-1.5 pl-9 pr-9 text-xs font-medium text-slate-800 outline-none transition focus:border-[var(--color-maroon)] focus:bg-white focus:ring-2 focus:ring-rose-500/10"
-                  onChange={(event) => setItemSearch(event.target.value)}
+                  maxLength={100}
+                  onChange={(event) => setItemSearch(event.target.value.slice(0, 100))}
                   placeholder="Scan barcode / serial or enter J.O. # (e.g. 202609020001)…"
                   value={itemSearch}
                 />
@@ -6376,7 +6438,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                         </span>
                         <span className="mt-1 flex items-center gap-2">
                           <span className="text-xs font-mono font-bold text-[var(--color-maroon)]">
-                            From ₱{formatMoney(item[`price${defaultPriceTier(item)}`])}
+                            From {formatMoney(item[`price${defaultPriceTier(item)}`])}
                           </span>
                           <span
                             className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
@@ -6647,9 +6709,20 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                   <span className="text-[11px] font-bold text-slate-700">📦 Bundle Item</span>
                 </label>
                 {cart.length > 0 ? (
-                  <button className="text-[11px] font-bold text-red-600 hover:text-red-700" onClick={() => { if (window.confirm("Clear all items in cart?")) setCart([]) }} type="button">
-                    Clear
-                  </button>
+                  <div className="flex items-center gap-2.5">
+                    <button
+                      className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 hover:text-slate-800 transition"
+                      onClick={refreshCartStock}
+                      title="Sync Cart Stock with latest inventory"
+                      type="button"
+                    >
+                      <RefreshCw className={`size-3 ${isRefreshingCartStock ? "animate-spin text-emerald-600" : ""}`} />
+                      <span>Sync Stock</span>
+                    </button>
+                    <button className="text-[11px] font-bold text-red-600 hover:text-red-700" onClick={() => { if (window.confirm("Clear all items in cart?")) setCart([]) }} type="button">
+                      Clear
+                    </button>
+                  </div>
                 ) : null}
               </div>
             </header>

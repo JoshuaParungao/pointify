@@ -1941,7 +1941,7 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
       {pagination ? (
         <section className="flex flex-col gap-3 rounded-3xl border border-[var(--color-border)] bg-[var(--color-card)] p-4 shadow-card sm:flex-row sm:items-center sm:justify-between">
           <div className="text-sm font-semibold text-[var(--color-muted)]">
-            Page {pagination.page} of {pagination.totalPages} • {pagination.totalItems} item(s)
+            Page {pagination.totalItems === 0 ? 0 : pagination.page} of {pagination.totalPages} • {pagination.totalItems} item(s)
           </div>
 
           <div className="flex gap-3">
