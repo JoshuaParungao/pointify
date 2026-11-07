@@ -3967,7 +3967,7 @@ export default function ServicesPage({ onNavigate, selectedBranch, user }) {
                           customerAddressSnapshot: event.target.value.slice(0, 50),
                         }))
                       }
-                      placeholder="Barangay, City, Province"
+                      placeholder="House No., Street Name, Barangay, City/Municipality, Province"
                       value={createForm.customerAddressSnapshot}
                     />
                   </Field>

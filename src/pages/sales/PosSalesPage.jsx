@@ -1051,7 +1051,7 @@ function SaleDetailDialog({
                       setPreviewCustomerAddress(e.target.value.slice(0, 50))
                       if (checkoutError) setCheckoutError("")
                     }}
-                    placeholder="e.g. Brgy. San Isidro, CSFP"
+                    placeholder="House No., Street Name, Barangay, City/Municipality, Province"
                     required
                   />
                 </label>
@@ -6156,7 +6156,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                     className="mt-0.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-2.5 py-1.5 text-xs outline-none transition focus:bg-white focus:border-[var(--color-maroon)]"
                     maxLength={50}
                     onChange={(e) => setCustomerAddress(e.target.value.slice(0, 50))}
-                    placeholder="City / Municipality"
+                    placeholder="House No., Street Name, Barangay, City/Municipality, Province"
                     value={customerAddress}
                   />
                 </label>

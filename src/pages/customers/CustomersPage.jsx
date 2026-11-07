@@ -415,7 +415,7 @@ function CustomerEditorModal({ activeBranch, customer, mode, onClose, onSaved })
                   className={`${inputClass} min-h-[50px] h-[50px] resize-none`}
                   maxLength={50}
                   onChange={(event) => updateField("address", event.target.value.slice(0, 50))}
-                  placeholder="Customer address"
+                  placeholder="House No., Street Name, Barangay, City/Municipality, Province"
                   value={form.address}
                 />
               </FormField>
