@@ -733,7 +733,7 @@ export default function AlertsPage({ selectedBranch, user, onNavigate }) {
                   <span>Resolution Guide</span>
                 </div>
                 <p className="mt-1 text-slate-600 dark:text-slate-300 leading-relaxed">
-                  Pindutin ang &quot;Open in {activeModalItem.categoryLabel} Module&quot; upang direktang makarating sa kaukulang page at ma-aksyunan ang alert na ito (hal. mag-reorder ng stock, mag-update ng warranty claim status, o mag-follow-up sa customer).
+                  Click &quot;Open in {activeModalItem.categoryLabel} Module&quot; to navigate directly to the corresponding module and act on this alert (e.g., reorder stock, update warranty claim status, or follow up with a customer).
                 </p>
               </div>
             </div>

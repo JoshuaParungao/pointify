@@ -312,8 +312,8 @@ export default function StockAdjustmentPanel({
 
               <p className="text-[11px] text-purple-700/80 font-medium">
                 {isIncrease
-                  ? "I-type o i-scan ang mga bagong serial numbers (bawat linya o pinaghihiwalay ng kuwit/comma)."
-                  : "I-type o i-scan ang serial number(s) ng item na aalisin (bawat linya o pinaghihiwalay ng kuwit/comma)."}
+                  ? "Type or scan new serial numbers (one per line or separated by commas)."
+                  : "Type or scan the serial number(s) of items to remove (one per line or separated by commas)."}
               </p>
 
               <textarea
@@ -327,7 +327,7 @@ export default function StockAdjustmentPanel({
 
               {hasDuplicateSerials ? (
                 <p className="text-xs font-bold text-rose-600 flex items-center gap-1">
-                  <AlertCircle size={13} /> May duplicate serial number sa listahan.
+                  <AlertCircle size={13} /> Duplicate serial number found in list.
                 </p>
               ) : null}
 
@@ -335,7 +335,7 @@ export default function StockAdjustmentPanel({
               {!isIncrease && availableSerials.length > 0 ? (
                 <div className="mt-3 pt-3 border-t border-purple-200/60">
                   <p className="text-[11px] font-black text-purple-900 mb-1.5">
-                    Available Serials sa Branch (Pindutin para mabilis maidagdag):
+                    Available Branch Serials (Click to quickly add):
                   </p>
                   <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-1">
                     {availableSerials.map((s) => {

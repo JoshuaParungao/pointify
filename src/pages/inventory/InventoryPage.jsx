@@ -1565,12 +1565,12 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
                     }`}
                   >
                     <p className="font-bold">Stock Borrow</p>
-                    <p className="text-[10px] text-purple-700 font-normal mt-0.5">Zero-settlement; isoli o bayaran nalang</p>
+                    <p className="text-[10px] text-purple-700 font-normal mt-0.5">Zero-settlement; return or purchase outright</p>
                   </button>
                 </div>
                 {bulkRequestTransferType === "BORROW" ? (
                   <p className="text-[11px] text-purple-800 bg-purple-50 border border-purple-200 rounded-xl p-2 font-medium">
-                    Notice: Inter-branch stock borrow does not charge internal transfer settlement. Monitored under Borrow Monitoring in Stock Transfers (puwedeng isoli o bayaran nalang).
+                    Notice: Inter-branch stock borrow does not charge internal transfer settlement. Monitored under Borrow Monitoring in Stock Transfers (return or purchase outright).
                   </p>
                 ) : null}
               </div>
@@ -1826,12 +1826,12 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
                       }`}
                     >
                       <p className="font-bold">Stock Borrow</p>
-                      <p className="text-[10px] text-purple-700 font-normal mt-0.5">Zero-settlement; isoli o bayaran nalang</p>
+                      <p className="text-[10px] text-purple-700 font-normal mt-0.5">Zero-settlement; return or purchase outright</p>
                     </button>
                   </div>
                   {requestTransferType === "BORROW" ? (
                     <p className="text-[11px] text-purple-800 bg-purple-50 border border-purple-200 rounded-xl p-2 font-medium">
-                      Notice: Inter-branch stock borrow does not charge internal transfer settlement. Monitored under Borrow Monitoring in Stock Transfers (puwedeng isoli o bayaran nalang).
+                      Notice: Inter-branch stock borrow does not charge internal transfer settlement. Monitored under Borrow Monitoring in Stock Transfers (return or purchase outright).
                     </p>
                   ) : null}
                 </div>

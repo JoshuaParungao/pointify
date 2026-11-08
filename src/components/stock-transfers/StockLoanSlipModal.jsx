@@ -110,7 +110,7 @@ function renderSlipHtml(transfer, copyLabel) {
       <div class="loan-notice-box">
         <div class="notice-title">ZERO-SETTLEMENT INTER-BRANCH BORROW COVENANT:</div>
         <p class="notice-text">
-          This transfer constitutes a temporary inter-branch stock borrow. <strong>Zero monetary payment or financial settlement is required between branches upon transfer.</strong> The receiving branch holds these units under temporary custody and unconditionally agrees to return the borrowed units back to the issuing branch (Nasoli na), or convert to payable/internal purchase if retained (Babayaran nalang).
+          This transfer constitutes a temporary inter-branch stock borrow. <strong>Zero monetary payment or financial settlement is required between branches upon transfer.</strong> The receiving branch holds these units under temporary custody and unconditionally agrees to return the borrowed units back to the issuing branch (Returned), or convert to payable/internal purchase if retained (Purchased Outright).
         </p>
       </div>
 

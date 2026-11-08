@@ -1196,7 +1196,7 @@ export default function EmployeesPage({ selectedBranch, user }) {
                             ))}
                           </select>
                           <p className="text-[11px] text-slate-600">
-                            Ang sales ng mapipiling employee account dito ang magiging basehan (Branch Item Sale Pool) kung saan kukunin ang percentage (%) ng bawat employee sa branch na ito.
+                            The sales recorded by the selected employee account serve as the basis (Branch Item Sale Pool) for calculating each employee's percentage (%) share in this branch.
                           </p>
                         </div>
 

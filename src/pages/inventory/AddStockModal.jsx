@@ -536,8 +536,8 @@ export default function AddStockModal({
 
                   <p className="text-[11px] text-purple-700/80 font-medium">
                     {isIncrease
-                      ? "I-type o i-scan ang mga bagong serial numbers (bawat linya o pinaghihiwalay ng kuwit/comma)."
-                      : "I-type, i-scan, o piliin sa ibaba ang serial number(s) ng item na ibabawas."}
+                      ? "Type or scan new serial numbers (one per line or separated by commas)."
+                      : "Type, scan, or select the serial number(s) of items to deduct below."}
                   </p>
 
                   <textarea
@@ -550,7 +550,7 @@ export default function AddStockModal({
 
                   {hasDuplicateSerials ? (
                     <p className="text-xs font-bold text-rose-600 flex items-center gap-1">
-                      <AlertCircle size={13} /> May duplicate serial number sa listahan.
+                      <AlertCircle size={13} /> Duplicate serial number found in list.
                     </p>
                   ) : null}
 
@@ -558,7 +558,7 @@ export default function AddStockModal({
                   {!isIncrease && availableSerials.length > 0 ? (
                     <div className="mt-3 pt-3 border-t border-purple-200/60">
                       <p className="text-[11px] font-black text-purple-900 mb-1.5">
-                        Available Serials sa Branch (Pindutin para mabilis maidagdag):
+                        Available Branch Serials (Click to quickly add):
                       </p>
                       <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto p-1">
                         {availableSerials.map((s) => {
@@ -597,7 +597,7 @@ export default function AddStockModal({
                 <div className="rounded-xl bg-slate-100/70 p-3 text-[11px] text-slate-500 font-medium flex items-center gap-2">
                   <Layers size={14} className="text-slate-400 shrink-0" />
                   <span>
-                    Awtomatikong gagawan ng date-based batch (<code className="font-mono text-slate-700">BAT-{new Date().toISOString().slice(0, 10).replace(/-/g, "")}-XXXX</code>) ang stock na ito nang walang error.
+                    A date-based batch (<code className="font-mono text-slate-700">BAT-{new Date().toISOString().slice(0, 10).replace(/-/g, "")}-XXXX</code>) will be automatically generated for this stock without error.
                   </span>
                 </div>
               ) : null}

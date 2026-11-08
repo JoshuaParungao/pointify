@@ -188,7 +188,7 @@ function PreviewPanel({ preview, scheduleType }) {
   if (scheduleType === "MANUAL" || preview?.manualRequired) {
     return (
       <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold leading-5 text-amber-800">
-        Ang MANUAL schedule ay walang awtomatikong generated periods. Ang manual cutoff ay isasagawa sa active incentive cycle.
+        A MANUAL schedule has no automatically generated periods. Manual cutoff is performed during the active incentive cycle.
       </div>
     )
   }
@@ -402,7 +402,7 @@ function ScheduleCard({
                   : draft.scheduleType === "MONTHLY"
                     ? "Buwanang cutoff base sa anchor day at katapusan ng buwan."
                     : draft.scheduleType === "MANUAL"
-                      ? "Walang awtomatikong cycle; manu-manong kinukwenta."
+                      ? "No automatic cycle; calculated manually."
                       : "Pumili muna ng schedule type sa itaas."}
               </p>
             </div>
@@ -803,7 +803,7 @@ export default function IncentiveProgramSchedulesSettingsV2({
       {!isLoading && branches.length === 0 ? (
         <div className="rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-card">
           <p className="text-xs font-bold text-slate-500">
-            Walang available na branch.
+            No branches available.
           </p>
         </div>
       ) : null}

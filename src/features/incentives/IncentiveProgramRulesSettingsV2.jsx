@@ -34,7 +34,7 @@ const PROGRAM_ICONS = {
 }
 
 const PROGRAM_DESCRIPTIONS = {
-  ITEM_SALE: "Piliin kung aling transaction Price Tiers ang eligible para sa branch-wide Item Sale incentive pool.",
+  ITEM_SALE: "Select which transaction Price Tiers are eligible for the branch-wide Item Sale incentive pool.",
   ORDINARY_REPAIR: "Itakda ang Repair Cost Pool % (labor pool) para sa regular repairs; ang matitira ay Company Share.",
   BOARD_LEVEL_REPAIR: "Itakda ang Repair Cost Pool % para sa micro-soldering at chip repair; ang matitira ay Company Share.",
 }
@@ -212,7 +212,7 @@ function ProgramCard({
                   Pool Basis Employee Account ({branch.code})
                 </p>
                 <p className="text-xs text-slate-600 mt-0.5">
-                  Piliin kung sinong employee account ang magiging basehan ng Branch Item Sale Pool Incentive para sa branch na ito.
+                  Select which employee account serves as the basis for the Branch Item Sale Pool Incentive for this branch.
                 </p>
               </div>
               <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-[10px] font-black text-blue-800">
@@ -242,7 +242,7 @@ function ProgramCard({
                   Eligible Price Tiers
                 </p>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Piliin ang mga tier na bibilangin sa sales pool basis ng branch (e.g. Price 1–3).
+                  Select the price tiers to include in the branch sales pool basis (e.g., Price 1–3).
                 </p>
               </div>
               <span className="text-xs font-bold text-slate-500">
@@ -287,7 +287,7 @@ function ProgramCard({
 
             {draft.eligiblePriceTiers.length === 0 ? (
               <p className="mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-200/80 rounded-xl px-3 py-2">
-                ⚠️ Walang price tier na naka-check: walang maco-compute na Item Sale incentive basis para sa branch na ito.
+                ⚠️ No price tier selected: no Item Sale incentive basis will be computed for this branch.
               </p>
             ) : null}
           </div>
@@ -636,7 +636,7 @@ export default function IncentiveProgramRulesSettingsV2({
       {!isLoading && branches.length === 0 ? (
         <div className="rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-card">
           <p className="text-xs font-bold text-slate-500">
-            Walang available na branch.
+            No branches available.
           </p>
         </div>
       ) : null}

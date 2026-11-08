@@ -317,7 +317,7 @@ function BorrowBadge({ transfer }) {
   if (bStatus === "PURCHASED") {
     return (
       <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black bg-blue-50 text-blue-800 border border-blue-300">
-        <CheckCircle2 size={11} /> 🔵 BABAYARAN NALANG
+        <CheckCircle2 size={11} /> 🔵 PURCHASED OUTRIGHT
       </span>
     )
   }
@@ -541,18 +541,18 @@ function ActionButtons({
                 disabled={busy}
                 onClick={() => onInitiateReturn(transfer)}
                 type="button"
-                title="Isoli sa source branch (Palitan ng bago)"
+                title="Return to source branch (Replace with new)"
               >
-                <RotateCcw size={13} /> Isoli (Palitan ng Bago)
+                <RotateCcw size={13} /> Return (Replace with New)
               </button>
               <button
                 className="inline-flex items-center gap-1 rounded-lg border border-blue-300 bg-blue-50 px-2.5 py-1 text-[11px] font-bold text-blue-800 hover:bg-blue-100 transition shadow-2xs"
                 disabled={busy}
                 onClick={() => onInitiatePurchase(transfer)}
                 type="button"
-                title="Babayaran nalang ng destination branch"
+                title="Purchase outright by destination branch"
               >
-                <CheckCircle2 size={13} /> Babayaran Nalang
+                <CheckCircle2 size={13} /> Purchase Outright
               </button>
             </>
           ) : null}
@@ -564,7 +564,7 @@ function ActionButtons({
               disabled={busy}
               onClick={() => onConfirmReturn(transfer)}
               type="button"
-              title="Kumpirmahin na natanggap ang isinoli o ipinalit na stock"
+              title="Confirm receipt of returned or replacement stock"
             >
               <PackageCheck size={13} /> Receive Return (Nasoli Na)
             </button>
@@ -577,7 +577,7 @@ function ActionButtons({
               disabled={busy}
               onClick={() => onSetBilling(transfer)}
               type="button"
-              title="I-set ang amount na babayaran para sa stock"
+              title="Set payable amount for stock purchase"
             >
               <Send size={13} /> Send Amount (Billing)
             </button>
@@ -603,7 +603,7 @@ function ActionButtons({
               disabled={busy}
               onClick={() => onConfirmPayment(transfer)}
               type="button"
-              title="Kumpirmahin na natanggap ang bayad mula sa destination branch"
+              title="Confirm payment received from destination branch"
             >
               <CheckCircle2 size={13} /> Confirm Payment Received
             </button>
@@ -628,7 +628,7 @@ function ActionButtons({
         </>
       ) : null}
       {isSourceManager && transfer.status === "APPROVED" && !isInTransit ? (
-        <button className="rounded-lg bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white shadow-2xs hover:bg-amber-700 transition" disabled={busy} onClick={() => onAction(transfer, "DISPATCH")} type="button" title="Piliin ang serial numbers at fulfillment details para ma-transfer out">
+        <button className="rounded-lg bg-amber-600 px-2.5 py-1 text-[11px] font-bold text-white shadow-2xs hover:bg-amber-700 transition" disabled={busy} onClick={() => onAction(transfer, "DISPATCH")} type="button" title="Select serial numbers and fulfillment details to transfer out">
           Transfer Out (Dispatch)
         </button>
       ) : null}
@@ -641,8 +641,8 @@ function ActionButtons({
             type="button"
             title={
               isSourceManager
-                ? "Kumpirmahin na na-claim at na-release na ang stock sa kabilang branch"
-                : "Kumpirmahin na na-claim o nakuha na ang stock mula sa source branch"
+                ? "Confirm stock has been claimed and released to destination branch"
+                : "Confirm stock has been claimed or received from source branch"
             }
           >
             <PackageCheck size={13} /> {isSourceManager ? "Confirm Claimed / Released" : "Confirm Claimed (Na-claim Na)"}
@@ -655,11 +655,11 @@ function ActionButtons({
             type="button"
             title={
               isSourceManager
-                ? "Kumpirmahin na naihatid / natanggap na sa destination branch ang delivery"
-                : "Kumpirmahin na natanggap na ang delivery sa inyong branch"
+                ? "Confirm delivery has arrived at destination branch"
+                : "Confirm delivery has been received at your branch"
             }
           >
-            <PackageCheck size={13} /> {isSourceManager ? "Confirm Delivered (Naihatid Na)" : "Confirm Received (Natanggap Na)"}
+            <PackageCheck size={13} /> {isSourceManager ? "Confirm Delivered" : "Confirm Received"}
           </button>
         )
       ) : null}
@@ -1082,7 +1082,7 @@ export default function StockTransfersPage({ initialContext, selectedBranch, use
         remarks: confirmPaymentRemarks,
       })
       setSuccessMessage(
-        `Payment confirmed for ${confirmPaymentTarget.transferCode}. Marked as BABAYARAN NALANG (Paid & Completed).`
+        `Payment confirmed for ${confirmPaymentTarget.transferCode}. Marked as PURCHASED OUTRIGHT (Paid & Completed).`
       )
       setShowConfirmPaymentModal(false)
       setConfirmPaymentTarget(null)
@@ -1722,7 +1722,7 @@ export default function StockTransfersPage({ initialContext, selectedBranch, use
         <section className="flex flex-wrap items-center justify-between gap-2.5 rounded-2xl border border-purple-200 bg-purple-50/70 p-3 text-xs shadow-xs">
           <div className="flex items-center gap-2">
             <span className="font-black text-purple-900 uppercase tracking-wide">Borrow Monitoring:</span>
-            <span className="text-purple-800 text-[11px]">Track stock borrow turnover status — nasoli na o babayaran nalang.</span>
+            <span className="text-purple-800 text-[11px]">Track stock borrow turnover status — returned or purchased outright.</span>
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
             <button
@@ -1767,7 +1767,7 @@ export default function StockTransfersPage({ initialContext, selectedBranch, use
                   : "bg-white text-blue-800 border border-blue-200 hover:bg-blue-50"
               }`}
             >
-              🔵 Babayaran Nalang (Purchased)
+              🔵 Purchased Outright
             </button>
           </div>
         </section>
@@ -1971,14 +1971,14 @@ export default function StockTransfersPage({ initialContext, selectedBranch, use
                                 onClick={() => handleOpenInitiateReturn(selectedTransfer)}
                                 className="inline-flex items-center gap-1 rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-[11px] font-bold text-emerald-800 hover:bg-emerald-50 transition shadow-2xs"
                               >
-                                <RotateCcw size={13} /> Isoli (Palitan ng Bago)
+                                <RotateCcw size={13} /> Return (Replace with New)
                               </button>
                               <button
                                 type="button"
                                 onClick={() => handleOpenInitiatePurchase(selectedTransfer)}
                                 className="inline-flex items-center gap-1 rounded-lg border border-blue-300 bg-white px-3 py-1.5 text-[11px] font-bold text-blue-800 hover:bg-blue-50 transition shadow-2xs"
                               >
-                                <CheckCircle2 size={13} /> Babayaran Nalang
+                                <CheckCircle2 size={13} /> Purchase Outright
                               </button>
                             </>
                           ) : null}
@@ -2299,7 +2299,7 @@ export default function StockTransfersPage({ initialContext, selectedBranch, use
                   <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3.5">
                     <div className="flex justify-between items-center">
                       <p className="text-[11px] font-bold text-slate-900 uppercase tracking-wider">
-                        Step 1: Serial Number Assignment (Kailangan bago i-dispatch)
+                        Step 1: Serial Number Assignment (Required before dispatch)
                       </p>
                     </div>
 
@@ -2324,12 +2324,12 @@ export default function StockTransfersPage({ initialContext, selectedBranch, use
 
                           {available.length === 0 ? (
                             <p className="text-[11px] text-rose-600 italic">
-                              Walang available na serial number sa source branch para sa item na ito.
+                              No available serial numbers at source branch for this item.
                             </p>
                           ) : (
                             <div>
                               <p className="text-[10px] font-semibold text-slate-500 mb-1">
-                                I-click ang serial number na ipapadala:
+                                Click serial numbers to dispatch:
                               </p>
                               <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-1">
                                 {available.map((s) => {
@@ -2375,7 +2375,7 @@ export default function StockTransfersPage({ initialContext, selectedBranch, use
                 ) : (
                   <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-3 text-slate-700 text-xs space-y-1">
                     <p className="font-bold text-[11px] text-slate-900 uppercase tracking-wider">Step 1: Items to Transfer Out</p>
-                    <p className="text-[11px] text-slate-600">Lahat ng items sa transfer na ito ay non-serialized. Handa na para sa susunod na aksyon.</p>
+                    <p className="text-[11px] text-slate-600">All items in this transfer are non-serialized. Ready for next action.</p>
                     <div className="mt-2 space-y-1">
                       {(transferOutTarget.items || []).map((item) => (
                         <div key={item.id} className="flex justify-between items-center bg-white px-2.5 py-1.5 rounded-lg border border-slate-200">
@@ -2407,7 +2407,7 @@ export default function StockTransfersPage({ initialContext, selectedBranch, use
                         <span>🚚 Delivery (Out for Delivery)</span>
                       </div>
                       <p className="text-[10px] text-slate-500 mt-1">
-                        Ipapadala gamit ang courier, in-house driver, o delivery service. Magiging Out for Delivery ang status.
+                        Dispatched via courier, in-house driver, or delivery service. Status will update to Out for Delivery.
                       </p>
                     </button>
 
@@ -2425,7 +2425,7 @@ export default function StockTransfersPage({ initialContext, selectedBranch, use
                         <span>🏢 Pick up (Branch Pick up)</span>
                       </div>
                       <p className="text-[10px] text-slate-500 mt-1">
-                        Kukunin o pi-pickup-in ng staff mula sa kabilang branch. Magiging Ready for Pick up ang status.
+                        Will be picked up by staff from destination branch. Status will update to Ready for Pickup.
                       </p>
                     </button>
                   </div>
@@ -2610,18 +2610,18 @@ export default function StockTransfersPage({ initialContext, selectedBranch, use
                   ) : (
                     <>
                       <Truck size={15} className="text-sky-700" />
-                      <span>Kumpirmahin ang Natanggap na Delivery (Delivery Receipt Acknowledgement)</span>
+                      <span>Confirm Received Delivery (Delivery Receipt Acknowledgement)</span>
                     </>
                   )}
                 </p>
                 <p className="text-[11px] text-slate-700">
                   {receiveModalTransfer.fulfillmentMethod === "PICKUP" || receiveModalTransfer.fulfillmentStatus === "READY_FOR_PICKUP"
                     ? (user?.branchId === receiveModalTransfer.fromBranchId
-                        ? "Kumpirmahin na na-claim at na-release na ang stock sa claimant o authorized staff mula sa destination branch. Pagka-kumpirma, opisyal na itong mapapasok sa inventory ng kabilang branch."
-                        : "Pakisuri ang mga items at serial numbers na na-claim/nakuha ng inyong branch. Pagka-kumpirma, opisyal na itong maipapasok sa inventory ng inyong branch.")
+                        ? "Confirm that stock has been claimed and released to claimant or authorized staff from destination branch. Upon confirmation, items will be officially added to the destination inventory."
+                        : "Please inspect the items and serial numbers claimed by your branch. Upon confirmation, items will be officially added to your branch inventory.")
                     : (user?.branchId === receiveModalTransfer.fromBranchId
-                        ? "Kumpirmahin na natanggap/naihatid na ng courier ang stock sa destination branch. Pagka-kumpirma, opisyal na itong mapapasok sa inventory ng kabilang branch."
-                        : "Pakisuri ang mga items at serial numbers na naihatid ng delivery/courier. Pagka-kumpirma, opisyal na itong maipapasok sa inventory ng inyong branch.")}
+                        ? "Confirm that stock has been delivered by courier to the destination branch. Upon confirmation, items will be officially added to the destination inventory."
+                        : "Please inspect the items and serial numbers delivered by courier. Upon confirmation, items will be officially added to your branch inventory.")}
                 </p>
                 {receiveModalTransfer.fulfillmentReference ? (
                   <div className="pt-1 text-[11px] font-mono font-semibold text-slate-800">
@@ -2655,8 +2655,8 @@ export default function StockTransfersPage({ initialContext, selectedBranch, use
                         onClick={() => setActiveProofView({ url: proofImg, title: "Source Branch Proof of Dispatch" })}
                       />
                       <div className="text-[11px] text-slate-600">
-                        <p className="font-semibold text-slate-900">Na-upload ng nagpadala.</p>
-                        <p className="text-slate-500">I-click ang litrato upang palakihin.</p>
+                        <p className="font-semibold text-slate-900">Uploaded by sender.</p>
+                        <p className="text-slate-500">Click photo to enlarge.</p>
                       </div>
                     </div>
                   </div>
@@ -2665,7 +2665,7 @@ export default function StockTransfersPage({ initialContext, selectedBranch, use
 
               {/* Upload Receiver Proof Photo */}
               <ProofPhotoUploader
-                label="Litrato ng Natanggap na Items / Package Condition (Receive Proof Photo) (Opsyonal)"
+                label="Receive Proof Photo / Package Condition (Optional)"
                 value={receiveProofPhoto}
                 onChange={setReceiveProofPhoto}
                 disabled={isReceiving}
@@ -2747,8 +2747,8 @@ export default function StockTransfersPage({ initialContext, selectedBranch, use
                 {isReceiving
                   ? "Processing..."
                   : receiveModalTransfer.fulfillmentMethod === "PICKUP" || receiveModalTransfer.fulfillmentStatus === "READY_FOR_PICKUP"
-                  ? (user?.branchId === receiveModalTransfer.fromBranchId ? "Kumpirmahin na Na-claim / Na-release" : "Kumpirmahin na Na-claim (Confirm Claimed)")
-                  : (user?.branchId === receiveModalTransfer.fromBranchId ? "Kumpirmahin na Naihatid (Confirm Delivered)" : "Kumpirmahin na Natanggap (Confirm Received)")}
+                  ? (user?.branchId === receiveModalTransfer.fromBranchId ? "Confirm Claimed / Released" : "Confirm Claimed")
+                  : (user?.branchId === receiveModalTransfer.fromBranchId ? "Confirm Delivered" : "Confirm Received")}
               </button>
             </footer>
           </div>
@@ -2773,14 +2773,14 @@ export default function StockTransfersPage({ initialContext, selectedBranch, use
       />
 
       {/* Return Borrow Modal */}
-      {/* Modal 1: Initiate Return / Replace with New (Isoli) */}
+      {/* Modal 1: Initiate Return / Replace with New */}
       {showInitiateReturnModal && initiateReturnTarget ? (
         <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-950/60 p-3 sm:p-5 backdrop-blur-xs">
           <div className="my-auto w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
             <header className="flex items-center justify-between border-b border-slate-200 bg-slate-50/75 px-5 py-3.5">
               <div>
                 <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-700">
-                  Step 1: Isoli (Papalitan ng Bago)
+                  Step 1: Return (Replace with New)
                 </span>
                 <h3 className="text-base font-black text-slate-900 leading-tight">
                   Dispatch Return: {initiateReturnTarget.transferCode}
@@ -2805,7 +2805,7 @@ export default function StockTransfersPage({ initialContext, selectedBranch, use
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-3 text-emerald-900 space-y-1">
                   <p className="font-bold text-xs">Mag-dispatch ng Replacement Stock Pabalik sa Source Branch</p>
                   <p className="text-[11px] text-emerald-800">
-                    Ilagay ang details ng ipinapadalang unit (serial numbers kung meron) at paraan ng delivery/pickup. Pagka-dispatch, mapupunta ito sa Out of Delivery (Returning).
+                    Enter details of the dispatched unit (serial numbers if applicable) and delivery/pickup method. Upon dispatch, status will update to Out for Delivery (Returning).
                   </p>
                 </div>
 
@@ -2859,7 +2859,7 @@ export default function StockTransfersPage({ initialContext, selectedBranch, use
 
                 <label className="block">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 block">
-                    Serial Number(s) ng Isinosoli / Replacement (Kung Meron)
+                    Serial Number(s) of Returned / Replacement Unit (Optional)
                   </span>
                   <input
                     className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 font-mono outline-none transition focus:border-[var(--color-maroon)]"
@@ -2869,7 +2869,7 @@ export default function StockTransfersPage({ initialContext, selectedBranch, use
                     type="text"
                     value={initiateReturnSerials}
                   />
-                  <p className="mt-1 text-[10px] text-slate-500">I-input ang serial number ng ipapalit na bago o isinosoling unit.</p>
+                  <p className="mt-1 text-[10px] text-slate-500">Enter serial number of replacement or returned unit.</p>
                 </label>
 
                 <label className="block">
@@ -2945,7 +2945,7 @@ export default function StockTransfersPage({ initialContext, selectedBranch, use
                   <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-3 text-emerald-900 space-y-1">
                     <p className="font-bold text-xs">Tanggapin ang Isinoli o Ipinalit na Stock</p>
                     <p className="text-[11px] text-emerald-800">
-                      I-kumpirma na natanggap mo na ang replacement stock sa iyong branch. Kapag kinumpirma, mamamarkahan ito bilang NASOLI NA (Completed).
+                      Confirm that you have received the replacement stock at your branch. Upon confirmation, this transfer will be marked as RETURNED (Completed).
                     </p>
                   </div>
 
@@ -2990,7 +2990,7 @@ export default function StockTransfersPage({ initialContext, selectedBranch, use
                     disabled={isSubmittingConfirmReturn}
                     type="submit"
                   >
-                    {isSubmittingConfirmReturn ? "Processing..." : "Kumpirmahin na Natanggap (Nasoli Na)"}
+                    {isSubmittingConfirmReturn ? "Processing..." : "Confirm Received (Returned)"}
                   </button>
                 </footer>
               </form>
@@ -2999,14 +2999,14 @@ export default function StockTransfersPage({ initialContext, selectedBranch, use
         );
       })() : null}
 
-      {/* Modal 3: Initiate Purchase (Babayaran Nalang Request) */}
+      {/* Modal 3: Initiate Purchase (Purchase Outright Request) */}
       {showInitiatePurchaseModal && initiatePurchaseTarget ? (
         <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-slate-950/60 p-3 sm:p-5 backdrop-blur-xs">
           <div className="my-auto w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
             <header className="flex items-center justify-between border-b border-slate-200 bg-slate-50/75 px-5 py-3.5">
               <div>
                 <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-blue-700">
-                  Step 1: Babayaran Nalang
+                  Step 1: Purchase Outright
                 </span>
                 <h3 className="text-base font-black text-slate-900 leading-tight">
                   Convert to Purchase: {initiatePurchaseTarget.transferCode}
@@ -3029,9 +3029,9 @@ export default function StockTransfersPage({ initialContext, selectedBranch, use
             <form onSubmit={handleConfirmInitiatePurchase}>
               <div className="p-5 space-y-4 text-xs">
                 <div className="rounded-xl border border-blue-200 bg-blue-50/80 p-3 text-blue-900 space-y-1">
-                  <p className="font-bold text-xs">Humiling na Bayaran Nalang ang Hiniram na Stock</p>
+                  <p className="font-bold text-xs">Request Outright Purchase of Borrowed Stock</p>
                   <p className="text-[11px] text-blue-800">
-                    Hindi na isasauli ang stock. Magpapadala ang source branch ng amount na kailangang bayaran at mga payment instructions.
+                    The stock will not be returned. The source branch will provide the settlement amount and payment instructions.
                   </p>
                 </div>
 
@@ -3076,7 +3076,7 @@ export default function StockTransfersPage({ initialContext, selectedBranch, use
                   disabled={isSubmittingInitiatePurchase}
                   type="submit"
                 >
-                  {isSubmittingInitiatePurchase ? "Processing..." : "I-send ang Request (Babayaran Nalang)"}
+                  {isSubmittingInitiatePurchase ? "Processing..." : "Send Request (Purchase Outright)"}
                 </button>
               </footer>
             </form>
@@ -3091,7 +3091,7 @@ export default function StockTransfersPage({ initialContext, selectedBranch, use
             <header className="flex items-center justify-between border-b border-slate-200 bg-slate-50/75 px-5 py-3.5">
               <div>
                 <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-blue-700">
-                  Step 2: I-set ang Babayaran (Billing)
+                  Step 2: Set Settlement Amount (Billing)
                 </span>
                 <h3 className="text-base font-black text-slate-900 leading-tight">
                   Set Billing Amount: {setBillingTarget.transferCode}
@@ -3114,15 +3114,15 @@ export default function StockTransfersPage({ initialContext, selectedBranch, use
             <form onSubmit={handleConfirmSetBilling}>
               <div className="p-5 space-y-4 text-xs">
                 <div className="rounded-xl border border-blue-200 bg-blue-50/80 p-3 text-blue-900 space-y-1">
-                  <p className="font-bold text-xs">Ipadala ang Halaga na Babayaran</p>
+                  <p className="font-bold text-xs">Send Settlement Billing Amount</p>
                   <p className="text-[11px] text-blue-800">
-                    Bilang nagbigay ng stock, i-input ang eksaktong halaga na dapat bayaran ng kabilang branch at payment instructions (e.g. GCash number o account).
+                    As the lending branch, enter the exact amount payable by the borrowing branch along with payment instructions (e.g., GCash number or bank account).
                   </p>
                 </div>
 
                 <label className="block">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 block">
-                    Halaga na Babayaran (₱) *
+                    Settlement Amount (₱) *
                   </span>
                   <input
                     className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-mono font-bold text-slate-900 outline-none transition focus:border-[var(--color-maroon)]"
@@ -3159,7 +3159,7 @@ export default function StockTransfersPage({ initialContext, selectedBranch, use
                     className="mt-1 min-h-16 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none transition focus:border-[var(--color-maroon)]"
                     disabled={isSubmittingSetBilling}
                     onChange={(e) => setBillingRemarksInput(e.target.value)}
-                    placeholder="Additional notes para sa kabilang branch..."
+                    placeholder="Additional instructions or notes for the borrowing branch..."
                     value={billingRemarksInput}
                   />
                 </label>
@@ -3182,7 +3182,7 @@ export default function StockTransfersPage({ initialContext, selectedBranch, use
                   disabled={isSubmittingSetBilling}
                   type="submit"
                 >
-                  {isSubmittingSetBilling ? "Processing..." : "I-send ang Halaga (Billing)"}
+                  {isSubmittingSetBilling ? "Processing..." : "Send Billing Invoice"}
                 </button>
               </footer>
             </form>
@@ -3222,7 +3222,7 @@ export default function StockTransfersPage({ initialContext, selectedBranch, use
                 <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-3 text-amber-900 space-y-1">
                   <p className="font-bold text-xs">Magbayad sa Source Branch</p>
                   <p className="text-[11px] text-amber-800">
-                    I-record ang mode ng payment (Cash, GCash, Bank Transfer) at reference number kung mayroon.
+                    Record the payment method (Cash, GCash, Bank Transfer) and reference number if available.
                   </p>
                 </div>
 
@@ -3346,9 +3346,9 @@ export default function StockTransfersPage({ initialContext, selectedBranch, use
               <form onSubmit={handleConfirmConfirmPayment}>
                 <div className="p-5 space-y-4 text-xs">
                   <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-3 text-emerald-900 space-y-1">
-                    <p className="font-bold text-xs">Kumpirmahin na Natanggap ang Bayad</p>
+                    <p className="font-bold text-xs">Confirm Payment Received</p>
                     <p className="text-[11px] text-emerald-800">
-                      Tingnan ang detalye ng bayad sa ibaba. Kapag kinumpirma mo na natanggap mo na ito, makukumpleto ang buong transaksyon bilang BABAYARAN NALANG (Paid & Completed).
+                      Review the payment details below. Once you confirm receipt, the transaction will be completed as PURCHASED OUTRIGHT (Paid & Completed).
                     </p>
                   </div>
 

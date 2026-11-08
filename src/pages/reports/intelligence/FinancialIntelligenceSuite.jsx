@@ -23,17 +23,17 @@ export default function FinancialIntelligenceSuite({ selectedBranch, user, dateR
   const TABS = [
     {
       id: "PRODUCTS",
-      label: "Product Profitability (Tubo per Item)",
-      badge: "REPORT 06 · Kita per Item",
+      label: "Product Profitability (Profit per Item)",
+      badge: "REPORT 06 · Item Profitability",
       icon: Package,
-      desc: "Item-by-item cost (puhunan), Base SRP, mark-up, pure tubo, and total net profit.",
+      desc: "Item-by-item cost, Base SRP, markup, pure base profit, and total net profit.",
     },
     {
       id: "SIX_LAYER",
       label: "Six-Layer Executive Profitability",
       badge: "REPORT 08 · Executive Matrix",
       icon: Layers,
-      desc: "Puhunan, Pure Base Tubo, Mark-up, Tubo w/ Markup, Financing Interest, and Overall Total Kita.",
+      desc: "Product Cost, Net Base Profit, Retail Markup, Merchandise Profit, Financing Interest, and Overall Consolidated Profit.",
     },
     {
       id: "AR_AGING",
@@ -62,10 +62,10 @@ export default function FinancialIntelligenceSuite({ selectedBranch, user, dateR
               Financial Reporting & AR Intelligence Suite (20-Report Architecture)
             </div>
             <h1 className="mt-2 text-2xl font-black tracking-tight sm:text-3xl">
-              Executive Financial & Tubo Intelligence
+              Executive Financial & Profitability Intelligence
             </h1>
             <p className="mt-1 max-w-2xl text-xs font-medium text-slate-300">
-              Complete visibility into your business: real product cost (puhunan), separated item mark-up, financing interest, AR aging buckets, and consolidated enterprise kita.
+              Complete visibility into your business: real product cost, separated item markup, financing interest, AR aging buckets, and consolidated enterprise profit.
             </p>
           </div>
 
