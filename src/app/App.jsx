@@ -28,6 +28,8 @@ import CommandPaletteModal from "../components/common/CommandPaletteModal"
 import QuotationDetailDialog from "../components/quotations/QuotationDetailDialog"
 import SaleReceiptModal from "../components/sales/SaleReceiptModal"
 import { getQuotationById } from "../features/quotations/quotations.api"
+import { getSettings } from "../features/settings/settings.api"
+import { setReceiptBusinessName } from "../utils/businessProfile"
 
 const StaffDashboardPage = lazy(() => import("../pages/dashboard/StaffDashboardPage"))
 const SettingsPage = lazy(() => import("../pages/settings/SettingsPage"))
@@ -181,6 +183,18 @@ function App() {
 
         saveUser(authenticatedUser)
         setUser(authenticatedUser)
+        getSettings()
+          .then((res) => {
+            if (res?.data && Array.isArray(res.data)) {
+              const bName = res.data.find(
+                (s) => s.key === "receipt.business_name" || s.scopeKey === "GLOBAL:receipt.business_name"
+              )
+              if (bName?.value) {
+                setReceiptBusinessName(bName.value)
+              }
+            }
+          })
+          .catch(() => {})
 
         const savedPage = getActivePage(authenticatedUser.id)
         if (savedPage && canRoleAccessModule(authenticatedUser, savedPage)) {

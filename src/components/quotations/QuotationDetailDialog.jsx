@@ -1,3 +1,4 @@
+import { getReceiptBusinessName } from "../../utils/businessProfile"
 import { useEffect, useMemo } from "react"
 import { createPortal } from "react-dom"
 import { Download, FileText, Printer, X } from "lucide-react"
@@ -197,7 +198,7 @@ export default function QuotationDetailDialog({
                 {/* Left Store Info */}
                 <div className="md:col-span-6 space-y-1">
                   <h1 className="text-sm font-black tracking-tight text-slate-950 uppercase leading-snug">
-                    {branch.name || "POINTIFY BUSINESS MANAGEMENT"}
+                    {getReceiptBusinessName(branch)}
                   </h1>
                   <p className="text-[11px] text-slate-700 leading-normal">
                     {branchAddress}

@@ -1,3 +1,4 @@
+import { getReceiptBusinessName } from "../../utils/businessProfile"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   AlertCircle,
@@ -257,7 +258,7 @@ export default function CustomerStatementOfAccountModal({
     })
   }
 
-  const shopName = selectedBranch?.name || "POINTIFY BUSINESS MANAGEMENT"
+  const shopName = getReceiptBusinessName(selectedBranch)
   const shopAddressLine1 =
     selectedBranch?.address ||
     "Kingspire Business Centre, Km.71, Mac Arthur Highway,"

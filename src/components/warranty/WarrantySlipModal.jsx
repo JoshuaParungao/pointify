@@ -1,3 +1,4 @@
+import { getReceiptBusinessName } from "../../utils/businessProfile"
 import { useEffect } from "react"
 import { createPortal } from "react-dom"
 import { Printer, X } from "lucide-react"
@@ -29,7 +30,7 @@ function renderSlipHtml(claim, slipType, copyLabel, options = {}) {
   const saleItem = claim.saleItem || {}
   const createdBy = claim.createdBy || {}
 
-  const shopName = branch.name || "POINTIFY BUSINESS MANAGEMENT"
+  const shopName = getReceiptBusinessName(branch)
   const shopAddress = branch.address || "Main Branch, Philippines"
   const shopContact = branch.contactNo || "Contact No. Available Upon Request"
 

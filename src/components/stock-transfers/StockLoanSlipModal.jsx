@@ -1,3 +1,4 @@
+import { getReceiptBusinessName } from "../../utils/businessProfile"
 import { useEffect } from "react"
 import { createPortal } from "react-dom"
 import { Printer, X } from "lucide-react"
@@ -36,7 +37,7 @@ function renderSlipHtml(transfer, copyLabel) {
       <!-- HEADER -->
       <div class="slip-header">
         <div class="header-left">
-          <div class="shop-title">${fromBranch.name || "POINTIFY BUSINESS MANAGEMENT"}</div>
+          <div class="shop-title">${getReceiptBusinessName(fromBranch)}</div>
           <div class="shop-sub">Inter-Branch Inventory Logistics & Operations</div>
         </div>
         <div class="header-right">

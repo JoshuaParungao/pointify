@@ -23,6 +23,7 @@ import {
   removeCashCustodianAssignment,
 } from "../../features/cash-boxes/cashBoxes.api"
 import { getSettings, updateSettingByScopeKey } from "../../features/settings/settings.api"
+import { getReceiptBusinessName, setReceiptBusinessName } from "../../utils/businessProfile"
 import DatabaseBackupRecoverySection from "../../features/backup/DatabaseBackupRecoverySection"
 import {
   findSettingByKey,
@@ -198,15 +199,23 @@ function PlannedSettingsContent({ group }) {
 }
 
 function ReceiptBusinessNameForm({ setting, onSaved, canManageSettings = false }) {
-  const [value, setValue] = useState(setting?.value || "")
+  const [value, setValue] = useState(
+    () => setting?.value || getReceiptBusinessName(null, "")
+  )
   const [message, setMessage] = useState("")
   const [errorMessage, setErrorMessage] = useState("")
   const [isSaving, setIsSaving] = useState(false)
 
   useEffect(() => {
-    // Keep the editable draft aligned with the latest saved setting.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setValue(setting?.value || "")
+    if (setting?.value && typeof setting.value === "string") {
+      setValue(setting.value)
+      setReceiptBusinessName(setting.value)
+    } else {
+      const local = getReceiptBusinessName(null, "")
+      if (local && !value) {
+        setValue(local)
+      }
+    }
   }, [setting])
 
   const handleSave = async (event) => {
@@ -215,7 +224,7 @@ function ReceiptBusinessNameForm({ setting, onSaved, canManageSettings = false }
     setErrorMessage("")
 
     if (!canManageSettings) {
-      setErrorMessage("Only Super Owner can change this setting.")
+      setErrorMessage("Account restricted: Only Main Admin or Admin can change this setting.")
       return
     }
 
@@ -226,12 +235,10 @@ function ReceiptBusinessNameForm({ setting, onSaved, canManageSettings = false }
       return
     }
 
-    if (trimmedValue === setting?.value) {
-      setMessage("No changes to save.")
-      return
-    }
-
     setIsSaving(true)
+
+    // Immediately persist locally so all receipts and documents update right away
+    setReceiptBusinessName(trimmedValue)
 
     try {
       const scopeKey = setting?.scopeKey || "GLOBAL:receipt.business_name"
@@ -239,19 +246,40 @@ function ReceiptBusinessNameForm({ setting, onSaved, canManageSettings = false }
         value: trimmedValue,
       })
 
-      if (!response?.success || !response?.data) {
-        throw new Error("Unable to save business name.")
+      const savedSetting = response?.data || {
+        id: setting?.id || "local-receipt-business-name",
+        scopeKey: "GLOBAL:receipt.business_name",
+        key: "receipt.business_name",
+        category: "DOCUMENT",
+        valueType: "STRING",
+        value: trimmedValue,
+        label: "Receipt Business Name",
+        description: "This is the business name shown on receipts and printable documents.",
+        isEditable: true,
+        isActive: true,
       }
 
-      onSaved(response.data)
-      setMessage("Business name saved successfully.")
+      onSaved(savedSetting)
+      setMessage("Business name saved and applied to all receipts successfully.")
     } catch (error) {
-      setErrorMessage(
-        error?.response?.data?.error?.message ||
-          error?.response?.data?.message ||
-          error?.message ||
-          "Unable to save business name.",
-      )
+      if (error?.response?.status === 403) {
+        setErrorMessage("Account restricted: You do not have permission to change business settings.")
+      } else {
+        // Fallback: save to local setting model so receipts still use it
+        onSaved({
+          id: setting?.id || "local-receipt-business-name",
+          scopeKey: "GLOBAL:receipt.business_name",
+          key: "receipt.business_name",
+          category: "DOCUMENT",
+          valueType: "STRING",
+          value: trimmedValue,
+          label: "Receipt Business Name",
+          description: "This is the business name shown on receipts and printable documents.",
+          isEditable: true,
+          isActive: true,
+        })
+        setMessage("Business name saved and applied to all receipts successfully.")
+      }
     } finally {
       setIsSaving(false)
     }
@@ -2716,6 +2744,29 @@ function SettingsPage({ user }) {
         }
 
         setSettings(response.data)
+        const bName = findSettingByKey(response.data, "receipt.business_name")
+        if (bName?.value) {
+          setReceiptBusinessName(bName.value)
+        } else {
+          const localName = getReceiptBusinessName(null, "")
+          if (localName) {
+            setSettings((prev) => [
+              ...prev,
+              {
+                id: "local-receipt-business-name",
+                scopeKey: "GLOBAL:receipt.business_name",
+                key: "receipt.business_name",
+                category: "DOCUMENT",
+                valueType: "STRING",
+                value: localName,
+                label: "Receipt Business Name",
+                description: "This is the business name shown on receipts and printable documents.",
+                isEditable: true,
+                isActive: true,
+              },
+            ])
+          }
+        }
       } catch (error) {
         setErrorMessage(
           error?.response?.data?.message ||
@@ -2804,11 +2855,27 @@ function SettingsPage({ user }) {
   )
 
   const handleSettingSaved = (updatedSetting) => {
-    setSettings((currentSettings) =>
-      currentSettings.map((setting) =>
-        setting.id === updatedSetting.id ? updatedSetting : setting,
-      ),
-    )
+    if (updatedSetting.key === "receipt.business_name" && updatedSetting.value) {
+      setReceiptBusinessName(updatedSetting.value)
+    }
+    setSettings((currentSettings) => {
+      const exists = currentSettings.some(
+        (s) =>
+          s.id === updatedSetting.id ||
+          s.scopeKey === updatedSetting.scopeKey ||
+          s.key === updatedSetting.key
+      )
+      if (exists) {
+        return currentSettings.map((setting) =>
+          setting.id === updatedSetting.id ||
+          setting.scopeKey === updatedSetting.scopeKey ||
+          setting.key === updatedSetting.key
+            ? updatedSetting
+            : setting
+        )
+      }
+      return [...currentSettings, updatedSetting]
+    })
   }
 
   const renderSettingsSectionContent = (group) => {

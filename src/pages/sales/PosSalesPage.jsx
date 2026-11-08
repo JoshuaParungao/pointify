@@ -1,3 +1,4 @@
+import { getReceiptBusinessName } from "../../utils/businessProfile"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import {
@@ -1105,7 +1106,7 @@ function SaleDetailDialog({
                   {/* Left Store Info */}
                   <div className="md:col-span-6 space-y-1">
                     <h1 className="text-sm font-black tracking-tight text-slate-950 uppercase leading-snug">
-                      {sale?.branch?.name || "POINTIFY BUSINESS MANAGEMENT"}
+                      {getReceiptBusinessName(sale?.branch)}
                     </h1>
                     <p className="text-[11px] text-slate-700 leading-normal">
                       {branchAddress}

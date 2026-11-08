@@ -3,6 +3,7 @@ import { createPortal } from "react-dom"
 import { AlertCircle, Download, LoaderCircle, Printer, X } from "lucide-react"
 import { getSaleById } from "../../features/sales/sales.api"
 import { exportWarrantyReceiptPdf, groupReceiptItems, printWarrantyReceipt } from "../../utils/businessDocumentExport"
+import { useReceiptBusinessName } from "../../utils/businessProfile"
 
 function formatMoney(value) {
   const amount = Number(value || 0)
@@ -65,6 +66,7 @@ const DEFAULT_TERM_RATES = {
 }
 
 export default function SaleReceiptModal({ sale: initialSale, saleId, onClose }) {
+  const receiptBusinessName = useReceiptBusinessName(initialSale?.branch)
   const [sale, setSale] = useState(initialSale || null)
   const [isLoading, setIsLoading] = useState(!initialSale && Boolean(saleId))
   const [errorMessage, setErrorMessage] = useState("")
@@ -323,8 +325,13 @@ export default function SaleReceiptModal({ sale: initialSale, saleId, onClose })
                 {/* Left Store Info */}
                 <div className="md:col-span-6 space-y-1">
                   <h1 className="text-sm font-black tracking-tight text-slate-950 uppercase leading-snug">
-                    {branch.name || "POINTIFY BUSINESS MANAGEMENT"}
+                    {receiptBusinessName}
                   </h1>
+                  {branch?.name && branch.name !== receiptBusinessName && branch.name !== "Main Branch" ? (
+                    <p className="text-[11px] font-bold text-slate-800 uppercase">
+                      {branch.name}
+                    </p>
+                  ) : null}
                   <p className="text-[11px] text-slate-700 leading-normal">
                     {branchAddress}
                   </p>

@@ -1,4 +1,5 @@
 import { DEFAULT_SHOP_INFO, extractIntakeRecord } from "./serviceJobForms"
+import { getReceiptBusinessName } from "../../utils/businessProfile"
 
 function formatDate(dateValue) {
   if (!dateValue) return ""
@@ -20,7 +21,7 @@ function PrintSquareBox({ checked = false }) {
 
 export default function JobOrderReceiptPrint({ isBlank = false, job = {} }) {
   const branch = job.branch || {}
-  const shopName = branch.name || DEFAULT_SHOP_INFO.name || "POINTIFY BUSINESS MANAGEMENT"
+  const shopName = getReceiptBusinessName(branch, DEFAULT_SHOP_INFO.name)
   const shopAddress = branch.address || DEFAULT_SHOP_INFO.address || "Kingspire Business Centre, Km.71, Mac Arthur Highway, San Isidro, City of San Fernando, Pampanga"
   const shopContact = branch.contactNo || DEFAULT_SHOP_INFO.contactNo || "0961-873-5798/ 045-404-0673"
 
