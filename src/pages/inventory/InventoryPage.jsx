@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+﻿import { useEffect, useMemo, useState } from "react"
 import { AlertCircle, BarChart3, Boxes, CheckCircle2, PackageSearch, Plus, RefreshCw, Search, Sliders, X } from "lucide-react"
 import { useCallback } from "react"
 
@@ -692,7 +692,7 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
         ["Brand", (row) => row.brand || "—"],
         ["Model", (row) => row.modelName || "—"],
         ["Category", (row) => row.category?.name || row.categoryName || "—"],
-        ["Unit", (row) => row.unit || row.unitName || "—"],
+        ["Unit", (row) => row.unit?.name || row.unitName || "—"],
         ["Specifications", (row) => formatSpecs(row.attributes)],
         ["Serialized", (row) => (row.isSerialized ? "Yes" : "No")],
         ["Total Stock", (row) => Number(row.totalQuantity || 0)],
