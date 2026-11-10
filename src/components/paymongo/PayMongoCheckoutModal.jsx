@@ -158,7 +158,10 @@ export default function PayMongoCheckoutModal({
           pollIntervalRef.current = setInterval(async () => {
             try {
               const statusRes = await getPayMongoPaymentStatus(sessionId)
-              if (statusRes?.success && statusRes?.data?.status === "PAID") {
+              const isDone =
+                statusRes?.success &&
+                (String(statusRes?.data?.status || "").toUpperCase() === "PAID" || Boolean(statusRes?.data?.isPaid))
+              if (isDone) {
                 clearInterval(pollIntervalRef.current)
                 setPaymentStatus("PAID")
                 setVerifiedDetails(statusRes.data)
@@ -172,7 +175,7 @@ export default function PayMongoCheckoutModal({
             } catch {
               // Ignore polling errors
             }
-          }, 3000)
+          }, 2500)
         } else {
           setErrorMsg(response?.message || "Could not generate PayMongo session. Demo mode is available.")
         }
