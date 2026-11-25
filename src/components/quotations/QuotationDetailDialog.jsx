@@ -1,9 +1,9 @@
-import { getReceiptBusinessName } from "../../utils/businessProfile"
 import { useEffect, useMemo } from "react"
 import { createPortal } from "react-dom"
-import { Download, FileText, Printer, X } from "lucide-react"
+import { Download, Edit3, FileText, Printer, X } from "lucide-react"
 import { exportCustomerQuotationPdf, groupQuotationItems, printCustomerQuotation } from "../../utils/businessDocumentExport"
-import { parseQuotationSettlement } from "../../utils/quotationSettlement"
+import { parseQuotationSettlement, stripSettlementTag } from "../../utils/quotationSettlement"
+import { getBranchAddress, getBranchContact } from "../../constants/branchDefaults"
 
 function formatMoney(value) {
   const amount = Number(value || 0)
@@ -33,6 +33,7 @@ export default function QuotationDetailDialog({
   onConvertToSale = null,
   onSaveQuotation = null,
   isSavingQuotation = false,
+  onEditQuotation = null,
 }) {
   useEffect(() => {
     const handleKeyDown = (event) => {
@@ -49,6 +50,11 @@ export default function QuotationDetailDialog({
     return parseQuotationSettlement(quotation?.notes)
   }, [quotation?.notes])
 
+  const cleanRemarks = useMemo(() => {
+    const raw = quotation?.remarks || quotation?.notes || ""
+    return stripSettlementTag(raw)
+  }, [quotation?.remarks, quotation?.notes])
+
   const salesman =
     quotation?.salesman ||
     parsedSettlement?.salesmanName ||
@@ -58,8 +64,8 @@ export default function QuotationDetailDialog({
     quotation?.cashier?.username ||
     "—"
 
-  const branchAddress = branch.address || branch.name || "Main Branch"
-  const branchContact = branch.contactNo || "—"
+  const branchAddress = getBranchAddress(branch)
+  const branchContact = getBranchContact(branch)
 
   const rawCode = String(quotation?.quotationCode || quotation?.code || (isPreview ? "PREVIEW" : "—")).trim()
   const numericMatch = rawCode.match(/\d+$/)
@@ -126,7 +132,9 @@ export default function QuotationDetailDialog({
                 <FileText size={14} /> QUOTATION
               </span>
               {isPcBuild ? (
-                <span className="rounded-md bg-slate-800 px-2 py-1 text-xs font-bold text-white">📦 Bundle Item / Package</span>
+                <span className="rounded-md bg-slate-800 px-2 py-1 text-xs font-bold text-white">
+                  🖥️ PC Build / Set
+                </span>
               ) : null}
               {isPreview ? (
                 <span className="rounded-md bg-amber-500 px-2 py-1 text-xs font-bold text-white">
@@ -135,7 +143,19 @@ export default function QuotationDetailDialog({
               ) : null}
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              {isPreview ? (
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-xs transition hover:bg-slate-100 cursor-pointer"
+                  title="Close preview and return to builder to edit quote"
+                >
+                  <Edit3 size={15} />
+                  Edit Quote
+                </button>
+              ) : null}
+
               {isPreview && onSaveQuotation ? (
                 <button
                   className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-soft transition hover:bg-emerald-700 disabled:opacity-50"
@@ -145,6 +165,21 @@ export default function QuotationDetailDialog({
                 >
                   <FileText size={15} />
                   {isSavingQuotation ? "Saving Quote…" : "Save Quotation"}
+                </button>
+              ) : null}
+
+              {onEditQuotation && !isPreview && !["CONVERTED", "CANCELLED"].includes(quotation.status) ? (
+                <button
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-2 text-xs font-bold text-amber-800 shadow-xs transition hover:bg-amber-100 cursor-pointer"
+                  onClick={() => {
+                    onClose()
+                    onEditQuotation(quotation)
+                  }}
+                  type="button"
+                  title="Edit this saved quotation in Quotation Builder"
+                >
+                  <Edit3 size={15} />
+                  Edit Quotation
                 </button>
               ) : null}
 
@@ -198,7 +233,7 @@ export default function QuotationDetailDialog({
                 {/* Left Store Info */}
                 <div className="md:col-span-6 space-y-1">
                   <h1 className="text-sm font-black tracking-tight text-slate-950 uppercase leading-snug">
-                    {getReceiptBusinessName(branch)}
+                    POSYNCTIFY STORE & SERVICES
                   </h1>
                   <p className="text-[11px] text-slate-700 leading-normal">
                     {branchAddress}
@@ -337,6 +372,14 @@ export default function QuotationDetailDialog({
                 </table>
               </div>
 
+              {/* Remarks / Notes matching Warranty Receipt */}
+              {cleanRemarks ? (
+                <div className="mt-2 mb-1 px-1 text-xs text-slate-700">
+                  <span className="font-bold text-slate-900">Remarks: </span>
+                  <span className="font-medium text-slate-800">{cleanRemarks}</span>
+                </div>
+              ) : null}
+
               {/* Double Border Separator */}
               <div className="border-t-2 border-b border-slate-900 my-1 pt-0.5" />
 
@@ -388,21 +431,27 @@ export default function QuotationDetailDialog({
                   {isPcBuild ? (
                     <div className="space-y-0.5 pb-1">
                       <p className="font-bold text-[11px] text-slate-900">
-                        (FREE ITEM BUNDLE &amp; PACKAGE PREPARATION)
+                        (FREE PC BUILD, CABLE MANAGEMENT &amp; ESSENTIAL APP INSTALLATION)
                       </p>
                       <p className="text-[10px] text-slate-600">
-                        Exclusive to complete package bundles purchased from us. Not applicable to individual item purchases.
+                        Exclusive to complete PC builds purchased from us. Not applicable to individual component purchases.
                       </p>
                     </div>
                   ) : null}
                   <p className="font-bold text-[11px] text-slate-900">
-                    STANDARD STORE WARRANTY APPLIES PER ITEM / PRODUCT CATEGORY
+                    ONE (1) YEAR WARRANTY ON MAJOR PARTS &amp; ONE (1) MONTH ON ACCESSORIES
                   </p>
                   <p className="text-[10px] text-slate-600">
-                    COMPLETE PACKAGING &amp; INCLUSIONS REQUIRED FOR RETURN / REPLACEMENT
+                    COMPLETE BOX &amp; INCLUSIONS (7 DAYS OUTRIGHT REPLACEMENT EXCEPT FOR PRINTERS)
                   </p>
                   <p className="font-bold text-[11px] text-red-700">
                     CASH DISCOUNTED PRICE APPLIES ONLY FOR CASH, GCASH, BANK TRANSFER
+                  </p>
+                  <p className="font-bold text-[11px] text-slate-900 uppercase">
+                    NO WARRANTY ON SOFTWARE/S (O.S. - WINDOWS and MS OFFICE), IF ANY
+                  </p>
+                  <p className="font-bold text-[10px] text-red-700 uppercase">
+                    ALL PRICES ARE SUBJECT TO CHANGE WITHOUT PRIOR NOTICE
                   </p>
                 </div>
 

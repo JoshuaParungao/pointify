@@ -1188,12 +1188,12 @@ const REPORT_CATEGORIES = [
             {/* Top KPI Metrics Banner */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-6 bg-slate-50/70 border-b border-slate-100">
               <div className="rounded-2xl bg-white p-3.5 border border-slate-200/80 shadow-2xs">
-                <p className="text-[10px] font-black uppercase text-slate-500">🛒 Completed Sales</p>
+                <p className="text-[10px] font-black uppercase text-slate-500">🛒 Total Sales</p>
                 <p className="mt-1 text-lg font-black text-slate-900">{peso(selectedStaff.salesRevenue)}</p>
                 <p className="text-[11px] text-slate-500 font-semibold">{number(selectedStaff.completedSales)} transaction(s)</p>
               </div>
               <div className="rounded-2xl bg-white p-3.5 border border-slate-200/80 shadow-2xs">
-                <p className="text-[10px] font-black uppercase text-slate-500">🛠️ Services & Repairs</p>
+                <p className="text-[10px] font-black uppercase text-slate-500">🛠️ Service & Repairs</p>
                 <p className="mt-1 text-lg font-black text-slate-900">{peso(selectedStaff.serviceRevenue)}</p>
                 <p className="text-[11px] text-slate-500 font-semibold">{number(selectedStaff.completedServices)} service job(s)</p>
               </div>
@@ -1203,7 +1203,7 @@ const REPORT_CATEGORIES = [
                 <p className="text-[11px] text-slate-500 font-semibold">Rate: {selectedStaff.soloIncentivePercent ?? 0}%</p>
               </div>
               <div className="rounded-2xl bg-white p-3.5 border border-slate-200/80 shadow-2xs">
-                <p className="text-[10px] font-black uppercase text-slate-500">💰 Total Komisyon</p>
+                <p className="text-[10px] font-black uppercase text-slate-500">💰 Total Commission</p>
                 <p className="mt-1 text-lg font-black text-[var(--color-maroon)]">{peso(selectedStaff.totalIncentiveAmount)}</p>
                 <p className="text-[11px] text-slate-500 font-semibold">Service Rate: {selectedStaff.serviceIncentivePercent ?? 0}%</p>
               </div>
@@ -1223,7 +1223,7 @@ const REPORT_CATEGORIES = [
                 onClick={() => setStaffModalTab("services")}
                 type="button"
               >
-                🛠️ All Completed Services ({selectedStaff.recentServices?.length || 0})
+                🛠️ All Services ({selectedStaff.recentServices?.length || 0})
               </button>
             </div>
 
@@ -1233,7 +1233,7 @@ const REPORT_CATEGORIES = [
                 <div>
                   {selectedStaff.recentSales?.length === 0 ? (
                     <p className="text-center text-xs font-bold text-slate-400 py-8">
-                      No sales recorded for this account within the selected date range.
+                      No recorded sales for this account within the selected date range.
                     </p>
                   ) : (
                     <div className="overflow-x-auto rounded-2xl border border-slate-200">
@@ -1270,7 +1270,7 @@ const REPORT_CATEGORIES = [
                 <div>
                   {selectedStaff.recentServices?.length === 0 ? (
                     <p className="text-center text-xs font-bold text-slate-400 py-8">
-                      No service or repair jobs recorded for this account within the selected date range.
+                      No recorded service or repair jobs for this account within the selected date range.
                     </p>
                   ) : (
                     <div className="overflow-x-auto rounded-2xl border border-slate-200">

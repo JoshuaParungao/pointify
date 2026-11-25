@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react"
 
-const THEME_STORAGE_KEY = "pointify_theme"
+const THEME_STORAGE_KEY = "posynctify_theme"
 const LEGACY_THEME_STORAGE_KEY = "arunafeltz_theme"
 
 const ThemeContext = createContext({
@@ -13,9 +13,7 @@ const ThemeContext = createContext({
 export function ThemeProvider({ children }) {
   const [theme, setTheme] = useState(() => {
     try {
-      const stored =
-        localStorage.getItem(THEME_STORAGE_KEY) ||
-        localStorage.getItem(LEGACY_THEME_STORAGE_KEY)
+      const stored = localStorage.getItem(THEME_STORAGE_KEY) || localStorage.getItem(LEGACY_THEME_STORAGE_KEY)
       if (stored === "light" || stored === "dark" || stored === "system") {
         return stored
       }

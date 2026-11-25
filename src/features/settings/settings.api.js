@@ -30,13 +30,18 @@ export async function getInstallmentBasisSettings() {
   return response.data
 }
 
+export async function getPaymentMethodSettings() {
+  const response = await apiClient.get("/settings/business-rules/payment-methods")
+  return response.data
+}
+
 export async function computeInstallmentTest(payload) {
   const response = await apiClient.post("/settings/business-rules/installment/test-compute", payload)
   return response.data
 }
 
-export async function resetTransactionalData() {
-  const response = await apiClient.post("/settings/reset-transactions")
+export async function resetTransactionalData(payload = {}) {
+  const response = await apiClient.post("/settings/reset-transactions", payload)
   return response.data
 }
 

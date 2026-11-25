@@ -174,6 +174,7 @@ export default function CashBoxesPage({
   const [handoverForm, setHandoverForm] = useState({
     amount: "",
     toUserId: "",
+    transactionDate: new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }),
     remarks: "",
   })
 
@@ -728,33 +729,34 @@ export default function CashBoxesPage({
 
   const handleCreateHandover = async (e) => {
     e.preventDefault()
-    if (isSaving) return
+    if (!selectedBox || isSaving) return
     const amt = Number(handoverForm.amount)
     if (!amt || amt <= 0) {
-      setModalError("Please enter a valid handover amount.")
+      setMessage("Please enter a valid handover amount.")
       return
     }
 
-    const boxId = selectedBox?.id || boxes[0]?.id || "default"
-
     setIsSaving(true)
-    setModalError("")
     setMessage("")
     try {
-      await createCashHandover(boxId, {
+      await createCashHandover(selectedBox.id, {
         amount: amt,
         toUserId: handoverForm.toUserId || undefined,
+        transactionDate: handoverForm.transactionDate || undefined,
         remarks: handoverForm.remarks.trim() || undefined,
       })
       setNotice(`Cash handover request of ${money(amt)} submitted.`)
-      setHandoverForm({ amount: "", toUserId: "", remarks: "" })
+      setHandoverForm({
+        amount: "",
+        toUserId: "",
+        transactionDate: new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }),
+        remarks: "",
+      })
       setModalType(null)
       setTab("handovers")
       await reloadActive()
     } catch (err) {
-      const errMsg = apiError(err, "Could not create cash handover.")
-      setModalError(errMsg)
-      setMessage(errMsg)
+      setMessage(apiError(err, "Could not create cash handover."))
     } finally {
       setIsSaving(false)
     }
@@ -844,7 +846,7 @@ export default function CashBoxesPage({
               <>
                 <button
                   className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50/70 px-3 py-2 text-xs font-bold text-rose-800 hover:bg-rose-100 transition shadow-2xs"
-                  onClick={() => openModal("EXPENSE")}
+                  onClick={() => setModalType("EXPENSE")}
                   type="button"
                 >
                   <Receipt size={14} className="text-rose-600" />
@@ -853,7 +855,7 @@ export default function CashBoxesPage({
 
                 <button
                   className="inline-flex items-center gap-1.5 rounded-xl border border-sky-200 bg-sky-50/70 px-3 py-2 text-xs font-bold text-sky-800 hover:bg-sky-100 transition shadow-2xs"
-                  onClick={() => openModal("BANK_DEPOSIT")}
+                  onClick={() => setModalType("BANK_DEPOSIT")}
                   type="button"
                 >
                   <Building2 size={14} className="text-sky-600" />
@@ -862,7 +864,7 @@ export default function CashBoxesPage({
 
                 <button
                   className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-700 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-800 transition shadow-2xs"
-                  onClick={() => openModal("CASH_IN")}
+                  onClick={() => setModalType("CASH_IN")}
                   type="button"
                 >
                   <Plus size={14} />
@@ -871,7 +873,7 @@ export default function CashBoxesPage({
 
                 <button
                   className="inline-flex items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2 text-xs font-bold text-amber-900 hover:bg-amber-100 transition shadow-2xs"
-                  onClick={() => openModal("HANDOVER")}
+                  onClick={() => setModalType("HANDOVER")}
                   type="button"
                 >
                   <HandCoins size={14} className="text-amber-700" />
@@ -1651,12 +1653,6 @@ export default function CashBoxesPage({
 
             <form onSubmit={handleRecordExpense}>
               <div className="max-h-[75vh] overflow-y-auto p-5 space-y-3.5">
-                {modalError && (
-                  <div className="flex items-center justify-between rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-bold text-rose-800 dark:border-rose-900 dark:bg-rose-950/50 dark:text-rose-300">
-                    <span>{modalError}</span>
-                    <button onClick={() => setModalError("")} type="button"><X size={14} /></button>
-                  </div>
-                )}
                 <div>
                   <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600 block">Select Category</label>
                   <div className="mt-1.5 grid grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-0.5">
@@ -1774,12 +1770,6 @@ export default function CashBoxesPage({
 
             <form onSubmit={handleBankDeposit}>
               <div className="max-h-[75vh] overflow-y-auto p-5 space-y-3.5">
-                {modalError && (
-                  <div className="flex items-center justify-between rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-bold text-rose-800 dark:border-rose-900 dark:bg-rose-950/50 dark:text-rose-300">
-                    <span>{modalError}</span>
-                    <button onClick={() => setModalError("")} type="button"><X size={14} /></button>
-                  </div>
-                )}
                 <div>
                   <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600 block">Select Bank Account</label>
                   <div className="mt-1.5 flex flex-wrap gap-1.5">
@@ -1901,12 +1891,6 @@ export default function CashBoxesPage({
 
             <form onSubmit={handleCashIn}>
               <div className="max-h-[75vh] overflow-y-auto p-5 space-y-3.5">
-                {modalError && (
-                  <div className="flex items-center justify-between rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-bold text-rose-800 dark:border-rose-900 dark:bg-rose-950/50 dark:text-rose-300">
-                    <span>{modalError}</span>
-                    <button onClick={() => setModalError("")} type="button"><X size={14} /></button>
-                  </div>
-                )}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600 block">Cash Amount (₱) <span className="text-red-600">*</span></label>
@@ -1997,12 +1981,6 @@ export default function CashBoxesPage({
 
             <form onSubmit={handleCreateHandover}>
               <div className="max-h-[75vh] overflow-y-auto p-5 space-y-3.5">
-                {modalError && (
-                  <div className="flex items-center justify-between rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-bold text-rose-800 dark:border-rose-900 dark:bg-rose-950/50 dark:text-rose-300">
-                    <span>{modalError}</span>
-                    <button onClick={() => setModalError("")} type="button"><X size={14} /></button>
-                  </div>
-                )}
                 <div>
                   <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600 block">Handover Amount (₱) <span className="text-red-600">*</span></label>
                   <input
@@ -2014,6 +1992,16 @@ export default function CashBoxesPage({
                     step="0.01"
                     type="number"
                     value={handoverForm.amount}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-slate-600 block">Handover Date</label>
+                  <input
+                    className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 outline-none transition focus:border-[var(--color-maroon)] focus:ring-1 focus:ring-[var(--color-maroon)]"
+                    onChange={(e) => setHandoverForm((f) => ({ ...f, transactionDate: e.target.value }))}
+                    type="date"
+                    value={handoverForm.transactionDate}
                   />
                 </div>
 

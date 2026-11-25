@@ -382,7 +382,7 @@ function AccountCard({
           available={true}
           disabled={!canManage || isSaving}
           enabled={draft.pcBuildEnabled}
-          label="Bundle / Package (%)"
+          label="PC Build (%)"
           onEnabledChange={(value) =>
             onDraftChange("pcBuildEnabled", value)
           }
@@ -699,7 +699,7 @@ export default function IncentiveAccountSettingsV2({
             .pcBuildEnabled,
           draft
             .pcBuildRatePercent,
-          "Bundle / Package (%)",
+          "PC Build (%)",
         )
 
       if (!pcBuild.ok) {

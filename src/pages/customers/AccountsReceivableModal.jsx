@@ -1,4 +1,3 @@
-import { getReceiptBusinessName } from "../../utils/businessProfile"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   AlertCircle,
@@ -279,7 +278,7 @@ export default function AccountsReceivableModal({
     }
   }
 
-  const shopName = getReceiptBusinessName(selectedBranch)
+  const shopName = "POSYNCTIFY STORE & SERVICES"
   const shopAddress =
     selectedBranch?.address ||
     "KINGSPIRE BUSINESS CENTRE, MAC ARTHUR HIGHWAY, SAN ISIDRO, CITY OF SAN FERNANDO, PAMPANGA / 0961-873-5798"

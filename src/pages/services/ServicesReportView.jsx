@@ -575,7 +575,7 @@ export default function ServicesReportView({
         ["Tech Labor Fee / Cost (₱)", (row) => Number(row.techLaborCost || 0)],
         ["Net Shop Labor Profit (₱)", (row) => Number(row.shopLaborProfit || 0)],
         ["Parts Consumed Total (₱)", (row) => Number(row.partsSum || 0)],
-        ["Parts Wholesale Cost (₱)", (row) => Number(row.partsCostSum || 0)],
+        ["Parts Cost (₱)", (row) => Number(row.partsCostSum || 0)],
         ["Parts Gross Profit (₱)", (row) => Number(row.partsMarkupSum || 0)],
         ["Total Shop Net Profit (₱)", (row) => Number(row.totalShopProfit || 0)],
         ["Grand Total Price (₱)", (row) => Number(row.computedTotal || 0)],
@@ -637,7 +637,7 @@ export default function ServicesReportView({
         ["Catalog Ref / Part Code", (row) => row.catalogCode],
         ["Part Serial Number", (row) => row.serialNumber],
         ["Quantity", (row) => row.quantity],
-        ["Unit Cost / Tech Share", (row) => Number(row.unitCost || 0)],
+        ["Unit Cost (Parts Cost / Tech Cut)", (row) => Number(row.unitCost || 0)],
         ["Unit Selling Price", (row) => Number(row.unitPrice || 0)],
         ["Mark-up / Shop Profit", (row) => Number(row.markup || 0)],
         ["Line Total (₱)", (row) => Number(row.lineTotal || 0)],
@@ -800,7 +800,7 @@ export default function ServicesReportView({
                 Shop Financial Earnings &amp; Cost Transparency Breakdown
               </h4>
               <p className="text-[11px] text-emerald-800/80 dark:text-emerald-400">
-                Technician fees are strictly taken from Service / Labor Rate. Parts wholesale cost and markup are 100% retained by shop.
+                Technician fees are strictly calculated from the Service / Labor Rate. Replacement parts wholesale cost and mark-up are 100% retained by the shop.
               </p>
             </div>
           </div>
@@ -842,11 +842,11 @@ export default function ServicesReportView({
                 <span className="font-mono font-bold">{peso(kpis.totalPartsRevenue)}</span>
               </div>
               <div className="flex justify-between text-slate-500">
-                <span>Parts Wholesale Cost:</span>
+                <span>Parts Cost:</span>
                 <span className="font-mono font-bold">-{peso(kpis.totalPartsCost)}</span>
               </div>
               <div className="flex justify-between border-t border-slate-100 pt-1 font-bold text-amber-950 dark:text-amber-200">
-                <span>Net Parts Markup:</span>
+                <span>Net Parts Markup (Profit):</span>
                 <span className="font-mono text-emerald-600">+{peso(kpis.totalPartsMarkup)}</span>
               </div>
             </div>
@@ -862,7 +862,7 @@ export default function ServicesReportView({
                 <span className="font-mono font-bold">{peso(kpis.totalGrossRevenue)}</span>
               </div>
               <div className="flex justify-between text-rose-600 dark:text-rose-400">
-                <span>Total Costs (Parts + Tech Share):</span>
+                <span>Total Costs (Parts + Tech):</span>
                 <span className="font-mono font-bold">-{peso(kpis.totalPartsCost + kpis.totalTechnicianFeeCost)}</span>
               </div>
               <div className="flex justify-between border-t border-slate-100 pt-1 font-bold text-emerald-950 dark:text-emerald-200">
@@ -1251,7 +1251,7 @@ export default function ServicesReportView({
                           <div className="font-black text-slate-900 dark:text-white">
                             {peso(job.computedTotal)}
                           </div>
-                          <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-sans font-bold" title="Total Shop Profit (Net Labor + Parts Markup)">
+                          <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-sans font-bold" title="Total Shop Profit (Net Labor + Parts Profit)">
                             Profit: +{peso(job.totalShopProfit)}
                           </div>
                         </td>

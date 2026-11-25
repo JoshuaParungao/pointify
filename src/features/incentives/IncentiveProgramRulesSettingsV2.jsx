@@ -35,8 +35,8 @@ const PROGRAM_ICONS = {
 
 const PROGRAM_DESCRIPTIONS = {
   ITEM_SALE: "Select which transaction Price Tiers are eligible for the branch-wide Item Sale incentive pool.",
-  ORDINARY_REPAIR: "Itakda ang Repair Cost Pool % (labor pool) para sa regular repairs; ang matitira ay Company Share.",
-  BOARD_LEVEL_REPAIR: "Itakda ang Repair Cost Pool % para sa micro-soldering at chip repair; ang matitira ay Company Share.",
+  ORDINARY_REPAIR: "Set the Repair Cost Pool % (labor pool) for regular repairs; the remainder is allocated as Company Share.",
+  BOARD_LEVEL_REPAIR: "Set the Repair Cost Pool % for micro-soldering and chip-level repairs; the remainder is allocated as Company Share.",
 }
 
 const PRICE_TIERS = [1, 2, 3, 4, 5]
@@ -212,7 +212,7 @@ function ProgramCard({
                   Pool Basis Employee Account ({branch.code})
                 </p>
                 <p className="text-xs text-slate-600 mt-0.5">
-                  Select which employee account serves as the basis for the Branch Item Sale Pool Incentive for this branch.
+                  Select the employee account that serves as the basis for the Branch Item Sale Pool Incentive for this branch.
                 </p>
               </div>
               <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-[10px] font-black text-blue-800">
@@ -305,7 +305,7 @@ function ProgramCard({
               </span>
             </div>
             <p className="mt-1 text-xs text-slate-500">
-              Porsyento ng service charge na inilalaan sa technician / staff incentive pool.
+              Percentage of the service charge allocated to the technician / staff incentive pool.
             </p>
 
             <div className="relative mt-3">
@@ -318,7 +318,7 @@ function ProgramCard({
                 disabled={!canManage || isSaving}
                 value={draft.repairCostPercent}
                 onChange={(e) => onDraftChange("repairCostPercent", e.target.value)}
-                placeholder="Hal. 65.0"
+                placeholder="e.g., 65.0"
                 className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 pr-8 text-sm font-black text-slate-900 outline-none focus:border-[var(--color-maroon)] focus:ring-2 focus:ring-rose-50"
               />
               <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">
@@ -338,11 +338,11 @@ function ProgramCard({
               </span>
             </div>
             <p className="mt-1 text-xs text-slate-500">
-              Awtomatikong kinaltas (100% - Repair Cost Pool %). Ito ang mananatili sa kumpanya.
+              Automatically calculated (100% - Repair Cost Pool %). This portion is retained by the company.
             </p>
 
             <div className="mt-3 flex h-11 items-center justify-between rounded-xl border border-slate-200 bg-white px-3.5">
-              <span className="text-xs font-bold text-slate-500">Kikitain ng Store:</span>
+              <span className="text-xs font-bold text-slate-500">Store Revenue Share:</span>
               <span className="text-sm font-black text-emerald-700">
                 {percentLabel(companyShare)}
               </span>
@@ -355,7 +355,7 @@ function ProgramCard({
       <div className="mt-4">
         <label className="block">
           <span className="text-xs font-bold text-slate-700">
-            Rule Version Notes (Opsyonal)
+            Rule Version Notes (Optional)
           </span>
           <input
             type="text"
@@ -363,7 +363,7 @@ function ProgramCard({
             disabled={!canManage || isSaving}
             value={draft.notes}
             onChange={(e) => onDraftChange("notes", e.target.value)}
-            placeholder="Hal. Updated price tiers para sa Q4 promo..."
+            placeholder="e.g., Updated price tiers for Q4 promotion..."
             className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-xs text-slate-900 outline-none focus:border-[var(--color-maroon)] focus:ring-2 focus:ring-rose-50 disabled:bg-slate-100"
           />
         </label>
@@ -628,7 +628,7 @@ export default function IncentiveProgramRulesSettingsV2({
       {isLoading ? (
         <div className="rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-card">
           <p className="text-xs font-bold text-slate-500">
-            Kinakarga ang program rules...
+            Loading program rules...
           </p>
         </div>
       ) : null}

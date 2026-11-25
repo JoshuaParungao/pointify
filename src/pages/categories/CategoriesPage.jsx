@@ -35,6 +35,7 @@ import {
   getUnits,
   updateUnitById,
 } from "../../features/units/units.api"
+import { formatSubcategoryName } from "../../utils/attributeFilter"
 
 function formatDate(value) {
   if (!value) return "—"
@@ -49,16 +50,15 @@ function formatDate(value) {
 
 
 const POPULAR_ATTRIBUTE_PRESETS = [
-  { name: "Brand", suggestions: [] },
-  { name: "Model / Variant", suggestions: [] },
-  { name: "Size / Capacity", suggestions: ["Small", "Medium", "Large", "250ml", "500ml", "1L"] },
-  { name: "Weight / Volume", suggestions: ["100g", "250g", "500g", "1kg", "5kg"] },
-  { name: "Packaging / Form", suggestions: ["Box", "Bottle", "Pack", "Piece", "Set"] },
-  { name: "Material / Type", suggestions: ["Standard", "Premium", "Heavy Duty", "Organic"] },
-  { name: "Color", suggestions: ["Black", "White", "Silver", "Blue", "Red"] },
-  { name: "Dimensions", suggestions: ["Compact", "Standard", "Large"] },
-  { name: "Warranty / Shelf Life", suggestions: ["None", "7 Days", "30 Days", "6 Months", "1 Year"] },
-  { name: "Origin / Grade", suggestions: ["Local", "Imported", "Commercial Grade"] },
+  { name: "Capacity", suggestions: ["8GB", "16GB", "32GB", "64GB", "500GB", "1TB", "2TB"] },
+  { name: "Speed / Frequency", suggestions: ["3200MHz", "3600MHz", "5200MHz", "5600MHz", "6000MHz"] },
+  { name: "Socket", suggestions: ["AM4", "AM5", "LGA1700", "LGA1851"] },
+  { name: "Form Factor", suggestions: ["ATX", "Micro-ATX", "Mini-ITX", "2.5-inch", "M.2 2280"] },
+  { name: "Interface", suggestions: ["PCIe 4.0", "PCIe 5.0", "SATA III", "USB 3.2"] },
+  { name: "Wattage", suggestions: ["550W", "650W", "750W", "850W", "1000W"] },
+  { name: "VRAM", suggestions: ["8GB", "12GB", "16GB", "24GB"] },
+  { name: "Color", suggestions: ["Black", "White", "Silver", "RGB"] },
+  { name: "Connectivity", suggestions: ["Wired", "Wireless 2.4GHz", "Bluetooth"] },
 ]
 
 export default function CategoriesPage({ selectedBranch, user }) {
@@ -144,7 +144,7 @@ export default function CategoriesPage({ selectedBranch, user }) {
       try {
         const params = {
           page: String(page),
-          limit: "50",
+          limit: "500",
           ...(debouncedSearch ? { search: debouncedSearch } : {}),
           ...(statusFilter !== "ALL" ? { status: statusFilter } : {}),
           ...(effectiveBranchId ? { branchId: effectiveBranchId } : {}),
@@ -260,7 +260,7 @@ export default function CategoriesPage({ selectedBranch, user }) {
   const handleOpenEditCategoryModal = (category) => {
     setEditingCategory(category)
     setCatForm({
-      name: category.name || "",
+      name: formatSubcategoryName(category) === "—" ? "" : formatSubcategoryName(category),
       categoryCode: category.categoryCode || "",
       description: category.description || "",
       status: category.status || "ACTIVE",
@@ -826,7 +826,7 @@ export default function CategoriesPage({ selectedBranch, user }) {
                           {cat.categoryCode || "—"}
                         </td>
                         <td className="px-5 py-3.5">
-                          <div className="font-bold text-slate-900">{cat.name}</div>
+                          <div className="font-bold text-slate-900">{formatSubcategoryName(cat)}</div>
                           {cat.branch ? (
                             <div className="text-[10px] text-slate-500">
                               Branch: {cat.branch.name} ({cat.branch.code})
@@ -1063,7 +1063,7 @@ export default function CategoriesPage({ selectedBranch, user }) {
             {/* Clean Header */}
             <header className="flex items-center justify-between border-b border-slate-100 bg-white px-6 py-4">
               <div className="flex items-center gap-2.5">
-                <div className="rounded-xl bg-[var(--color-maroon)]/10 p-2 text-[var(--color-maroon)]">
+                <div className="rounded-xl bg-[#7A1F2B]/10 p-2 text-[#7A1F2B]">
                   <Tag size={18} />
                 </div>
                 <div>
@@ -1104,14 +1104,14 @@ export default function CategoriesPage({ selectedBranch, user }) {
                     onClick={() => setCatForm({ ...catForm, parentId: "" })}
                     className={`flex items-start gap-3 rounded-2xl border p-3.5 text-left transition ${
                       !catForm.parentId
-                        ? "border-[var(--color-maroon)] bg-[var(--color-maroon)]/5 ring-1 ring-[var(--color-maroon)]"
+                        ? "border-[#7A1F2B] bg-[#7A1F2B]/5 ring-1 ring-[#7A1F2B]"
                         : "border-slate-200 bg-white hover:border-slate-300"
                     }`}
                   >
                     <div
                       className={`rounded-xl p-2 ${
                         !catForm.parentId
-                          ? "bg-[var(--color-maroon)] text-white"
+                          ? "bg-[#7A1F2B] text-white"
                           : "bg-slate-100 text-slate-600"
                       }`}
                     >
@@ -1134,14 +1134,14 @@ export default function CategoriesPage({ selectedBranch, user }) {
                     }}
                     className={`flex items-start gap-3 rounded-2xl border p-3.5 text-left transition ${
                       catForm.parentId
-                        ? "border-[var(--color-maroon)] bg-[var(--color-maroon)]/5 ring-1 ring-[var(--color-maroon)]"
+                        ? "border-[#7A1F2B] bg-[#7A1F2B]/5 ring-1 ring-[#7A1F2B]"
                         : "border-slate-200 bg-white hover:border-slate-300"
                     }`}
                   >
                     <div
                       className={`rounded-xl p-2 ${
                         catForm.parentId
-                          ? "bg-[var(--color-maroon)] text-white"
+                          ? "bg-[#7A1F2B] text-white"
                           : "bg-slate-100 text-slate-600"
                       }`}
                     >
@@ -1150,7 +1150,7 @@ export default function CategoriesPage({ selectedBranch, user }) {
                     <div>
                       <p className="text-xs font-bold text-slate-900">Subcategory</p>
                       <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
-                        Child category under a Main Category (e.g. Bottled Drinks, OTC Supplements)
+                        Child category under a Main Category (e.g. Desktop RAM)
                       </p>
                     </div>
                   </button>
@@ -1162,7 +1162,7 @@ export default function CategoriesPage({ selectedBranch, user }) {
                     <GitBranch size={15} className="text-blue-700 shrink-0 mt-0.5" />
                     <div>
                       <span className="font-bold">Configured Subcategories ({subcategoriesOfEditingCategory.length}): </span>
-                      {subcategoriesOfEditingCategory.map((s) => s.name).join(", ")}
+                      {subcategoriesOfEditingCategory.map((s) => formatSubcategoryName(s, editingCategory?.name)).join(", ")}
                     </div>
                   </div>
                 ) : null}
@@ -1175,7 +1175,7 @@ export default function CategoriesPage({ selectedBranch, user }) {
                       Select Parent Main Category:
                     </label>
                     <select
-                      className="w-full rounded-xl border border-blue-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-900 outline-none transition focus:border-[var(--color-maroon)] focus:ring-1 focus:ring-[var(--color-maroon)]"
+                      className="w-full rounded-xl border border-blue-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-900 outline-none transition focus:border-[#7A1F2B] focus:ring-1 focus:ring-[#7A1F2B]"
                       onChange={(e) => setCatForm({ ...catForm, parentId: e.target.value })}
                       value={catForm.parentId}
                     >
@@ -1205,13 +1205,13 @@ export default function CategoriesPage({ selectedBranch, user }) {
                       className={`w-full rounded-xl border px-3.5 py-2.5 text-xs font-bold text-slate-900 outline-none transition ${
                         formError && !catForm.name.trim()
                           ? "border-red-500 bg-red-50/30 ring-2 ring-red-200"
-                          : "border-slate-300 bg-white focus:border-[var(--color-maroon)] focus:ring-1 focus:ring-[var(--color-maroon)] hover:border-slate-400"
+                          : "border-slate-300 bg-white focus:border-[#7A1F2B] focus:ring-1 focus:ring-[#7A1F2B] hover:border-slate-400"
                       }`}
                       onChange={(e) => {
                         setCatForm({ ...catForm, name: e.target.value })
                         if (formError) setFormError("")
                       }}
-                      placeholder="e.g. Beverages, Medical Supplies, Electronics"
+                      placeholder="e.g. Desktop RAM"
                       type="text"
                       value={catForm.name}
                     />
@@ -1222,7 +1222,7 @@ export default function CategoriesPage({ selectedBranch, user }) {
                       </p>
                     ) : (
                       <span className="text-[10px] text-slate-400 mt-0.5 block">
-                        Enter a clear, descriptive name (e.g. Beverages, Personal Care, Office Supplies)
+                        Enter a clear, descriptive name (e.g. Desktop RAM, NVMe SSD)
                       </span>
                     )}
                   </label>
@@ -1233,7 +1233,7 @@ export default function CategoriesPage({ selectedBranch, user }) {
                         Status
                       </span>
                       <select
-                        className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-bold text-slate-900 outline-none transition focus:border-[var(--color-maroon)] focus:ring-1 focus:ring-[var(--color-maroon)]"
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-bold text-slate-900 outline-none transition focus:border-[#7A1F2B] focus:ring-1 focus:ring-[#7A1F2B]"
                         onChange={(e) => setCatForm({ ...catForm, status: e.target.value })}
                         value={catForm.status}
                       >
@@ -1247,7 +1247,7 @@ export default function CategoriesPage({ selectedBranch, user }) {
                         Category Code <span className="text-slate-400 font-normal">(Optional)</span>
                       </span>
                       <input
-                        className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-mono font-bold text-slate-900 outline-none transition focus:border-[var(--color-maroon)] focus:ring-1 focus:ring-[var(--color-maroon)]"
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-mono font-bold text-slate-900 outline-none transition focus:border-[#7A1F2B] focus:ring-1 focus:ring-[#7A1F2B]"
                         onChange={(e) =>
                           setCatForm({ ...catForm, categoryCode: e.target.value })
                         }
@@ -1264,11 +1264,11 @@ export default function CategoriesPage({ selectedBranch, user }) {
                     Description <span className="text-slate-400 font-normal">(Optional)</span>
                   </span>
                   <input
-                    className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-medium text-slate-800 outline-none transition focus:border-[var(--color-maroon)] focus:ring-1 focus:ring-[var(--color-maroon)] hover:border-slate-400"
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-medium text-slate-800 outline-none transition focus:border-[#7A1F2B] focus:ring-1 focus:ring-[#7A1F2B] hover:border-slate-400"
                     onChange={(e) =>
                       setCatForm({ ...catForm, description: e.target.value })
                     }
-                    placeholder="e.g. General merchandise and retail product items."
+                    placeholder="e.g. Desktop memory sticks and high-performance modules."
                     type="text"
                     value={catForm.description}
                   />
@@ -1295,7 +1295,7 @@ export default function CategoriesPage({ selectedBranch, user }) {
                     Cancel
                   </button>
                   <button
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--color-maroon)] px-5 py-2 text-xs font-bold text-white shadow-soft hover:bg-[var(--color-maroon-hover)] transition disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-[#7A1F2B] px-5 py-2 text-xs font-bold text-white shadow-soft hover:bg-[#601822] transition disabled:opacity-50"
                     disabled={isSaving}
                     type="submit"
                   >

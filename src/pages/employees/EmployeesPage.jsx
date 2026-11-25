@@ -196,7 +196,7 @@ export default function EmployeesPage({ selectedBranch, user }) {
       return
     }
 
-    const pcBuild = validateRate(incentiveForm.pcBuildEnabled, incentiveForm.pcBuildRatePercent, "Bundle / Package")
+    const pcBuild = validateRate(incentiveForm.pcBuildEnabled, incentiveForm.pcBuildRatePercent, "PC Build")
     if (!pcBuild.ok) {
       setIncentiveModalError(pcBuild.message)
       return
@@ -1196,7 +1196,7 @@ export default function EmployeesPage({ selectedBranch, user }) {
                             ))}
                           </select>
                           <p className="text-[11px] text-slate-600">
-                            The sales recorded by the selected employee account serve as the basis (Branch Item Sale Pool) for calculating each employee's percentage (%) share in this branch.
+                            Sales from the selected employee account serve as the basis for the Branch Item Sale Pool, from which each employee&apos;s share percentage (%) in this branch is calculated.
                           </p>
                         </div>
 
@@ -1233,7 +1233,7 @@ export default function EmployeesPage({ selectedBranch, user }) {
                               </div>
                             ) : (
                               <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800">
-                                Pumili ng Pool Basis Employee Account sa itaas para ma-compute ang {shareRateNum}% Branch Pool Incentive.
+                                Select a Pool Basis Employee Account above to compute the {shareRateNum}% Branch Pool Incentive.
                               </div>
                             )}
                           </div>
@@ -1464,11 +1464,11 @@ export default function EmployeesPage({ selectedBranch, user }) {
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
-                          <p className="font-bold text-sm text-[var(--color-text-strong)]">Technician Labor Rate for Parts Replacement % — Complex / Advanced Repair</p>
-                          <span className="rounded-full bg-purple-50 px-2 py-0.5 text-[10px] font-black text-purple-700">Advanced Labor %</span>
+                          <p className="font-bold text-sm text-[var(--color-text-strong)]">Technician Labor Rate for Parts Replacement % — Board-Level / Advanced Repair</p>
+                          <span className="rounded-full bg-purple-50 px-2 py-0.5 text-[10px] font-black text-purple-700">Board-Level Labor %</span>
                         </div>
                         <p className="text-xs text-[var(--color-muted)] mt-0.5">
-                          For specialized or complex replacement parts. Technician fee is computed as a percentage of replacement parts wholesale cost.
+                          For board-level replacement parts (e.g. Power IC, Charging IC, VRAM chip, MOSFET soldering). Technician fee is computed as a percentage of board-level parts wholesale cost.
                         </p>
                       </div>
                     </div>
@@ -1507,7 +1507,7 @@ export default function EmployeesPage({ selectedBranch, user }) {
                   ) : null}
                 </div>
 
-                {/* 7. Custom Bundle / Package */}
+                {/* 7. Custom PC Build */}
                 <div className={`rounded-2xl border p-4 transition ${incentiveForm.pcBuildEnabled ? "border-[var(--color-maroon)]/40 bg-[var(--color-soft)]/25" : "border-slate-200 bg-slate-50/50"}`}>
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex items-start gap-3">
@@ -1516,11 +1516,11 @@ export default function EmployeesPage({ selectedBranch, user }) {
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
-                          <p className="font-bold text-sm text-[var(--color-text-strong)]">Custom Bundle &amp; Package Assembly</p>
-                          <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-black text-indigo-700">Package Assembly</span>
+                          <p className="font-bold text-sm text-[var(--color-text-strong)]">Custom PC Build & Assembly</p>
+                          <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-black text-indigo-700">PC Assembly</span>
                         </div>
                         <p className="text-xs text-[var(--color-muted)] mt-0.5">
-                          Commission for assembling, preparing, and fulfilling custom product bundles or packages.
+                          Commission for assembling, configuring, and testing sold custom PC systems.
                         </p>
                       </div>
                     </div>

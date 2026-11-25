@@ -6,6 +6,7 @@ import {
   createPurchaseOrder,
   getPurchaseOrderById,
   getPurchaseOrders,
+  getPreSaleBatches,
   updatePurchaseOrder,
   updatePurchaseOrderStatus,
 } from "../../features/purchase-orders/purchaseOrders.api"
@@ -18,8 +19,7 @@ import {
   printPurchaseOrder,
 } from "../../utils/businessDocumentExport"
 import ExportExcelButton from "../../components/common/ExportExcelButton"
-import { canUserAccessPurchases } from "../../constants/appModules"
-const EMPTY_LINE = { itemId: "", description: "", quantity: "1", unitCost: "0", discountAmount: "0" }
+const EMPTY_LINE = { itemId: "", description: "", quantity: "1", unitCost: "0", discountAmount: "0", batchCode: "" }
 
 function apiError(error, fallback) {
   return error?.response?.data?.error?.message || error?.response?.data?.message || fallback
@@ -72,30 +72,88 @@ function toDateInput(value) {
 }
 
 function PurchaseOrderItemLookup({
-  catalogItems,
+  branchId,
+  catalogItems = [],
   itemId,
   onRepeat,
   onSelect,
 }) {
-  const selectedItem = catalogItems.find((item) => item.id === itemId)
+  const [remoteResults, setRemoteResults] = useState([])
+  const [isSearching, setIsSearching] = useState(false)
+
+  const allKnownItems = useMemo(() => {
+    const map = new Map()
+    for (const item of catalogItems || []) {
+      if (item?.id) map.set(item.id, item)
+    }
+    for (const item of remoteResults || []) {
+      if (item?.id) map.set(item.id, item)
+    }
+    return Array.from(map.values())
+  }, [catalogItems, remoteResults])
+
+  const selectedItem = useMemo(() => {
+    return allKnownItems.find((item) => item.id === itemId)
+  }, [allKnownItems, itemId])
 
   const getItemLabel = (item) => {
     if (!item) return ""
-
     return `${item.itemCode} · ${item.itemName}`
   }
 
   const [query, setQuery] = useState(() => getItemLabel(selectedItem))
   const [isOpen, setIsOpen] = useState(false)
 
+  useEffect(() => {
+    if (selectedItem) {
+      setQuery(getItemLabel(selectedItem))
+    } else if (!itemId) {
+      setQuery("")
+    }
+  }, [selectedItem, itemId])
+
   const normalizedQuery = query.trim().toLowerCase()
+
+  useEffect(() => {
+    const trimmed = query.trim()
+    if (!trimmed || (selectedItem && getItemLabel(selectedItem).toLowerCase() === trimmed.toLowerCase())) {
+      setRemoteResults([])
+      return
+    }
+
+    let active = true
+    const timer = window.setTimeout(async () => {
+      setIsSearching(true)
+      try {
+        const response = await getItems({
+          ...(branchId ? { branchId } : {}),
+          search: trimmed,
+          status: "ACTIVE",
+          limit: 25,
+        })
+        if (active) {
+          const list = response?.data?.items || response?.data?.data || []
+          setRemoteResults(Array.isArray(list) ? list : [])
+        }
+      } catch (err) {
+        // preserve local results on network failure
+      } finally {
+        if (active) setIsSearching(false)
+      }
+    }, 250)
+
+    return () => {
+      active = false
+      window.clearTimeout(timer)
+    }
+  }, [query, branchId, selectedItem])
 
   const matches = useMemo(() => {
     if (!normalizedQuery) {
-      return catalogItems.slice(0, 12)
+      return allKnownItems.slice(0, 15)
     }
 
-    return catalogItems
+    return allKnownItems
       .filter((item) => {
         const searchableValues = [
           item.itemCode,
@@ -111,27 +169,49 @@ function PurchaseOrderItemLookup({
             .includes(normalizedQuery),
         )
       })
-      .slice(0, 12)
-  }, [catalogItems, normalizedQuery])
+      .slice(0, 15)
+  }, [allKnownItems, normalizedQuery])
 
   const selectItem = (item) => {
     if (!item) return
 
     setQuery(getItemLabel(item))
     setIsOpen(false)
-    onSelect(item.id)
+    onSelect(item.id, item)
   }
 
-  const submitLookup = () => {
+  const submitLookup = async () => {
     const rawValue = query.trim()
 
     if (!rawValue) return
 
-    const exactItem = catalogItems.find(
+    let exactItem = allKnownItems.find(
       (item) =>
         String(item.barcode || "").toLowerCase() === rawValue.toLowerCase() ||
         String(item.itemCode || "").toLowerCase() === rawValue.toLowerCase(),
     )
+
+    if (!exactItem) {
+      try {
+        setIsSearching(true)
+        const response = await getItems({
+          ...(branchId ? { branchId } : {}),
+          search: rawValue,
+          status: "ACTIVE",
+          limit: 10,
+        })
+        const items = response?.data?.items || response?.data?.data || []
+        exactItem = items.find(
+          (item) =>
+            String(item.barcode || "").toLowerCase() === rawValue.toLowerCase() ||
+            String(item.itemCode || "").toLowerCase() === rawValue.toLowerCase(),
+        ) || items[0]
+      } catch (err) {
+        // ignore
+      } finally {
+        setIsSearching(false)
+      }
+    }
 
     if (exactItem) {
       if (exactItem.id === itemId) {
@@ -192,6 +272,12 @@ function PurchaseOrderItemLookup({
 
       {isOpen ? (
         <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-50 max-h-60 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+          {isSearching ? (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold text-[var(--color-maroon)] bg-amber-50 rounded-md mb-1">
+              <span className="size-1.5 rounded-full bg-[var(--color-maroon)] animate-ping" />
+              Searching database...
+            </div>
+          ) : null}
           {matches.length ? (
             matches.map((item) => (
               <button
@@ -232,7 +318,7 @@ function PurchaseOrderItemLookup({
           ) : (
             <div className="p-3">
               <p className="text-xs font-bold text-slate-800">
-                No matching catalog item
+                {isSearching ? "Searching..." : "No matching catalog item"}
               </p>
 
               <p className="mt-0.5 text-[11px] leading-4 text-slate-500">
@@ -398,6 +484,7 @@ function SupplierAutocompleteInput({
 }
 
 function PurchaseOrderForm({
+  branchId,
   initial,
   suppliers,
   catalogItems,
@@ -406,6 +493,7 @@ function PurchaseOrderForm({
   onSave,
 }) {
   const isLocked = Boolean(initial?.id && initial?.status !== "DRAFT")
+  const effectiveBranchId = branchId || initial?.branchId || ""
   const initialSupplier =
     suppliers.find((s) => s.id === initial?.supplierId) || initial?.supplier
 
@@ -426,6 +514,9 @@ function PurchaseOrderForm({
       initialSupplier?.address ||
       initial?.supplier?.address ||
       "",
+    orderDate:
+      toDateInput(initial?.orderDate) ||
+      new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }),
     expectedDate: toDateInput(initial?.expectedDate),
     notes: initial?.notes || "",
     internalNotes: initial?.internalNotes || "",
@@ -448,10 +539,22 @@ function PurchaseOrderForm({
             quantity: String(line.quantity),
             unitCost: effectiveUnitCost,
             discountAmount: String(line.discountAmount || 0),
+            batchCode: line.batchCode || "",
           }
         })
       : [{ ...EMPTY_LINE }],
   }))
+
+  const [preSaleBatches, setPreSaleBatches] = useState([])
+
+  useEffect(() => {
+    getPreSaleBatches({ ...(initial?.branchId ? { branchId: initial.branchId } : {}) })
+      .then((res) => {
+        const rows = res?.data || []
+        setPreSaleBatches(Array.isArray(rows) ? rows : [])
+      })
+      .catch(() => {})
+  }, [initial?.branchId])
 
   const totals = useMemo(
     () =>
@@ -490,10 +593,12 @@ function PurchaseOrderForm({
     }))
   }
 
-  const chooseItem = (index, itemId) => {
-    const item = catalogItems.find(
-      (entry) => entry.id === itemId,
-    )
+  const chooseItem = (index, itemId, chosenItem) => {
+    const item =
+      chosenItem ||
+      catalogItems.find(
+        (entry) => entry.id === itemId,
+      )
 
     updateLine(index, {
       itemId,
@@ -620,8 +725,8 @@ function PurchaseOrderForm({
           </div>
         </div>
 
-        {/* Row 2: PO Code, Expected Date, Supplier Notes */}
-        <div className="grid gap-3 sm:grid-cols-3">
+        {/* Row 2: PO Code, Order Date, Expected Date, Supplier Notes */}
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <label className={labelClass}>
               PO Code
@@ -636,6 +741,24 @@ function PurchaseOrderForm({
                 }
                 placeholder="Auto-generated if blank"
                 value={form.poCode}
+              />
+            </label>
+          </div>
+
+          <div>
+            <label className={labelClass}>
+              Order Date (PO Date)
+              <input
+                className={inputClass}
+                disabled={isLocked}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    orderDate: event.target.value,
+                  }))
+                }
+                type="date"
+                value={form.orderDate}
               />
             </label>
           </div>
@@ -713,13 +836,14 @@ function PurchaseOrderForm({
               >
                 <div className="grid items-end gap-2.5 lg:grid-cols-[1.5fr_1.2fr_90px_110px_110px_38px]">
                   <PurchaseOrderItemLookup
+                    branchId={effectiveBranchId}
                     catalogItems={catalogItems}
                     itemId={line.itemId}
                     onRepeat={() =>
                       repeatItemScan(index)
                     }
-                    onSelect={(itemId) =>
-                      chooseItem(index, itemId)
+                    onSelect={(itemId, item) =>
+                      chooseItem(index, itemId, item)
                     }
                   />
 
@@ -826,6 +950,37 @@ function PurchaseOrderForm({
                     <Trash2 size={14} />
                   </button>
                 </div>
+
+                <div className="flex flex-col gap-2 pt-2 border-t border-slate-200/60 sm:flex-row sm:items-center sm:justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Batch Code:</span>
+                    <input
+                      className="w-56 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-mono font-semibold text-slate-800 outline-none focus:border-[var(--color-maroon)] placeholder:font-normal placeholder:text-slate-400"
+                      onChange={(event) => updateLine(index, { batchCode: event.target.value })}
+                      placeholder="Auto-generated if blank"
+                      value={line.batchCode || ""}
+                    />
+                  </div>
+
+                  {preSaleBatches.find((b) => b.itemId === line.itemId) ? (
+                    (() => {
+                      const matchingPreSale = preSaleBatches.find((b) => b.itemId === line.itemId);
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => updateLine(index, {
+                            batchCode: matchingPreSale.batchCode,
+                            quantity: String(Math.max(Number(line.quantity || 1), Number(matchingPreSale.preSoldQty || 1)))
+                          })}
+                          className="inline-flex items-center gap-1 rounded-lg bg-amber-50 px-2 py-1 text-[11px] font-bold text-amber-800 border border-amber-300 hover:bg-amber-100 transition cursor-pointer"
+                          title="Click to use this pre-sold batch from POS"
+                        >
+                          ⚡ Pre-sold in POS: <span className="font-mono">{matchingPreSale.batchCode}</span> ({matchingPreSale.preSoldQty} pcs needed) [Use Batch]
+                        </button>
+                      );
+                    })()
+                  ) : null}
+                </div>
               </article>
             ))}
           </div>
@@ -904,7 +1059,6 @@ function PurchaseOrderForm({
 }
 
 export default function PurchaseOrdersPage({ selectedBranch, user, onNavigate }) {
-  const canManagePO = canUserAccessPurchases(user)
   const [viewMode, setViewMode] = useState("OPERATIONS")
   const branchId = selectedBranch?.id || user?.branchId || user?.branch?.id || ""
   const [orders, setOrders] = useState([])
@@ -1039,6 +1193,7 @@ export default function PurchaseOrdersPage({ selectedBranch, user, onNavigate })
       supplierContact,
       supplierAddress,
       ...(!editing?.id && branchId ? { branchId } : {}),
+      orderDate: form.orderDate || null,
       expectedDate: form.expectedDate || null,
       notes: form.notes.trim() || null,
       internalNotes: form.internalNotes.trim() || null,
@@ -1048,6 +1203,7 @@ export default function PurchaseOrdersPage({ selectedBranch, user, onNavigate })
         quantity: Number(line.quantity),
         unitCost: Number(line.unitCost),
         discountAmount: Number(line.discountAmount || 0),
+        ...(line.batchCode?.trim() ? { batchCode: line.batchCode.trim() } : {}),
       })),
     }
     try {
@@ -1137,11 +1293,6 @@ export default function PurchaseOrdersPage({ selectedBranch, user, onNavigate })
         </div>
       </section>
 
-      {!canManagePO ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold text-amber-800">
-          Account restricted: Cashiers and junior technicians cannot create or edit purchase orders. Only senior staff, admin, and main admin have access.
-        </div>
-      ) : null}
       {message ? <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-bold text-rose-700">{message}</div> : null}
       {notice ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-bold text-emerald-700">{notice}</div> : null}
 
@@ -1287,7 +1438,7 @@ export default function PurchaseOrdersPage({ selectedBranch, user, onNavigate })
               </div>
               <button className="rounded-lg border border-slate-200 p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition" onClick={() => setEditing(null)} type="button"><X size={16} /></button>
             </div>
-            <PurchaseOrderForm catalogItems={catalogItems} initial={editing} isSaving={isSaving} onClose={() => setEditing(null)} onSave={save} suppliers={suppliers} />
+            <PurchaseOrderForm branchId={branchId} catalogItems={catalogItems} initial={editing} isSaving={isSaving} onClose={() => setEditing(null)} onSave={save} suppliers={suppliers} />
           </section>
         </div>
       ) : null}

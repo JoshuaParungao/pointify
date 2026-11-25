@@ -233,7 +233,7 @@ export default function OcrQuotationModal({
               {/* Instructions Callout */}
               <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-soft)]/40 p-4">
                 <h4 className="text-xs font-black uppercase tracking-wider text-[var(--color-muted)]">
-                  How Pointify OCR Works
+                  How POSynctify OCR Works
                 </h4>
                 <ul className="mt-2 space-y-1.5 text-xs text-[var(--color-muted)]">
                   <li className="flex items-center gap-2">
@@ -311,7 +311,7 @@ export default function OcrQuotationModal({
                     Extracted Line Items ({extractedData.items?.length || 0})
                   </span>
                   <span className="text-[11px] font-semibold text-[var(--color-muted)]">
-                    Verified against Pointify Inventory
+                    Verified against POSynctify Inventory
                   </span>
                 </div>
 

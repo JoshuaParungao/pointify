@@ -1,12 +1,16 @@
 import { useEffect, useMemo, useState, useCallback } from "react"
-import { AlertCircle, AlertTriangle, Check, CheckCircle2, Edit3, Layers, PackageSearch, Plus, RefreshCw, Save, Search, SlidersHorizontal, Sparkles, Tag, Trash2, X } from "lucide-react"
+import { AlertCircle, AlertTriangle, Check, CheckCircle2, Edit3, Layers, PackageSearch, Plus, RefreshCw, Save, Search, SlidersHorizontal, Sparkles, Tag, X } from "lucide-react"
 
 import { USER_ROLES } from "../../constants/roles"
-import { clearAllItems, createItem, deleteItemById, getItemCategories, getItems, getUnits, updateItemById } from "../../features/items/items.api"
+import { createItem, getItemCategories, getItems, getUnits, updateItemById } from "../../features/items/items.api"
+import { getInventoryBatches, updateInventoryBatchCode } from "../../features/inventory/inventory.api"
 import { createItemCategory } from "../../features/categories/categories.api"
 import { createUnit } from "../../features/units/units.api"
 import { exportReportExcel } from "../../utils/businessDocumentExport"
-import { formatSpecs } from "../../utils/attributeFilter"
+import {
+  formatMainCategoryName,
+  formatSubcategoryName,
+} from "../../utils/attributeFilter"
 import ExportExcelButton from "../../components/common/ExportExcelButton"
 
 
@@ -61,224 +65,12 @@ export function stripWarrantyTag(description) {
   return description.replace(/\[WARRANTY:\s*[^\]]+\]/gi, "").trim()
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
-export function autoDetectSpecsFromItem({ itemName = "", brand = "", modelName = "", schema = [] }) {
-  if (!itemName || !Array.isArray(schema) || schema.length === 0) return {}
-
-  const text = `${brand || ""} ${modelName || ""} ${itemName}`.trim()
-  const detected = {}
-
-  for (const field of schema) {
-    const nameLower = field.name.toLowerCase()
-    const options = Array.isArray(field.options) ? field.options : []
-
-    // 1. Try matching predefined options (longest first)
-    if (options.length > 0) {
-      const sorted = [...options].sort((a, b) => b.length - a.length)
-      for (const opt of sorted) {
-        const escaped = opt.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")
-        const regex = new RegExp(`(^|[^a-zA-Z0-9])${escaped}([^a-zA-Z0-9]|$)`, "i")
-        if (regex.test(text)) {
-          detected[field.name] = opt
-          break
-        }
-      }
-    }
-
-    if (detected[field.name]) continue
-
-    // 2. Specialized Regex Patterns
-    // Capacity / Storage / VRAM
-    if (nameLower.includes("capacity") || nameLower.includes("size") || nameLower.includes("vram")) {
-      const match = text.match(/\b(\d+)\s*(GB|TB|MB)\b/i)
-      if (match) {
-        detected[field.name] = `${match[1]}${match[2].toUpperCase()}`
-        continue
-      }
-    }
-
-    // Speed / Frequency
-    if (nameLower.includes("speed") || nameLower.includes("frequency")) {
-      const match = text.match(/\b(\d{3,5})\s*(MHz|MT\/s|GHz)\b/i)
-      if (match) {
-        const unit = match[2].toUpperCase() === "MT/S" ? " MT/s" : match[2].toUpperCase() === "GHZ" ? " GHz" : "MHz"
-        detected[field.name] = `${match[1]}${unit}`
-        continue
-      }
-    }
-
-    // Refresh Rate
-    if (nameLower.includes("refresh rate")) {
-      const match = text.match(/\b(\d{2,3})\s*Hz\b/i)
-      if (match) {
-        detected[field.name] = `${match[1]}Hz`
-        continue
-      }
-    }
-
-    // Memory Type
-    if (nameLower.includes("memory type")) {
-      const match = text.match(/\b(DDR5|DDR4|DDR3L?|GDDR6X?|GDDR5)\b/i)
-      if (match) {
-        detected[field.name] = match[1].toUpperCase()
-        continue
-      }
-    }
-
-    // Color
-    if (nameLower.includes("color")) {
-      const match = text.match(/\b(Black|White|Silver|Grey|Gray|Red|Blue|Pink|Green|Yellow|Gold)\b/i)
-      if (match) {
-        const c = match[1].toLowerCase()
-        detected[field.name] = c.charAt(0).toUpperCase() + c.slice(1)
-        continue
-      }
-    }
-
-    // RGB Lighting
-    if (nameLower.includes("rgb") || nameLower.includes("lighting")) {
-      if (/\b(Non-RGB|Without RGB|No RGB|None)\b/i.test(text)) {
-        detected[field.name] = "Non-RGB"
-        continue
-      } else if (/\b(ARGB|Addressable RGB|A-RGB)\b/i.test(text)) {
-        detected[field.name] = "ARGB"
-        continue
-      } else if (/\b(RGB)\b/i.test(text)) {
-        detected[field.name] = "RGB"
-        continue
-      }
-    }
-
-    // Pin Count (for RAM)
-    if (nameLower.includes("pin count") || nameLower.includes("pins")) {
-      if (/\bDDR5\b/i.test(text)) {
-        detected[field.name] = "288-Pin"
-        continue
-      } else if (/\bDDR4\b/i.test(text)) {
-        detected[field.name] = "288-Pin"
-        continue
-      } else if (/\bDDR3\b/i.test(text)) {
-        detected[field.name] = "240-Pin"
-        continue
-      }
-    }
-
-    // Form Factor
-    if (nameLower.includes("form factor")) {
-      if (/\b(SO-DIMM|SODIMM|Laptop)\b/i.test(text)) {
-        detected[field.name] = "SO-DIMM"
-        continue
-      } else if (/\b(DIMM|Desktop|UDIMM|U-DIMM)\b/i.test(text) || (nameLower.includes("ram") || text.includes("RAM"))) {
-        detected[field.name] = "DIMM"
-        continue
-      } else if (/\b(Micro-ATX|M-ATX|Micro ATX|mATX)\b/i.test(text)) {
-        detected[field.name] = "Micro-ATX"
-        continue
-      } else if (/\b(Mini-ITX|Mini ITX|ITX)\b/i.test(text)) {
-        detected[field.name] = "Mini-ITX"
-        continue
-      } else if (/\b(ATX)\b/i.test(text)) {
-        detected[field.name] = "ATX"
-        continue
-      } else if (/\b(M\.2\s*2280)\b/i.test(text)) {
-        detected[field.name] = "M.2 2280"
-        continue
-      } else if (/\b(2\.5["']?)\b/i.test(text)) {
-        detected[field.name] = '2.5"'
-        continue
-      } else if (/\b(3\.5["']?)\b/i.test(text)) {
-        detected[field.name] = '3.5"'
-        continue
-      }
-    }
-
-    // Wattage / Power
-    if (nameLower.includes("wattage") || nameLower.includes("power")) {
-      const match = text.match(/\b(\d{3,4})\s*W\b/i)
-      if (match) {
-        detected[field.name] = `${match[1]}W`
-        continue
-      }
-    }
-
-    // Efficiency Rating / 80 Plus
-    if (nameLower.includes("efficiency") || nameLower.includes("rating")) {
-      const match = text.match(/\b(80\s*Plus\s*(Titanium|Platinum|Gold|Silver|Bronze|White|Standard))\b/i)
-      if (match) {
-        detected[field.name] = match[1]
-        continue
-      }
-    }
-
-    // Socket
-    if (nameLower.includes("socket")) {
-      const match = text.match(/\b(AM4|AM5|LGA\s*1700|LGA\s*1851|LGA\s*1200|sTR5)\b/i)
-      if (match) {
-        detected[field.name] = match[1].toUpperCase()
-        continue
-      }
-    }
-
-    // Chipset
-    if (nameLower.includes("chipset")) {
-      const match = text.match(/\b(B450|B550|X570|A520|B650|X670|X870|H610|B660|B760|Z690|Z790)\b/i)
-      if (match) {
-        detected[field.name] = match[1].toUpperCase()
-        continue
-      }
-    }
-
-    // Resolution
-    if (nameLower.includes("resolution")) {
-      if (/\b(1920\s*x\s*1080|1080p|FHD)\b/i.test(text)) {
-        detected[field.name] = "1920 x 1080 (FHD)"
-        continue
-      } else if (/\b(2560\s*x\s*1440|1440p|2K|QHD)\b/i.test(text)) {
-        detected[field.name] = "2560 x 1440 (QHD)"
-        continue
-      } else if (/\b(3840\s*x\s*2160|4K|UHD)\b/i.test(text)) {
-        detected[field.name] = "3840 x 2160 (4K UHD)"
-        continue
-      }
-    }
-
-    // Brand
-    if (nameLower.includes("brand")) {
-      if (brand && brand.trim()) {
-        detected[field.name] = brand.trim()
-        continue
-      }
-      const knownBrands = [
-        "Kingston", "Corsair", "G.Skill", "TeamGroup", "Crucial", "Adata", "Samsung",
-        "Seagate", "Western Digital", "WD", "Asus", "MSI", "Gigabyte", "ASRock", "Palit",
-        "Zotac", "Galax", "Inno3D", "PowerColor", "Sapphire", "XFX", "AMD", "Intel",
-        "DeepCool", "Thermaltake", "NZXT", "Cooler Master", "SilverStone", "Seasonic",
-        "FSP", "Montech", "DarkFlash", "Lian Li", "Keychron", "Royal Kludge", "Logitech",
-        "Razer", "Redragon", "SteelSeries", "AOC", "ViewSonic", "BenQ", "LG", "Philips"
-      ]
-      for (const b of knownBrands) {
-        const regex = new RegExp(`(^|[^a-zA-Z0-9])${b}([^a-zA-Z0-9]|$)`, "i")
-        if (regex.test(text)) {
-          detected[field.name] = b
-          break
-        }
-      }
-    }
-  }
-
-  return detected
-}
-
 const EMPTY_ITEM_FORM = {
   itemCode: "",
-  barcode: "",
   itemName: "",
   description: "",
-  brand: "",
-  modelName: "",
   categoryId: "",
   unitId: "",
-  attributes: {},
   isSerialized: false,
   hasWarranty: true,
   warrantyDuration: "1 YEAR WARRANTY",
@@ -302,14 +94,10 @@ function itemToForm(item) {
 
   return {
     itemCode: item.itemCode || "",
-    barcode: item.barcode || "",
     itemName: item.itemName || "",
     description: stripWarrantyTag(item.description),
-    brand: item.brand || "",
-    modelName: item.modelName || "",
     categoryId: item.category?.id || item.categoryId || "",
     unitId: item.unit?.id || item.unitId || "",
-    attributes: item.attributes && typeof item.attributes === "object" ? { ...item.attributes } : {},
     isSerialized: Boolean(item.isSerialized),
     hasWarranty: warranty !== "NO WARRANTY",
     warrantyDuration: warranty,
@@ -361,8 +149,62 @@ function StatusPill({ status }) {
   )
 }
 
-function ItemDetailModal({ canViewCost, item, onClose }) {
+function ItemDetailModal({ canViewCost, item, branchId, onClose }) {
   if (!item) return null
+
+  const [batches, setBatches] = useState([])
+  const [isLoadingBatches, setIsLoadingBatches] = useState(false)
+  const [editingBatchId, setEditingBatchId] = useState(null)
+  const [editBatchCode, setEditBatchCode] = useState("")
+  const [isSavingBatch, setIsSavingBatch] = useState(false)
+  const [batchError, setBatchError] = useState("")
+  const [batchSuccess, setBatchSuccess] = useState("")
+
+  const loadBatches = useCallback(async () => {
+    if (!item?.id) return
+    setIsLoadingBatches(true)
+    setBatchError("")
+    try {
+      const res = await getInventoryBatches({ itemId: item.id, ...(branchId ? { branchId } : {}) })
+      const rows = res?.data?.data || res?.data || []
+      setBatches(Array.isArray(rows) ? rows : [])
+    } catch {
+      setBatchError("Unable to load batches for this item.")
+    } finally {
+      setIsLoadingBatches(false)
+    }
+  }, [item?.id, branchId])
+
+  useEffect(() => {
+    loadBatches()
+  }, [loadBatches])
+
+  const handleStartEdit = (b) => {
+    setEditingBatchId(b.id)
+    setEditBatchCode(b.batchCode)
+    setBatchError("")
+    setBatchSuccess("")
+  }
+
+  const handleSaveBatch = async (batchId) => {
+    if (!editBatchCode.trim()) {
+      setBatchError("Batch code cannot be empty.")
+      return
+    }
+    setIsSavingBatch(true)
+    setBatchError("")
+    setBatchSuccess("")
+    try {
+      await updateInventoryBatchCode(batchId, { batchCode: editBatchCode.trim() })
+      setBatchSuccess("Batch code updated successfully.")
+      setEditingBatchId(null)
+      await loadBatches()
+    } catch (err) {
+      setBatchError(err?.response?.data?.message || err?.message || "Failed to update batch code.")
+    } finally {
+      setIsSavingBatch(false)
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-xs">
@@ -390,37 +232,16 @@ function ItemDetailModal({ canViewCost, item, onClose }) {
         <div className="p-5 space-y-4">
           <div className="grid gap-2.5 sm:grid-cols-2 text-xs">
             <div className="rounded-xl border border-slate-100 bg-slate-50/75 p-3">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Item Code</p>
-              <p className="mt-1 font-mono font-bold text-slate-900">
-                {item.itemCode || "—"}
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-slate-100 bg-slate-50/75 p-3">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Barcode</p>
-              <p className="mt-1 font-mono font-bold text-slate-900">
-                {item.barcode || "No barcode"}
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-slate-100 bg-slate-50/75 p-3">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Brand / Model</p>
-              <p className="mt-1 font-bold text-slate-900">
-                {[item.brand, item.modelName].filter(Boolean).join(" • ") || "No brand/model"}
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-slate-100 bg-slate-50/75 p-3">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Branch</p>
-              <p className="mt-1 font-bold text-slate-900">
-                {item.branch?.code || item.branch?.name || "No branch"}
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-slate-100 bg-slate-50/75 p-3">
               <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Category</p>
               <p className="mt-1 font-bold text-slate-900">
-                {item.category?.name || "No category"}
+                {formatMainCategoryName(item.category)}
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-slate-100 bg-slate-50/75 p-3">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Subcategory</p>
+              <p className="mt-1 font-bold text-slate-900">
+                {formatSubcategoryName(item.category)}
               </p>
             </div>
 
@@ -432,9 +253,16 @@ function ItemDetailModal({ canViewCost, item, onClose }) {
             </div>
 
             <div className="rounded-xl border border-slate-100 bg-slate-50/75 p-3">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Item Notes</p>
+              <p className="mt-1 font-semibold text-slate-800">
+                {stripWarrantyTag(item.description) || "—"}
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-slate-100 bg-slate-50/75 p-3">
               <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Tracking</p>
               <p className="mt-1 font-bold text-slate-900">
-                {item.isSerialized ? "Serialized" : "Non-serialized"}
+                {item.isSerialized ? "Serialized item (scans serials)" : "Non-serialized"}
               </p>
             </div>
 
@@ -446,31 +274,18 @@ function ItemDetailModal({ canViewCost, item, onClose }) {
             </div>
           </div>
 
-          {/* Technical Specifications */}
-          {item.attributes && typeof item.attributes === "object" && Object.keys(item.attributes).length > 0 ? (
-            <div className="rounded-xl border border-indigo-200 bg-indigo-50/40 p-3.5 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-black uppercase tracking-wider text-indigo-900 flex items-center gap-1.5">
-                  ⚙️ Technical Specifications
-                </span>
-                <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-800 border border-indigo-200">
-                  {Object.keys(item.attributes).length} attributes
-                </span>
-              </div>
-              <div className="grid gap-2 sm:grid-cols-2 text-xs">
-                {Object.entries(item.attributes).map(([key, val]) => (
-                  <div key={key} className="rounded-lg bg-white border border-indigo-100 p-2 shadow-2xs">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{key}</p>
-                    <p className="mt-0.5 font-bold text-slate-900">{String(val || "—")}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
+          <div className="rounded-xl border border-slate-200 p-3.5 space-y-2.5">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Prices &amp; Stock Thresholds</p>
+            <div className="grid gap-2 grid-cols-2 sm:grid-cols-4 text-xs">
+              {canViewCost ? (
+                <div className="rounded-lg bg-amber-50/60 p-2.5 text-center border border-amber-200">
+                  <p className="text-[10px] font-bold text-amber-900">Cost Price</p>
+                  <p className="mt-0.5 font-mono font-black text-amber-950">
+                    {formatMoney(item.costPrice)}
+                  </p>
+                </div>
+              ) : null}
 
-          <div className="rounded-xl border border-slate-200 p-3.5 space-y-2">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Selling Price Tiers</p>
-            <div className="grid gap-2 grid-cols-2 sm:grid-cols-5 text-xs">
               {PRICE_FIELDS.map((priceField) => (
                 <div key={priceField.key} className="rounded-lg bg-slate-50 p-2.5 text-center border border-slate-100">
                   <p className="text-[10px] font-bold text-slate-500">{priceField.label}</p>
@@ -479,17 +294,122 @@ function ItemDetailModal({ canViewCost, item, onClose }) {
                   </p>
                 </div>
               ))}
+
+              <div className="rounded-lg bg-slate-50 p-2.5 text-center border border-slate-100">
+                <p className="text-[10px] font-bold text-slate-500">Minimum Stock</p>
+                <p className="mt-0.5 font-mono font-bold text-slate-900">
+                  {numberValue(item.minimumStock)}
+                </p>
+              </div>
+
+              <div className="rounded-lg bg-slate-50 p-2.5 text-center border border-slate-100">
+                <p className="text-[10px] font-bold text-slate-500">Reorder Level</p>
+                <p className="mt-0.5 font-mono font-bold text-slate-900">
+                  {numberValue(item.reorderLevel)}
+                </p>
+              </div>
             </div>
           </div>
 
-          {canViewCost ? (
-            <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-3 text-xs flex justify-between items-center">
-              <span className="font-bold uppercase tracking-wider text-amber-900">Cost Price</span>
-              <span className="font-mono font-black text-amber-950 text-sm">
-                {formatMoney(item.costPrice)}
-              </span>
+          {/* Inventory Batches */}
+          <div className="rounded-xl border border-slate-200 p-3.5 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
+                  Inventory Batches ({batches.length})
+                </p>
+                <p className="text-[10px] text-slate-400">
+                  Edit or change batch code for this item.
+                </p>
+              </div>
+              {isLoadingBatches ? (
+                <span className="text-[10px] font-bold text-slate-400">Loading batches...</span>
+              ) : null}
             </div>
-          ) : null}
+
+            {batchError ? (
+              <div className="rounded-lg bg-rose-50 border border-rose-200 p-2 text-xs text-rose-700 font-semibold">
+                {batchError}
+              </div>
+            ) : null}
+
+            {batchSuccess ? (
+              <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-2 text-xs text-emerald-700 font-semibold">
+                {batchSuccess}
+              </div>
+            ) : null}
+
+            {batches.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/50 p-3 text-center text-xs text-slate-400">
+                No active batches in this branch. A new batch will be generated or assigned upon receiving or advance sale.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {batches.map((b) => (
+                  <div
+                    key={b.id}
+                    className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50/60 p-2.5 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="min-w-0">
+                      {editingBatchId === b.id ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            className="rounded-lg border border-[var(--color-maroon)] bg-white px-2 py-1 text-xs font-mono font-bold text-slate-900 outline-none"
+                            onChange={(e) => setEditBatchCode(e.target.value)}
+                            value={editBatchCode}
+                            placeholder="Type batch code..."
+                          />
+                          <button
+                            type="button"
+                            disabled={isSavingBatch}
+                            onClick={() => handleSaveBatch(b.id)}
+                            className="rounded-lg bg-[var(--color-maroon)] px-2.5 py-1 text-xs font-bold text-white hover:opacity-90 disabled:opacity-50"
+                          >
+                            {isSavingBatch ? "Saving..." : "Save"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingBatchId(null)}
+                            className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-black text-xs text-slate-900">
+                            {b.batchCode}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleStartEdit(b)}
+                            className="rounded p-1 text-slate-400 hover:text-[var(--color-maroon)] hover:bg-slate-100 transition"
+                            title="Edit or change batch code"
+                          >
+                            <Edit3 size={13} />
+                          </button>
+                        </div>
+                      )}
+                      <p className="mt-0.5 text-[10px] text-slate-500">
+                        Status: <strong className="text-slate-700">{b.status}</strong> · Received: {new Date(b.receivedAt || b.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-xs">
+                      <div className="rounded-lg bg-white border border-slate-200 px-2 py-1 text-center">
+                        <span className="text-[9px] uppercase font-bold text-slate-400 block">Available</span>
+                        <span className="font-mono font-bold text-emerald-700">{Number(b.quantityAvailable || 0)}</span>
+                      </div>
+                      <div className="rounded-lg bg-white border border-slate-200 px-2 py-1 text-center">
+                        <span className="text-[9px] uppercase font-bold text-slate-400 block">Total In</span>
+                        <span className="font-mono font-bold text-slate-700">{Number(b.quantityIn || 0)}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center justify-end border-t border-slate-200 bg-slate-50/75 px-5 py-3">
@@ -657,7 +577,7 @@ function ItemEditorModal({
     }
 
     if (selectedCategory && selectedCategory.parentId) {
-      setSubCatSearch(selectedCategory.name)
+      setSubCatSearch(formatSubcategoryName(selectedCategory, selectedMainCategory?.name))
     } else {
       setSubCatSearch("")
     }
@@ -672,8 +592,10 @@ function ItemEditorModal({
   const filteredSubcategories = useMemo(() => {
     const q = (subCatSearch || "").trim().toLowerCase()
     if (!q) return subcategoryOptions
-    return subcategoryOptions.filter((c) => c.name.toLowerCase().includes(q))
-  }, [subcategoryOptions, subCatSearch])
+    return subcategoryOptions.filter((c) =>
+      formatSubcategoryName(c, selectedMainCategory?.name).toLowerCase().includes(q)
+    )
+  }, [subcategoryOptions, subCatSearch, selectedMainCategory])
 
   const canCreateNewMainCat = useMemo(() => {
     const q = catSearch.trim()
@@ -686,10 +608,13 @@ function ItemEditorModal({
   const canCreateNewSubCat = useMemo(() => {
     const q = subCatSearch.trim()
     if (!q || !effectiveMainCatId) return false
+    if (selectedMainCategory && q.toLowerCase() === selectedMainCategory.name.toLowerCase()) {
+      return false
+    }
     return !subcategoryOptions.some(
-      (c) => c.name.toLowerCase() === q.toLowerCase()
+      (c) => formatSubcategoryName(c, selectedMainCategory?.name).toLowerCase() === q.toLowerCase()
     )
-  }, [subcategoryOptions, subCatSearch, effectiveMainCatId])
+  }, [subcategoryOptions, subCatSearch, effectiveMainCatId, selectedMainCategory])
 
   const handleCreateCategoryInline = async (nameToCreate) => {
     const trimmed = (nameToCreate || catSearch).trim()
@@ -740,7 +665,7 @@ function ItemEditorModal({
       if (onCategoryCreated) {
         onCategoryCreated(newSubCat)
       }
-      setSubCatSearch(newSubCat.name)
+      setSubCatSearch(formatSubcategoryName(newSubCat, selectedMainCategory?.name))
       onChange("categoryId", newSubCat.id)
       setIsSubDropdownOpen(false)
     } catch (err) {
@@ -759,7 +684,7 @@ function ItemEditorModal({
     const subs = categories.filter((c) => c.parentId === mainCat.id)
     if (subs.length > 0) {
       onChange("categoryId", subs[0].id)
-      setSubCatSearch(subs[0].name)
+      setSubCatSearch(formatSubcategoryName(subs[0], mainCat.name))
     } else {
       onChange("categoryId", mainCat.id)
       setSubCatSearch("")
@@ -956,7 +881,9 @@ function ItemEditorModal({
                     }}
                     placeholder={
                       effectiveMainCatId
-                        ? "Search or type new subcategory…"
+                        ? subcategoryOptions.length === 0
+                          ? `${selectedMainCategory?.name || ""} (type to add new…)`
+                          : "Search or type new subcategory…"
                         : "Select category first"
                     }
                   />
@@ -1002,6 +929,7 @@ function ItemEditorModal({
                       {filteredSubcategories.length > 0 ? (
                         filteredSubcategories.map((subCat) => {
                           const isSelected = subCat.id === formCategoryId
+                          const cleanSubName = formatSubcategoryName(subCat, selectedMainCategory?.name)
                           return (
                             <button
                               key={subCat.id}
@@ -1013,11 +941,11 @@ function ItemEditorModal({
                               }`}
                               onClick={() => {
                                 onChange("categoryId", subCat.id)
-                                setSubCatSearch(subCat.name)
+                                setSubCatSearch(cleanSubName)
                                 setIsSubDropdownOpen(false)
                               }}
                             >
-                              <span>{subCat.name}</span>
+                              <span>{cleanSubName}</span>
                               {isSelected && <Check size={13} />}
                             </button>
                           )
@@ -1046,7 +974,7 @@ function ItemEditorModal({
                 onChange={(event) =>
                   onChange("itemName", event.target.value)
                 }
-                placeholder="e.g. Standard Product Name / Variant"
+                placeholder="e.g. Intel Core i5-12400F Processor"
                 required
                 value={form.itemName}
               />
@@ -1438,7 +1366,11 @@ function PriceEditorModal({
   )
 }
 
-function ItemMobileCard({ canManagePrices, canViewCost, item, onEditPrices }) {
+function ItemMobileCard({ canManagePrices, canViewCost, categories = [], item, onEditPrices }) {
+  const needsSubcategory =
+    !item.category?.parentId &&
+    categories.some((c) => c.parentId === item.categoryId)
+
   return (
     <article className="rounded-3xl border border-[var(--color-border)] bg-white p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
@@ -1448,9 +1380,6 @@ function ItemMobileCard({ canManagePrices, canViewCost, item, onEditPrices }) {
           </p>
           <p className="mt-1 text-xs font-bold text-[var(--color-muted)]">
             {item.itemCode}
-          </p>
-          <p className="mt-1 text-xs text-[var(--color-muted)]">
-            {[item.brand, item.modelName].filter(Boolean).join(" • ") || "No brand/model"}
           </p>
         </div>
 
@@ -1481,16 +1410,12 @@ function ItemMobileCard({ canManagePrices, canViewCost, item, onEditPrices }) {
             Category
           </p>
           <div className="mt-1 flex flex-wrap items-center gap-1.5 font-bold text-[var(--color-text-strong)]">
-            {item.category?.parent ? (
-              <>
-                <span className="text-xs font-semibold text-[var(--color-muted)]">
-                  {item.category.parent.name}
-                </span>
-                <span className="text-xs text-[var(--color-muted)]">›</span>
-              </>
-            ) : null}
-            <span>{item.category?.name || "—"}</span>
-            {!item.category?.parentId ? (
+            <span className="text-xs font-semibold text-[var(--color-muted)]">
+              {formatMainCategoryName(item.category, "—")}
+            </span>
+            <span className="text-xs text-[var(--color-muted)]">›</span>
+            <span>{formatSubcategoryName(item.category)}</span>
+            {needsSubcategory ? (
               <span className="ml-auto inline-flex items-center gap-1 rounded bg-amber-100 text-amber-800 border border-amber-200 px-1.5 py-0.5 text-[10px] font-bold" title="Main Category (Needs Subcategory Alignment)">
                 ⚠️ Needs Subcategory
               </span>
@@ -1530,7 +1455,7 @@ function ItemMobileCard({ canManagePrices, canViewCost, item, onEditPrices }) {
 
       {canManagePrices ? (
         <button
-          className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-[var(--color-maroon)] bg-white px-4 py-3 text-sm font-bold text-[var(--color-maroon)] transition hover:bg-[var(--color-maroon-soft)]"
+          className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-[#7A1F2B] bg-white px-4 py-3 text-sm font-bold text-[#7A1F2B] transition hover:bg-[#F4F1EC]"
           onClick={() => onEditPrices(item)}
           type="button"
         >
@@ -1549,7 +1474,6 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
   const [searchText, setSearchText] = useState(initialContext?.search || "")
   const [mainCatFilter, setMainCatFilter] = useState("")
   const [subCatFilter, setSubCatFilter] = useState("")
-  const [brandFilter, setBrandFilter] = useState("")
   const [statusFilter, setStatusFilter] = useState("")
   const [serializedFilter, setSerializedFilter] = useState("")
   const [warrantyFilter, setWarrantyFilter] = useState("")
@@ -1585,8 +1509,8 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
   const [isSavingItem, setIsSavingItem] = useState(false)
 
   const canManageCatalog = useMemo(() => OWNER_ROLES.has(user?.role), [user?.role])
-  const canAdjustPrices = useMemo(() => OWNER_ROLES.has(user?.role), [user?.role])
-  const canManagePrices = useMemo(() => OWNER_ROLES.has(user?.role), [user?.role])
+  const canAdjustPrices = true
+  const canManagePrices = true
   const canViewCost = true
 
   const mainCategories = useMemo(() => {
@@ -1607,7 +1531,7 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
   const loadFilterOptions = useCallback(async () => {
     try {
       const categoryParams = {
-        limit: 250,
+        limit: 500,
       }
 
       if (selectedBranchId) {
@@ -1664,10 +1588,6 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
         params.categoryId = effectiveCategoryId
       }
 
-      if (brandFilter.trim()) {
-        params.brand = brandFilter.trim()
-      }
-
       if (unitFilter) {
         params.unitId = unitFilter
       }
@@ -1684,7 +1604,7 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
     } finally {
       setIsLoading(false)
     }
-  }, [effectiveCategoryId, brandFilter, page, pageSize, searchText, selectedBranchId, serializedFilter, statusFilter, unitFilter, warrantyFilter])
+  }, [effectiveCategoryId, page, pageSize, searchText, selectedBranchId, serializedFilter, statusFilter, unitFilter, warrantyFilter])
 
   const openDetailModal = (item) => {
     setDetailItem(item)
@@ -1698,7 +1618,6 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
     setSearchText("")
     setMainCatFilter("")
     setSubCatFilter("")
-    setBrandFilter("")
     setUnitFilter("")
     setStatusFilter("")
     setSerializedFilter("")
@@ -1715,7 +1634,6 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
       if (statusFilter) params.status = statusFilter
       if (serializedFilter) params.isSerialized = serializedFilter
       if (effectiveCategoryId) params.categoryId = effectiveCategoryId
-      if (brandFilter.trim()) params.brand = brandFilter.trim()
       if (unitFilter) params.unitId = unitFilter
 
       const exportItems = []
@@ -1744,15 +1662,13 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
       const exportColumns = [
         ["Item Code", (row) => row.itemCode || "—"],
         ["Item Name", (row) => row.itemName || "—"],
-        ["Barcode", (row) => row.barcode || "—"],
-        ["Brand", (row) => row.brand || "—"],
-        ["Model", (row) => row.modelName || "—"],
-        ["Category", (row) => row.category?.name || row.categoryName || "—"],
+        ["Category", (row) => formatMainCategoryName(row.category, row.categoryName || "—")],
+        ["Subcategory", (row) => formatSubcategoryName(row.category)],
         ["Unit", (row) => row.unit?.name || row.unitName || "—"],
-        ["Specifications", (row) => formatSpecs(row.attributes)],
+        ["Item Notes", (row) => stripWarrantyTag(row.description) || "—"],
         ["Serialized", (row) => (row.isSerialized ? "Yes" : "No")],
         ["Warranty", (row) => parseItemWarranty(row)],
-        ["Min Stock", (row) => Number(row.minStock || 0)],
+        ["Min Stock", (row) => Number(row.minimumStock ?? row.minStock ?? 0)],
         ["Reorder Level", (row) => Number(row.reorderLevel || 0)],
         ["Cost Price", (row) => Number(row.costPrice || 0)],
         ["Price 1", (row) => Number(row.price1 || 0)],
@@ -1769,7 +1685,6 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
           "Category Filter",
           categoryOptions.find((c) => c.id === effectiveCategoryId)?.name || "All categories",
         ],
-        ["Brand Filter", brandFilter.trim() || "All brands"],
         ["Status Filter", statusFilter || "All statuses"],
         ["Serialized Only", serializedFilter ? "Yes" : "All"],
       ]
@@ -1805,45 +1720,6 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
     setEditingItem(item)
     setItemEditorError("")
     setItemForm(itemToForm(item))
-  }
-
-  const handleDeleteItem = async (item) => {
-    if (!item?.id || !canManageCatalog) return
-    const confirmed = window.confirm(
-      `Are you sure you want to delete "${item.itemName || item.itemCode}"?`
-    )
-    if (!confirmed) return
-
-    setErrorMessage("")
-    try {
-      await deleteItemById(item.id)
-      await loadItems()
-    } catch (error) {
-      setErrorMessage(
-        getItemApiError(error, "Unable to delete this item.")
-      )
-    }
-  }
-
-  const handleClearAllItems = async () => {
-    if (!canManageCatalog) return
-    const confirmed = window.confirm(
-      "Are you sure you want to clear all items in this branch catalog?"
-    )
-    if (!confirmed) return
-
-    setErrorMessage("")
-    setIsLoading(true)
-    try {
-      await clearAllItems(selectedBranchId ? { branchId: selectedBranchId } : {})
-      await loadItems()
-    } catch (error) {
-      setErrorMessage(
-        getItemApiError(error, "Unable to clear items.")
-      )
-    } finally {
-      setIsLoading(false)
-    }
   }
 
   const closeItemEditor = () => {
@@ -1898,27 +1774,14 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
       ? (cleanDesc ? `${cleanDesc} [WARRANTY: ${warrantyStr}]` : `[WARRANTY: ${warrantyStr}]`)
       : (cleanDesc || null)
 
-    const cleanedAttributes = {}
-    if (itemForm.attributes && typeof itemForm.attributes === "object") {
-      Object.entries(itemForm.attributes).forEach(([key, val]) => {
-        if (val !== undefined && val !== null && String(val).trim() !== "") {
-          cleanedAttributes[key] = String(val).trim()
-        }
-      })
-    }
-
     const payload = {
       ...(itemForm.itemCode.trim()
         ? { itemCode: itemForm.itemCode.trim().toUpperCase() }
         : {}),
       itemName: itemForm.itemName.trim(),
       description: packagedDesc,
-      barcode: itemForm.barcode.trim() || null,
-      brand: itemForm.brand.trim() || null,
-      modelName: itemForm.modelName.trim() || null,
       categoryId: itemForm.categoryId,
       unitId: itemForm.unitId,
-      attributes: Object.keys(cleanedAttributes).length > 0 ? cleanedAttributes : null,
       isSerialized: Boolean(itemForm.isSerialized),
       hasWarranty: warrantyStr !== "NO WARRANTY" && Boolean(warrantyStr),
       ...(canAdjustPrices
@@ -1981,11 +1844,6 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
     }
   }
   const openPriceEditor = (item) => {
-    if (!canManagePrices) {
-      setErrorMessage("Account restricted: Only owner or admin accounts can change item prices.")
-      return
-    }
-
     setSelectedItem(item)
     setPriceErrorMessage("")
     setPriceForm({
@@ -2014,11 +1872,6 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
   const savePrices = async () => {
     if (!selectedItem) return
 
-    if (!canManagePrices) {
-      setPriceErrorMessage("Account restricted: Only owner or admin accounts can change item prices.")
-      return
-    }
-
     setIsSavingPrices(true)
     setPriceErrorMessage("")
 
@@ -2042,12 +1895,8 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
         currentItems.map((item) => (item.id === updatedItem.id ? updatedItem : item)),
       )
       setSelectedItem(null)
-    } catch (error) {
-      const errorMsg =
-        error?.response?.data?.message ||
-        error?.message ||
-        "Unable to save prices. Please check the values and try again."
-      setPriceErrorMessage(errorMsg)
+    } catch {
+      setPriceErrorMessage("Unable to save prices. Please check the values and try again.")
     } finally {
       setIsSavingPrices(false)
     }
@@ -2103,17 +1952,6 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
             </button>
           ) : null}
 
-          {canManageCatalog && items.length > 0 ? (
-            <button
-              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700 shadow-sm transition hover:bg-rose-100"
-              onClick={handleClearAllItems}
-              type="button"
-            >
-              <Trash2 size={16} />
-              Clear Items
-            </button>
-          ) : null}
-
           <button
             className="inline-flex items-center justify-center gap-2 rounded-2xl border border-[var(--color-border)] bg-white px-4 py-3 text-sm font-bold text-[var(--color-text-strong)] shadow-sm transition hover:bg-[var(--color-soft)]"
             onClick={loadItems}
@@ -2139,7 +1977,7 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
                 setSearchText(event.target.value)
                 setPage(1)
               }}
-              placeholder="Scan barcode / Search Item Code / Product Name / Model"
+              placeholder="Search Item Code or Product Name..."
               value={searchText}
             />
           </div>
@@ -2217,7 +2055,9 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
               </option>
               {subcategoryOptions.map((sub) => (
                 <option key={sub.id} value={sub.id}>
-                  {sub.name}
+                  {mainCatFilter
+                    ? formatSubcategoryName(sub)
+                    : `${formatSubcategoryName(sub)}${sub.parent?.name ? ` (${sub.parent.name})` : ""}`}
                 </option>
               ))}
             </select>
@@ -2265,7 +2105,7 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
         </div>
 
         {/* Active Filter Chips */}
-        {mainCatFilter || subCatFilter || brandFilter || unitFilter || statusFilter || serializedFilter || warrantyFilter ? (
+        {mainCatFilter || subCatFilter || unitFilter || statusFilter || serializedFilter || warrantyFilter ? (
           <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-100">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mr-1">
               Active Filters:
@@ -2280,16 +2120,8 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
             ) : null}
             {subCatFilter ? (
               <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                Sub: {categoryOptions.find((c) => c.id === subCatFilter)?.name || "Subcategory"}
+                Sub: {formatSubcategoryName(categoryOptions.find((c) => c.id === subCatFilter)) || "Subcategory"}
                 <button onClick={() => { setSubCatFilter(""); setPage(1) }} className="hover:text-red-600">
-                  <X size={12} />
-                </button>
-              </span>
-            ) : null}
-            {brandFilter ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 border border-indigo-200 px-2.5 py-1 text-xs font-semibold text-indigo-800">
-                Brand: {brandFilter}
-                <button onClick={() => { setBrandFilter(""); setPage(1) }} className="hover:text-red-600">
                   <X size={12} />
                 </button>
               </span>
@@ -2380,7 +2212,11 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
                   </thead>
 
                   <tbody className="divide-y divide-[var(--color-border)]">
-                    {displayedItems.map((item) => (
+                    {displayedItems.map((item) => {
+                      const needsSubcategory =
+                        !item.category?.parentId &&
+                        categoryOptions.some((c) => c.parentId === item.categoryId)
+                      return (
                       <tr key={item.id} className="align-top transition hover:bg-[var(--color-soft)]">
                         <td className="min-w-[220px] px-3 py-4">
                           <p className="font-bold text-[var(--color-text-strong)]">
@@ -2388,9 +2224,6 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
                           </p>
                           <p className="mt-1 text-xs font-semibold text-[var(--color-muted)]">
                             {item.itemCode}
-                          </p>
-                          <p className="mt-1 text-xs text-[var(--color-muted)]">
-                            {[item.brand, item.modelName].filter(Boolean).join(" • ") || "No brand/model"}
                           </p>
                         </td>
 
@@ -2400,15 +2233,13 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
 
                         <td className="min-w-[160px] px-3 py-4">
                           <div className="flex flex-col gap-0.5">
-                            {item.category?.parent ? (
-                              <span className="text-[11px] font-semibold text-[var(--color-muted)]">
-                                {item.category.parent.name} ›
-                              </span>
-                            ) : null}
-                            <span className="font-semibold text-[var(--color-text-strong)]">
-                              {item.category?.name || "—"}
+                            <span className="text-[11px] font-semibold text-[var(--color-muted)]">
+                              {formatMainCategoryName(item.category, "—")} ›
                             </span>
-                            {!item.category?.parentId ? (
+                            <span className="font-semibold text-[var(--color-text-strong)]">
+                              {formatSubcategoryName(item.category)}
+                            </span>
+                            {needsSubcategory ? (
                               <div className="mt-1 flex items-center">
                                 <span className="inline-flex items-center gap-1 rounded bg-amber-50 text-amber-800 border border-amber-200 px-1.5 py-0.5 text-[10px] font-bold" title="Main Category (Needs Subcategory Alignment)">
                                   ⚠️ Needs Subcategory
@@ -2480,7 +2311,7 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
 
                             {canManagePrices ? (
                               <button
-                                className="inline-flex items-center justify-center gap-1 rounded-xl border border-[var(--color-maroon)] bg-white px-3 py-2 text-xs font-bold text-[var(--color-maroon)] transition hover:bg-[var(--color-maroon-soft)]"
+                                className="inline-flex items-center justify-center gap-1 rounded-xl border border-[#7A1F2B] bg-white px-3 py-2 text-xs font-bold text-[#7A1F2B] transition hover:bg-[#F4F1EC]"
                                 onClick={() => openPriceEditor(item)}
                                 type="button"
                               >
@@ -2488,21 +2319,11 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
                                 Edit prices
                               </button>
                             ) : null}
-
-                            {canManageCatalog ? (
-                              <button
-                                className="inline-flex items-center justify-center gap-1 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-100"
-                                onClick={() => handleDeleteItem(item)}
-                                type="button"
-                              >
-                                <Trash2 size={14} />
-                                Delete
-                              </button>
-                            ) : null}
                           </div>
                         </td>
                       </tr>
-                    ))}
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -2513,6 +2334,7 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
                 <ItemMobileCard
                   canManagePrices={canManagePrices}
                   canViewCost={canViewCost}
+                  categories={categoryOptions}
                   item={item}
                   key={item.id}
                   onEditPrices={openPriceEditor}
@@ -2526,7 +2348,7 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
       {pagination ? (
         <section className="flex flex-col gap-3 rounded-3xl border border-[var(--color-border)] bg-white p-4 shadow-card sm:flex-row sm:items-center sm:justify-between">
           <div className="text-sm font-semibold text-[var(--color-muted)]">
-            Page {pagination.totalItems === 0 ? 0 : pagination.page} of {pagination.totalPages} • {pagination.totalItems} item(s)
+            Page {pagination.page} of {pagination.totalPages} • {pagination.totalItems} item(s)
           </div>
 
           <div className="flex gap-3">
@@ -2540,7 +2362,7 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
             </button>
 
             <button
-              className="rounded-2xl border border-[var(--color-maroon)] bg-white px-4 py-3 text-sm font-bold text-[var(--color-maroon)] transition hover:bg-[var(--color-maroon-soft)] disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-2xl border border-[#7A1F2B] bg-white px-4 py-3 text-sm font-bold text-[#7A1F2B] transition hover:bg-[#F4F1EC] disabled:cursor-not-allowed disabled:opacity-50"
               disabled={!pagination.hasNextPage || isLoading}
               onClick={() => setPage((currentPage) => currentPage + 1)}
               type="button"
@@ -2579,6 +2401,7 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
       />
 
       <ItemDetailModal
+        branchId={selectedBranchId}
         canViewCost={canViewCost}
         item={detailItem}
         onClose={closeDetailModal}

@@ -34,7 +34,10 @@ import {
   X,
 } from "lucide-react"
 
-import { formatSpecs } from "../../utils/attributeFilter"
+import {
+  formatMainCategoryName,
+  formatSubcategoryName,
+} from "../../utils/attributeFilter"
 import { exportReportExcel } from "../../utils/businessDocumentExport"
 
 function peso(val) {
@@ -122,7 +125,6 @@ export default function InventoryReportView({
   const [search, setSearch] = useState("")
   const [healthFilter, setHealthFilter] = useState("ALL") // "ALL" | "IN_STOCK" | "LOW_STOCK" | "OUT_OF_STOCK"
   const [categoryFilter, setCategoryFilter] = useState("")
-  const [brandFilter, setBrandFilter] = useState("")
   const [serializedFilter, setSerializedFilter] = useState("ALL") // "ALL" | "SERIALIZED" | "NON_SERIALIZED"
   const [valueTierFilter, setValueTierFilter] = useState("ALL") // "ALL" | "BUDGET" | "MID" | "HIGH"
   const [serialStatusFilter, setSerialStatusFilter] = useState("") // for Serials view
@@ -196,18 +198,7 @@ export default function InventoryReportView({
     loadReportData()
   }, [loadReportData])
 
-  // 5. Unique Brands dynamically aggregated
-  const availableBrands = useMemo(() => {
-    const set = new Set()
-    rawItems.forEach((it) => {
-      if (it.brand && it.brand.trim()) {
-        set.add(it.brand.trim())
-      }
-    })
-    return Array.from(set).sort()
-  }, [rawItems])
-
-  // 6. Augmented Processed Items with Valuation Math
+  // 5. Augmented Processed Items with Valuation Math
   const processedItems = useMemo(() => {
     return rawItems.map((it) => {
       const avail = Number(it.quantityAvailable || 0)
@@ -264,11 +255,8 @@ export default function InventoryReportView({
 
       if (categoryFilter) {
         const itemCatId = it.categoryId || it.category?.id
-        if (itemCatId !== categoryFilter) return false
-      }
-
-      if (brandFilter) {
-        if (it.brand?.toLowerCase() !== brandFilter.toLowerCase()) return false
+        const itemParentId = it.category?.parentId || it.category?.parent?.id
+        if (itemCatId !== categoryFilter && itemParentId !== categoryFilter) return false
       }
 
       if (serializedFilter === "SERIALIZED" && !it.isSerialized) return false
@@ -282,9 +270,8 @@ export default function InventoryReportView({
         const matches = [
           it.itemCode,
           it.itemName,
-          it.brand,
-          it.modelName,
           it.category?.name,
+          it.category?.parent?.name,
           it.categoryName,
         ]
           .filter(Boolean)
@@ -295,7 +282,7 @@ export default function InventoryReportView({
 
       return true
     })
-  }, [processedItems, search, healthFilter, categoryFilter, brandFilter, serializedFilter, valueTierFilter])
+  }, [processedItems, search, healthFilter, categoryFilter, serializedFilter, valueTierFilter])
 
   // 8. Augmented & Filtered Serials
   const filteredSerials = useMemo(() => {
@@ -309,7 +296,8 @@ export default function InventoryReportView({
           s.serialNumber,
           s.item?.itemCode,
           s.item?.itemName,
-          s.item?.brand,
+          s.item?.category?.name,
+          s.item?.category?.parent?.name,
           s.batch?.batchCode,
           s.remarks,
         ]
@@ -414,8 +402,7 @@ export default function InventoryReportView({
       const activeFilters = [
         ["Search Query", search.trim() || "All Products"],
         ["Stock Health", healthFilter !== "ALL" ? healthFilter : "All Stock States"],
-        ["Category", categories.find((c) => c.id === categoryFilter)?.name || "All Categories"],
-        ["Brand", brandFilter || "All Brands"],
+        ["Category", formatSubcategoryName(categories.find((c) => c.id === categoryFilter)) !== "—" ? formatSubcategoryName(categories.find((c) => c.id === categoryFilter)) : "All Categories"],
         ["Serialized", serializedFilter !== "ALL" ? serializedFilter : "All"],
         ["Branch", selectedBranch?.name || "All Branches"],
       ]
@@ -434,11 +421,9 @@ export default function InventoryReportView({
       const columns = [
         ["Item Code", (row) => row.itemCode || "—"],
         ["Item Name", (row) => row.itemName || "—"],
-        ["Brand", (row) => row.brand || "—"],
-        ["Model", (row) => row.modelName || "—"],
-        ["Category", (row) => textOf(row.category, textOf(row.categoryName, "—"))],
+        ["Category", (row) => formatMainCategoryName(row.category, textOf(row.categoryName, "—"))],
+        ["Subcategory", (row) => formatSubcategoryName(row.category)],
         ["Unit", (row) => textOf(row.unit, textOf(row.unitName, "PCS"))],
-        ["Specifications", (row) => formatSpecs(row.attributes)],
         ["Serialized Tracking", (row) => (row.isSerialized ? "YES" : "NO")],
         ["Available On-Hand", (row) => Number(row.avail || 0)],
         ["Reserved Stock", (row) => Number(row.reserved || 0)],
@@ -492,8 +477,8 @@ export default function InventoryReportView({
         ["Serial Number", (row) => row.serialNumber || "—"],
         ["Item Code", (row) => row.item?.itemCode || "—"],
         ["Item Name", (row) => row.item?.itemName || "—"],
-        ["Brand", (row) => row.item?.brand || "—"],
-        ["Model", (row) => row.item?.modelName || "—"],
+        ["Category", (row) => formatMainCategoryName(row.item?.category, "—")],
+        ["Subcategory", (row) => formatSubcategoryName(row.item?.category)],
         ["Batch Number", (row) => row.batch?.batchCode || "—"],
         ["Unit Acquisition Cost (₱)", (row) => Number(row.batch?.costPrice || 0)],
         ["Lifecycle Status", (row) => formatStatus(row.status)],
@@ -504,8 +489,8 @@ export default function InventoryReportView({
       ]
 
       exportReportExcel({
-        title: `SERIALIZED PRODUCT LIFECYCLE AUDIT REPORT (${selectedBranch?.name || "ALL BRANCHES"})`,
-        filename: `Serialized-Product-Audit-${new Date().toISOString().slice(0, 10)}`,
+        title: `SERIALIZED HARDWARE LIFECYCLE AUDIT REPORT (${selectedBranch?.name || "ALL BRANCHES"})`,
+        filename: `Serialized-Hardware-Audit-${new Date().toISOString().slice(0, 10)}`,
         columns,
         records: filteredSerials,
         branch: selectedBranch,
@@ -568,7 +553,7 @@ export default function InventoryReportView({
     <div className="space-y-6">
       {/* 1. EXECUTIVE FINANCIAL & OPERATIONAL KPI CARDS (POS Cashiering Standard) */}
       <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        {/* Card 1: Asset Valuation at Cost (COGS) */}
+        {/* Card 1: Asset Valuation at Cost */}
         <div className="relative overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-card)] p-4.5 shadow-sm transition hover:shadow-md">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold uppercase tracking-wider text-[var(--color-muted)]">
@@ -582,7 +567,7 @@ export default function InventoryReportView({
             {peso(kpis.totalCostValuation)}
           </p>
           <p className="mt-1 text-xs text-[var(--color-muted)] font-medium">
-            Capital tied up in inventory
+            Cash capital tied up in inventory
           </p>
         </div>
 
@@ -687,13 +672,13 @@ export default function InventoryReportView({
 
       {/* 2. ADVANCED MULTI-DIMENSIONAL FILTER SUITE */}
       <section className="rounded-3xl border border-[var(--color-border)] bg-[var(--color-card)] p-4.5 shadow-card space-y-4">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {/* Search Box */}
           <div className="lg:col-span-2 relative">
             <Search className="absolute left-3.5 top-3 text-[var(--color-muted)]" size={16} />
             <input
               type="text"
-              placeholder="Search Code, Name, Brand, Model, Serial #..."
+              placeholder="Search Code, Name, Category, Serial #..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full rounded-2xl border border-[var(--color-border)] bg-[var(--color-card)] text-[var(--color-text-strong)] py-2.5 pl-10 pr-3.5 text-xs font-semibold outline-none focus:border-[var(--color-maroon)] placeholder:font-normal placeholder:text-[var(--color-muted)]"
@@ -733,23 +718,9 @@ export default function InventoryReportView({
               <option value="">All Categories ({categories.length})</option>
               {categories.map((cat) => (
                 <option key={cat.id} value={cat.id}>
-                  {textOf(cat, "Unnamed")}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Brand Filter */}
-          <div>
-            <select
-              value={brandFilter}
-              onChange={(e) => setBrandFilter(e.target.value)}
-              className="w-full rounded-2xl border border-[var(--color-border)] bg-[var(--color-card)] text-[var(--color-text-strong)] px-3 py-2.5 text-xs font-semibold outline-none focus:border-[var(--color-maroon)]"
-            >
-              <option value="">All Brands ({availableBrands.length})</option>
-              {availableBrands.map((b) => (
-                <option key={b} value={b}>
-                  {b}
+                  {cat.parent?.name
+                    ? `${cat.parent.name} › ${formatSubcategoryName(cat)}`
+                    : textOf(cat, "Unnamed")}
                 </option>
               ))}
             </select>
@@ -763,8 +734,8 @@ export default function InventoryReportView({
               className="w-full rounded-2xl border border-[var(--color-border)] bg-[var(--color-card)] text-[var(--color-text-strong)] px-3 py-2.5 text-xs font-semibold outline-none focus:border-[var(--color-maroon)]"
             >
               <option value="ALL">All Item Types</option>
-              <option value="SERIALIZED">Serialized Products</option>
-              <option value="NON_SERIALIZED">Non-Serialized Items</option>
+              <option value="SERIALIZED">Serialized Hardware</option>
+              <option value="NON_SERIALIZED">Non-Serialized Consumables</option>
             </select>
           </div>
         </div>
@@ -841,14 +812,13 @@ export default function InventoryReportView({
               {isLoading ? "Refreshing..." : "Refresh"}
             </button>
 
-            {(search || healthFilter !== "ALL" || categoryFilter || brandFilter || serializedFilter !== "ALL" || valueTierFilter !== "ALL" || serialStatusFilter || movementTypeFilter) && (
+            {(search || healthFilter !== "ALL" || categoryFilter || serializedFilter !== "ALL" || valueTierFilter !== "ALL" || serialStatusFilter || movementTypeFilter) && (
               <button
                 type="button"
                 onClick={() => {
                   setSearch("")
                   setHealthFilter("ALL")
                   setCategoryFilter("")
-                  setBrandFilter("")
                   setSerializedFilter("ALL")
                   setValueTierFilter("ALL")
                   setSerialStatusFilter("")
@@ -888,7 +858,7 @@ export default function InventoryReportView({
             }`}
           >
             <ShieldCheck size={15} />
-            Serialized Product Audit ({filteredSerials.length})
+            Serialized Hardware Audit ({filteredSerials.length})
           </button>
           <button
             type="button"
@@ -1007,13 +977,13 @@ export default function InventoryReportView({
                         </div>
                       </td>
 
-                      {/* Category & Specs */}
+                      {/* Category & Subcategory */}
                       <td className="px-4 py-3.5 align-top max-w-[200px]">
                         <span className="font-bold text-[var(--color-text-strong)] block">
-                          {textOf(it.category, textOf(it.categoryName, "Uncategorized"))}
+                          {formatMainCategoryName(it.category, textOf(it.categoryName, "Uncategorized"))}
                         </span>
                         <p className="text-[10px] text-[var(--color-muted)] line-clamp-2 mt-0.5">
-                          {formatSpecs(it.attributes)}
+                          {formatSubcategoryName(it.category)}
                         </p>
                       </td>
 
@@ -1122,7 +1092,7 @@ export default function InventoryReportView({
                 <tr className="border-b border-[var(--color-border)] bg-violet-500/10 text-[11px] font-black uppercase tracking-wider text-violet-900 dark:text-violet-200">
                   <th className="px-4 py-3.5">Serial Number</th>
                   <th className="px-4 py-3.5">Product &amp; SKU</th>
-                  <th className="px-4 py-3.5">Brand &amp; Category</th>
+                  <th className="px-4 py-3.5">Category &amp; Subcategory</th>
                   <th className="px-4 py-3.5">Batch &amp; Unit Cost</th>
                   <th className="px-4 py-3.5">Current Status</th>
                   <th className="px-4 py-3.5">Associated Document</th>
@@ -1134,7 +1104,7 @@ export default function InventoryReportView({
                 {filteredSerials.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="py-12 text-center text-xs font-semibold text-[var(--color-muted)]">
-                      No serialized product units found matching criteria.
+                      No serialized hardware units found matching criteria.
                     </td>
                   </tr>
                 ) : (
@@ -1166,13 +1136,13 @@ export default function InventoryReportView({
                           </span>
                         </td>
 
-                        {/* Brand & Category */}
+                        {/* Category & Subcategory */}
                         <td className="px-4 py-3.5 align-top">
                           <span className="font-bold text-[var(--color-text-strong)] block">
-                            {s.item?.brand || "—"}
+                            {formatMainCategoryName(s.item?.category, "—")}
                           </span>
                           <span className="text-[10px] text-[var(--color-muted)] block">
-                            {s.item?.modelName || "—"}
+                            {formatSubcategoryName(s.item?.category)}
                           </span>
                         </td>
 
@@ -1385,4 +1355,3 @@ export default function InventoryReportView({
     </div>
   )
 }
-

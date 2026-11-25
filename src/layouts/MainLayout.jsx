@@ -20,7 +20,7 @@ function MainLayout({
   const [isDesktopSidebarCollapsed, setIsDesktopSidebarCollapsed] = useState(false)
 
   const activeLabel =
-    APP_MODULES.find((item) => item.key === activePage)?.label || "Pointify"
+    APP_MODULES.find((item) => item.key === activePage)?.label || "POSynctify"
 
   return (
     <main className="h-svh w-full max-w-full overflow-hidden bg-[var(--color-page)] text-[var(--color-text)]">

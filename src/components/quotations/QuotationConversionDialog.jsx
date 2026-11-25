@@ -4,7 +4,7 @@ import { getInventoryBatches, getInventorySerials } from "../../features/invento
 import { getQuotationById } from "../../features/quotations/quotations.api"
 import { generateUUID } from "../../utils/uuid"
 import { createSale } from "../../features/sales/sales.api"
-import { parseQuotationSettlement, stripSettlementTag } from "../../utils/quotationSettlement"
+import { cleanUserRemarks, parseQuotationSettlement, stripSettlementTag } from "../../utils/quotationSettlement"
 import {
   CORE_SYSTEM_UNIT_PARTS,
   validateSystemUnitCompleteness,
@@ -21,6 +21,7 @@ const IMMEDIATE_PAYMENT_METHODS = [
 
 const RECEIVABLE_PROVIDERS = [
   ["IN_HOUSE_INSTALLMENT", "In-House AR"],
+  ["CHEQUE", "Cheque (Bank Check)"],
   ["HOME_CREDIT", "Home Credit"],
   ["BILLEASE", "BillEase"],
   ["SALARY_DEDUCTION", "Salary Deduction"],
@@ -96,6 +97,9 @@ export default function QuotationConversionDialog({
   const isInitialReceivable = RECEIVABLE_PROVIDER_VALUES.has(initialMethod)
 
   const [paymentMethod, setPaymentMethod] = useState(initialMethod)
+  const [saleDate, setSaleDate] = useState(() =>
+    new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
+  )
   const [settlementMethod, setSettlementMethod] = useState(savedSettlement.settlementMethod || "CASH")
   const [amountPaid, setAmountPaid] = useState(
     savedSettlement.paymentAmount !== undefined
@@ -109,7 +113,7 @@ export default function QuotationConversionDialog({
   const [creditTerm, setCreditTerm] = useState(savedSettlement.creditTerm || savedCalc?.term || "MONTH_3")
   const [creditDueDay, setCreditDueDay] = useState(savedSettlement.creditDueDay || "")
   const [creditFirstDueDate, setCreditFirstDueDate] = useState(savedSettlement.creditFirstDueDate || "")
-  const [remarks, setRemarks] = useState(stripSettlementTag(quotation?.notes || ""))
+  const [remarks, setRemarks] = useState(cleanUserRemarks(quotation?.notes || quotation?.remarks || ""))
 
   const requestRef = useRef({ signature: "", key: "" })
 
@@ -358,7 +362,7 @@ export default function QuotationConversionDialog({
       }
     } else {
       if (numPaid < grandTotal) {
-        setErrorMessage(`Full payment of ${formatMoney(grandTotal)} is required for immediate settlement, or switch to Accounts Receivable.`)
+        setErrorMessage(`Full payment of ₱${formatMoney(grandTotal)} is required for immediate settlement, or switch to Accounts Receivable.`)
         return
       }
       if (paymentMethod !== "CASH" && numPaid > grandTotal) {
@@ -375,6 +379,7 @@ export default function QuotationConversionDialog({
         branchId,
         customerId: quotation.customer?.id || undefined,
         quotationId: quotation.id,
+        saleDate: saleDate || undefined,
         remarks: remarks.trim() || undefined,
         items: conversionLines.map((line) => ({
           itemId: line.itemId || undefined,
@@ -486,26 +491,68 @@ export default function QuotationConversionDialog({
             </div>
           )}
 
-          {/* Bundle / Package Requirements Banner */}
+          {/* PC Build Requirements Banner */}
           {isPcBuild ? (
             <div className="rounded-2xl border border-rose-200 bg-rose-50/70 p-3.5 space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                  📦 Bundle / Package Summary
+                  🖥️ PC Build System Unit Requirements
                 </span>
                 {systemUnitCompleteness?.isComplete ? (
                   <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 text-[10px] font-black text-emerald-800">
-                    <CheckCircle2 size={12} /> Ready to Convert ({conversionLines.length} lines)
+                    <CheckCircle2 size={12} /> Complete ({systemUnitCompleteness?.corePartsCount || 0}/6 parts)
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 border border-rose-300 px-2.5 py-0.5 text-[10px] font-black text-rose-800">
-                    <AlertCircle size={12} /> Bundle Empty
+                    <AlertCircle size={12} /> Incomplete ({systemUnitCompleteness?.corePartsCount || 0}/3 required)
                   </span>
                 )}
               </div>
 
-              <p className="text-[10px] text-slate-600">
-                💡 All product lines in this quotation will be converted and tracked together as a Bundle / Package transaction.
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-1.5">
+                {CORE_SYSTEM_UNIT_PARTS.map((part) => {
+                  const isPresent = Boolean(
+                    systemUnitCompleteness?.hasPackage ||
+                    systemUnitCompleteness?.foundComponents[part.key]?.length > 0
+                  )
+                  const matchedCount = systemUnitCompleteness?.foundComponents[part.key]?.length || 0
+                  const matchedItem = systemUnitCompleteness?.foundComponents[part.key]?.[0]
+                  const titleText = matchedItem
+                    ? `${part.name}: ${matchedItem.description || matchedItem.itemNameSnapshot || "In build"}`
+                    : `Required: ${part.name} (Missing)`
+
+                  return (
+                    <div
+                      key={part.key}
+                      className={`flex items-center justify-between rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition ${
+                        isPresent
+                          ? "border-emerald-200 bg-white text-emerald-900"
+                          : systemUnitCompleteness?.isComplete
+                          ? "border-slate-200 bg-slate-50/50 text-slate-500"
+                          : "border-rose-200 bg-white text-rose-700"
+                      }`}
+                      title={titleText}
+                    >
+                      <span className="truncate">{part.shortName}</span>
+                      {isPresent ? (
+                        <span className="flex items-center gap-0.5 shrink-0 text-emerald-600 font-bold ml-1 text-[10px]">
+                          {matchedCount > 1 ? `x${matchedCount}` : ""}
+                          <Check size={12} />
+                        </span>
+                      ) : (
+                        <span className={`shrink-0 text-[9px] font-black uppercase ml-1 ${
+                          systemUnitCompleteness?.isComplete ? "text-slate-400" : "text-rose-600"
+                        }`}>
+                          {systemUnitCompleteness?.isComplete ? "Opt" : "Need"}
+                        </span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+
+              <p className="text-[10px] text-slate-500 italic">
+                💡 Peripherals (Monitor, Keyboard, Mouse) are optional. Requires at least 3 of the 6 core system unit parts (CPU, Mobo, RAM, Storage, PSU, Case).
               </p>
             </div>
           ) : null}
@@ -562,7 +609,7 @@ export default function QuotationConversionDialog({
                           )}
                         </div>
                         <p className="mt-0.5 text-[11px] text-slate-500">
-                          Qty: <span className="font-semibold">{line.quantity}</span> • Unit: {formatMoney(line.unitPrice)} • Total: {formatMoney(Number(line.quantity) * Number(line.unitPrice))}
+                          Qty: <span className="font-semibold">{line.quantity}</span> • Unit: ₱{formatMoney(line.unitPrice)} • Total: ₱{formatMoney(Number(line.quantity) * Number(line.unitPrice))}
                         </p>
                       </div>
 
@@ -647,7 +694,17 @@ export default function QuotationConversionDialog({
               )}
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              <label className="block text-xs">
+                <span className="font-bold text-slate-600">Transaction / Sale Date</span>
+                <input
+                  className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-[#002060]"
+                  onChange={(e) => setSaleDate(e.target.value)}
+                  type="date"
+                  value={saleDate}
+                />
+              </label>
+
               <label className="block text-xs">
                 <span className="font-bold text-slate-600">Payment Mode</span>
                 <select
@@ -752,19 +809,19 @@ export default function QuotationConversionDialog({
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                   <div className="rounded-lg border border-blue-100 bg-white p-2 text-center">
                     <span className="text-[10px] uppercase font-bold text-slate-500">Cash Promo Total</span>
-                    <p className="font-black text-slate-900">{formatMoney(grandTotal)}</p>
+                    <p className="font-black text-slate-900">₱{formatMoney(grandTotal)}</p>
                   </div>
                   <div className="rounded-lg border border-blue-100 bg-white p-2 text-center">
                     <span className="text-[10px] uppercase font-bold text-blue-700">Interest / Rate Adj</span>
-                    <p className="font-black text-blue-900">+{formatMoney(installmentCalculation?.interestAmount || 0)}</p>
+                    <p className="font-black text-blue-900">+₱{formatMoney(installmentCalculation?.interestAmount || 0)}</p>
                   </div>
                   <div className="rounded-lg border border-blue-100 bg-white p-2 text-center">
                     <span className="text-[10px] uppercase font-bold text-amber-700">Financed Total</span>
-                    <p className="font-black text-amber-900">{formatMoney(installmentCalculation?.regularPriceTotalAmount || grandTotal)}</p>
+                    <p className="font-black text-amber-900">₱{formatMoney(installmentCalculation?.regularPriceTotalAmount || grandTotal)}</p>
                   </div>
                   <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-center">
                     <span className="text-[10px] uppercase font-bold text-emerald-800">Monthly ({installmentCalculation?.months} mos)</span>
-                    <p className="font-black text-emerald-950">{formatMoney(installmentCalculation?.monthlyDueAmount || 0)}/mo</p>
+                    <p className="font-black text-emerald-950">₱{formatMoney(installmentCalculation?.monthlyDueAmount || 0)}/mo</p>
                   </div>
                 </div>
 
@@ -816,7 +873,7 @@ export default function QuotationConversionDialog({
           <div>
             <span className="text-xs font-bold text-slate-500 uppercase">Sale Grand Total:</span>
             <span className="ml-2 font-mono text-lg font-black text-slate-900">
-              {formatMoney(isReceivable ? (installmentCalculation?.regularPriceTotalAmount || grandTotal) : grandTotal)}
+              ₱{formatMoney(isReceivable ? (installmentCalculation?.regularPriceTotalAmount || grandTotal) : grandTotal)}
             </span>
           </div>
 

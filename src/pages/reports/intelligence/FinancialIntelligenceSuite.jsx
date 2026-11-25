@@ -24,16 +24,16 @@ export default function FinancialIntelligenceSuite({ selectedBranch, user, dateR
     {
       id: "PRODUCTS",
       label: "Product Profitability (Profit per Item)",
-      badge: "REPORT 06 · Item Profitability",
+      badge: "REPORT 06 · Item Margin",
       icon: Package,
-      desc: "Item-by-item cost, Base SRP, markup, pure base profit, and total net profit.",
+      desc: "Item-by-item unit cost, Base SRP, mark-up, base margin, and total net profit.",
     },
     {
       id: "SIX_LAYER",
       label: "Six-Layer Executive Profitability",
       badge: "REPORT 08 · Executive Matrix",
       icon: Layers,
-      desc: "Product Cost, Net Base Profit, Retail Markup, Merchandise Profit, Financing Interest, and Overall Consolidated Profit.",
+      desc: "Total Cost, Pure Base Margin, Mark-up, Margin w/ Markup, Financing Interest, and Consolidated Profit.",
     },
     {
       id: "AR_AGING",
@@ -62,10 +62,10 @@ export default function FinancialIntelligenceSuite({ selectedBranch, user, dateR
               Financial Reporting & AR Intelligence Suite (20-Report Architecture)
             </div>
             <h1 className="mt-2 text-2xl font-black tracking-tight sm:text-3xl">
-              Executive Financial & Profitability Intelligence
+              Executive Financial & Profit Intelligence
             </h1>
             <p className="mt-1 max-w-2xl text-xs font-medium text-slate-300">
-              Complete visibility into your business: real product cost, separated item markup, financing interest, AR aging buckets, and consolidated enterprise profit.
+              Complete visibility into your business: real product cost, separated item mark-up, financing interest, AR aging buckets, and consolidated enterprise profit.
             </p>
           </div>
 

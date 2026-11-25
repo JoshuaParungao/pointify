@@ -11,6 +11,30 @@ const apiClient = axios.create({
   },
 })
 
+const isTechnicalErrorString = (str) => {
+  if (typeof str !== "string") return false
+  return (
+    str.includes("prisma.") ||
+    str.includes("invocation:") ||
+    str.includes("UserWhereInput") ||
+    str.includes("WhereUniqueInput") ||
+    str.includes("TypeError") ||
+    str.includes("ReferenceError") ||
+    str.includes("SyntaxError") ||
+    str.includes("Cannot read property") ||
+    str.includes("Cannot read properties") ||
+    str.includes("is not a function") ||
+    str.includes("SELECT ") ||
+    str.includes("INSERT INTO") ||
+    str.includes("UPDATE ") ||
+    str.includes("DELETE FROM") ||
+    str.includes("at Object.") ||
+    str.includes(".js:") ||
+    str.includes("{\n") ||
+    str.includes("}\n")
+  )
+}
+
 apiClient.interceptors.request.use(
   (config) => {
     const token = getAccessToken()
@@ -33,33 +57,28 @@ apiClient.interceptors.response.use(
       clearSession()
     }
 
-    if (status === 403) {
-      const data = error?.response?.data
-      const rawMsg =
-        data?.message ||
-        data?.error?.message ||
-        (typeof data?.error === "string" ? data.error : null) ||
-        error?.message ||
-        ""
+    // Sanitize any raw technical error messages in the response payload
+    const friendlyFallback =
+      "Hindi maproseso ang transaksyon dahil sa maling detalye o validation error. Pakisuri ang mga nakalagay na impormasyon at subukan muli."
 
-      let finalMsg
-      if (!rawMsg || rawMsg.toLowerCase() === "forbidden" || rawMsg.toLowerCase() === "account restricted") {
-        finalMsg = "Account restricted: You do not have permission to perform this action."
-      } else if (rawMsg.toLowerCase().startsWith("account restricted")) {
-        finalMsg = rawMsg
-      } else {
-        finalMsg = `Account restricted: ${rawMsg}`
-      }
+    if (error?.response?.data?.error?.message && isTechnicalErrorString(error.response.data.error.message)) {
+      error.response.data.error.message = friendlyFallback
+    }
 
-      if (data && typeof data === "object") {
-        data.message = finalMsg
-        if (data.error && typeof data.error === "object") {
-          data.error.message = finalMsg
-        } else if (typeof data.error === "string") {
-          data.error = finalMsg
-        }
-      }
-      error.message = finalMsg
+    if (error?.response?.data?.message && isTechnicalErrorString(error.response.data.message)) {
+      error.response.data.message = friendlyFallback
+    }
+
+    if (typeof error?.response?.data?.error === "string" && isTechnicalErrorString(error.response.data.error)) {
+      error.response.data.error = friendlyFallback
+    }
+
+    if (error?.message && isTechnicalErrorString(error.message)) {
+      error.message = friendlyFallback
+    }
+
+    if (error?.code === "ERR_NETWORK" || error?.message === "Network Error") {
+      error.message = "Hindi makakonekta sa server. Pakisuri ang iyong koneksyon sa internet."
     }
 
     return Promise.reject(error)

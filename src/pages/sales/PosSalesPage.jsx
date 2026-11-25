@@ -1,4 +1,3 @@
-import { getReceiptBusinessName } from "../../utils/businessProfile"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import {
@@ -21,7 +20,6 @@ import {
   PackageSearch,
   Plus,
   Printer,
-  QrCode,
   ReceiptText,
   RefreshCw,
   RotateCcw,
@@ -38,12 +36,13 @@ import {
 } from "lucide-react"
 
 import { USER_ROLES, getRoleLabel } from "../../constants/roles"
+import { getBranchAddress, getBranchContact } from "../../constants/branchDefaults"
 import { createCustomer, getCustomers, updateCustomerById } from "../../features/customers/customers.api"
 import {
   getInventoryBatches,
   getInventorySerials,
 } from "../../features/inventory/inventory.api"
-import { getItemById, getItems } from "../../features/items/items.api"
+import { getItems } from "../../features/items/items.api"
 import { parseItemWarranty } from "../items/ItemsPage"
 import {
   createQuotation,
@@ -70,8 +69,13 @@ import {
   createSale,
   getSaleById,
   getSales,
+  swapSaleSerial,
 } from "../../features/sales/sales.api"
-import { getInstallmentBasisSettings } from "../../features/settings/settings.api"
+import { getPurchaseOrders } from "../../features/purchase-orders/purchaseOrders.api"
+import {
+  getInstallmentBasisSettings,
+  getPaymentMethodSettings,
+} from "../../features/settings/settings.api"
 import {
   exportReportExcel,
   exportWarrantyReceiptPdf,
@@ -82,7 +86,19 @@ import ExportExcelButton from "../../components/common/ExportExcelButton"
 import QuotationDetailDialog from "../../components/quotations/QuotationDetailDialog"
 import QuotationConversionDialog from "../../components/quotations/QuotationConversionDialog"
 import PayMongoCheckoutModal from "../../components/paymongo/PayMongoCheckoutModal"
-import { serializeQuotationNotes } from "../../utils/quotationSettlement"
+import {
+  processSaleOffline,
+  syncOfflineSales,
+  subscribeToSyncChanges,
+} from "../../features/offline/offlineSync.service"
+import {
+  cacheCatalogItems,
+  getCachedCatalog,
+  cacheCustomers,
+  getCachedCustomers,
+  getOfflineQueueCount,
+} from "../../lib/offlineDb"
+import { cleanUserRemarks, parseQuotationSettlement, serializeQuotationNotes, stripSettlementTag } from "../../utils/quotationSettlement"
 import {
   CORE_SYSTEM_UNIT_PARTS,
   validateSystemUnitCompleteness,
@@ -112,11 +128,15 @@ const SALE_CANCELLER_ROLES = new Set([
 const IMMEDIATE_PAYMENT_METHODS = [
   ["CASH", "Cash (Physical)"],
   ["PAYMONGO", "PayMongo Digital (QR Ph / GCash / Maya / Card)"],
+  ["GCASH", "GCash (Online)"],
+  ["BANK_TRANSFER", "Bank Transfer (Any Bank)"],
+  ["OTHER", "Maya / PayMaya / Other Online"],
 ]
 
 const RECEIVABLE_PROVIDERS = [
   ["CREDIT_CARD", "Credit card receivable"],
   ["DEBIT_CARD", "Debit card receivable"],
+  ["CHEQUE", "Cheque (Bank Check)"],
   ["HOMECREDIT", "Home Credit"],
   ["SALMON", "Salmon"],
   ["SKYRO", "Skyro"],
@@ -442,6 +462,269 @@ function ServiceLineStaffCombobox({
   )
 }
 
+function SalesPersonCombobox({
+  value,
+  onChange,
+  staffList = [],
+  currentUser = null,
+  placeholder = "Search sales person / staff...",
+  inputRef = null,
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [search, setSearch] = useState("")
+  const containerRef = useRef(null)
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setIsOpen(false)
+        setSearch("")
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
+  // Combine staff list and current user, ensuring uniqueness by id
+  const combinedStaff = useMemo(() => {
+    const list = [...(Array.isArray(staffList) ? staffList : [])]
+    if (currentUser?.id && !list.some((s) => s.id === currentUser.id)) {
+      list.unshift(currentUser)
+    }
+    return list
+  }, [staffList, currentUser])
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return combinedStaff
+    return combinedStaff.filter((s) => {
+      const name = (s.fullName || s.username || "").toLowerCase()
+      const role = (s.role || "").toLowerCase()
+      return name.includes(q) || role.includes(q)
+    })
+  }, [combinedStaff, search])
+
+  const selectedStaff = combinedStaff.find((s) => s.id === value)
+  const displayName = selectedStaff ? (selectedStaff.fullName || selectedStaff.username || "") : ""
+
+  return (
+    <div className="relative text-xs w-full" ref={containerRef}>
+      <div className="relative">
+        <input
+          ref={inputRef}
+          type="text"
+          className={`w-full rounded-xl border px-2.5 py-1.5 text-xs font-semibold outline-none transition pr-7 ${
+            !value
+              ? "border-amber-300 bg-amber-50/25 text-slate-800 placeholder:text-amber-800/60 focus:bg-white focus:border-[var(--color-maroon)]"
+              : "border-slate-200 bg-slate-50/50 text-slate-800 focus:bg-white focus:border-[var(--color-maroon)]"
+          }`}
+          placeholder={displayName || placeholder}
+          value={isOpen ? search : displayName}
+          onChange={(e) => {
+            setSearch(e.target.value)
+            setIsOpen(true)
+          }}
+          onFocus={() => {
+            setIsOpen(true)
+            setSearch("")
+          }}
+        />
+        {value ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              onChange("")
+              setSearch("")
+              setIsOpen(false)
+            }}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-600 p-0.5 transition cursor-pointer"
+            title="Clear sales person"
+          >
+            <X size={13} />
+          </button>
+        ) : (
+          <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+            <Search size={12} />
+          </div>
+        )}
+      </div>
+
+      {isOpen && (
+        <div className="absolute left-0 right-0 top-full z-40 mt-1 max-h-52 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl">
+          {filtered.length === 0 ? (
+            <div className="p-3 text-center text-xs text-slate-400">
+              No matching staff found
+            </div>
+          ) : (
+            filtered.map((staff) => {
+              const name = staff.fullName || staff.username || "Staff"
+              const isSelected = staff.id === value
+              return (
+                <button
+                  key={staff.id}
+                  type="button"
+                  onClick={() => {
+                    onChange(staff.id)
+                    setSearch("")
+                    setIsOpen(false)
+                  }}
+                  className={`flex w-full items-center justify-between px-3 py-2 text-left text-xs transition border-b border-slate-100 last:border-b-0 cursor-pointer ${
+                    isSelected ? "bg-rose-50 text-[var(--color-maroon)] font-bold" : "hover:bg-slate-50 text-slate-700"
+                  }`}
+                >
+                  <div>
+                    <p className="font-bold">{name}</p>
+                    {staff.role && (
+                      <p className="text-[10px] text-slate-400 font-normal capitalize">
+                        {staff.role.replace(/_/g, " ").toLowerCase()}
+                      </p>
+                    )}
+                  </div>
+                  {isSelected && (
+                    <span className="text-[10px] font-bold text-[var(--color-maroon)]">Selected</span>
+                  )}
+                </button>
+              )
+            })
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function BuilderCombobox({
+  value,
+  onChange,
+  staffList = [],
+  currentUser = null,
+  placeholder = "Search assembler / staff *...",
+  inputRef = null,
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [search, setSearch] = useState("")
+  const containerRef = useRef(null)
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setIsOpen(false)
+        setSearch("")
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
+  const combinedStaff = useMemo(() => {
+    const list = [...(Array.isArray(staffList) ? staffList : [])]
+    if (currentUser?.id && !list.some((s) => s.id === currentUser.id)) {
+      list.unshift(currentUser)
+    }
+    return list
+  }, [staffList, currentUser])
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return combinedStaff
+    return combinedStaff.filter((s) => {
+      const name = (s.fullName || s.username || "").toLowerCase()
+      const role = (s.role || "").toLowerCase()
+      return name.includes(q) || role.includes(q)
+    })
+  }, [combinedStaff, search])
+
+  const selectedStaff = combinedStaff.find((s) => s.id === value)
+  const displayName = selectedStaff ? (selectedStaff.fullName || selectedStaff.username || "") : ""
+
+  return (
+    <div className="relative text-xs w-64 sm:w-72" ref={containerRef}>
+      <div className="relative">
+        <input
+          ref={inputRef}
+          type="text"
+          className={`w-full rounded-lg border px-2.5 py-1 text-xs font-semibold outline-none transition pr-7 ${
+            !value
+              ? "border-rose-400 bg-rose-50/70 text-slate-800 placeholder:text-rose-500/80 focus:bg-white focus:border-[var(--color-maroon)] focus:ring-1 focus:ring-rose-200"
+              : "border-rose-300 bg-white text-slate-800 focus:border-[var(--color-maroon)]"
+          }`}
+          placeholder={displayName || placeholder}
+          value={isOpen ? search : displayName}
+          onChange={(e) => {
+            setSearch(e.target.value)
+            setIsOpen(true)
+          }}
+          onFocus={() => {
+            setIsOpen(true)
+            setSearch("")
+          }}
+        />
+        {value ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              onChange("")
+              setSearch("")
+              setIsOpen(false)
+            }}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-600 p-0.5 transition cursor-pointer"
+            title="Clear assembler"
+          >
+            <X size={13} />
+          </button>
+        ) : (
+          <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-rose-400">
+            <Search size={12} />
+          </div>
+        )}
+      </div>
+
+      {isOpen && (
+        <div className="absolute left-0 right-0 top-full z-40 mt-1 max-h-52 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl">
+          {filtered.length === 0 ? (
+            <div className="p-3 text-center text-xs text-slate-400">
+              No matching staff found
+            </div>
+          ) : (
+            filtered.map((staff) => {
+              const name = staff.fullName || staff.username || "Staff"
+              const isSelected = staff.id === value
+              return (
+                <button
+                  key={staff.id}
+                  type="button"
+                  onClick={() => {
+                    onChange(staff.id)
+                    setSearch("")
+                    setIsOpen(false)
+                  }}
+                  className={`flex w-full items-center justify-between px-3 py-2 text-left text-xs transition border-b border-slate-100 last:border-b-0 cursor-pointer ${
+                    isSelected ? "bg-rose-50 text-[var(--color-maroon)] font-bold" : "hover:bg-slate-50 text-slate-700"
+                  }`}
+                >
+                  <div>
+                    <p className="font-bold">{name}</p>
+                    {staff.role && (
+                      <p className="text-[10px] text-slate-400 font-normal capitalize">
+                        {staff.role.replace(/_/g, " ").toLowerCase()}
+                      </p>
+                    )}
+                  </div>
+                  {isSelected && (
+                    <span className="text-[10px] font-bold text-[var(--color-maroon)]">Selected</span>
+                  )}
+                </button>
+              )
+            })
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function isOnlinePaymentMethod(method, remarks = "", ref = "") {
   const m = String(method || "").toUpperCase()
   if (m === "GCASH" || m === "MAYA" || m === "PAYMAYA" || m === "BANK_TRANSFER") {
@@ -478,6 +761,17 @@ function isOnlineSale(sale) {
   return false
 }
 
+function isChequeSale(sale) {
+  if (!sale) return false
+  if (String(sale.paymentMethod || "").toUpperCase() === "CHEQUE") return true
+  if (Array.isArray(sale.payments) && sale.payments.length > 0) {
+    if (sale.payments.some((p) => String(p.paymentMethod || "").toUpperCase() === "CHEQUE")) {
+      return true
+    }
+  }
+  return false
+}
+
 function hasCashPayment(sale) {
   if (!sale) return false
   if (Array.isArray(sale.payments) && sale.payments.length > 0) {
@@ -486,17 +780,17 @@ function hasCashPayment(sale) {
       const rem = String(p.remarks || "").toLowerCase()
       const ref = String(p.referenceNo || "").toLowerCase()
       if (m === "CASH") return true
-      return !isOnlinePaymentMethod(m, rem, ref) && m !== "CREDIT_CARD" && m !== "DEBIT_CARD"
+      return !isOnlinePaymentMethod(m, rem, ref) && m !== "CREDIT_CARD" && m !== "DEBIT_CARD" && m !== "CHEQUE" && m !== "CARD"
     })
   }
   const m = String(sale.paymentMethod || "").toUpperCase()
   if (m === "CASH") return true
-  return !isOnlineSale(sale) && !sale.creditAccount && Number(sale.amountPaid || 0) > 0
+  return !isOnlineSale(sale) && !isChequeSale(sale) && !sale.creditAccount && Number(sale.amountPaid || 0) > 0
 }
 
 const ERROR_CODE_TRANSLATIONS = {
   CASH_SOURCE_CONFLICT: "A cash register conflict occurred while recording this payment.",
-  STAFF_CUSTOM_PRICE_NOT_ALLOWED: "Account restricted: Custom pricing is not permitted for staff accounts.",
+  STAFF_CUSTOM_PRICE_NOT_ALLOWED: "Custom pricing is not permitted for staff accounts.",
   CANNOT_APPEND_TO_SALE_IN_CURRENT_STATUS: "Items cannot be added to a sale in its current status.",
   INSUFFICIENT_PAYMENT_FOR_ADDED_ITEMS: "The tendered payment is less than the total for the added items.",
   SERIAL_NOT_AVAILABLE: "The entered serial number is not available or has already been sold.",
@@ -508,24 +802,84 @@ const ERROR_CODE_TRANSLATIONS = {
   CANNOT_APPEND_TO_INACTIVE_CREDIT_ACCOUNT: "Cannot add items to an inactive or cancelled credit account.",
   RECEIVABLE_INITIAL_SETTLEMENT_EXCEEDS_TOTAL: "Downpayment cannot exceed the total purchase price.",
   SALE_NOT_FOUND: "Sale record not found.",
-  BRANCH_ACCESS_DENIED: "Account restricted: You do not have access to records from another branch.",
-  SALE_CANCEL_FORBIDDEN: "Account restricted: Only owner or admin accounts can cancel sales.",
-  SALE_RETURN_FORBIDDEN: "Account restricted: Only owner or admin accounts can return sale items.",
+  BRANCH_ACCESS_DENIED: "You do not have access to records from another branch.",
+  BRANCH_REQUIRED: "Please select a branch before completing the sale.",
+  BRANCH_NOT_FOUND: "The selected branch was not found.",
+  CUSTOMER_REQUIRED: "Customer name is required before completing the sale.",
+  CUSTOMER_NOT_FOUND: "The selected customer record was not found.",
+  CUSTOMER_INACTIVE: "The selected customer is inactive.",
+  PRICE_TIER_REQUIRED: "Please select a valid price tier.",
+  SERIALIZED_QUANTITY_MUST_BE_ONE: "Serialized items must be sold one unit per line.",
+  SERIAL_NOT_ALLOWED_FOR_NON_SERIALIZED_ITEM: "Serial numbers cannot be assigned to non-serialized items.",
+  CUSTOM_LINE_INVENTORY_LINK_NOT_ALLOWED: "Custom service lines cannot be linked directly to inventory batches.",
+  DESCRIPTION_REQUIRED: "Description is required for every custom line item.",
+  UNIT_PRICE_REQUIRED: "Unit price is required.",
+  DISCOUNT_EXCEEDS_LINE_TOTAL: "Discount cannot exceed the total price of the item.",
+  SALE_CHANGE_EXCEEDS_CASH_TENDER: "Customer change cannot exceed the cash amount tendered.",
+  RECEIVABLE_BALANCE_REQUIRED: "An installment sale requires an outstanding balance.",
+  RECEIVABLE_REQUIRED_FOR_OUTSTANDING_BALANCE: "Outstanding balance requires an active installment plan.",
+  SALE_NOT_CREDITABLE: "This sale cannot be converted to a credit account.",
+  IN_HOUSE_CUSTOMER_REQUIRED: "Select an active customer for an in-house installment account.",
+  SALE_ALREADY_HAS_CREDIT_ACCOUNT: "This sale already has an active credit account.",
+  NEW_SERIAL_REQUIRED: "Please provide a replacement serial number.",
+  NEW_SERIAL_ALREADY_SOLD: "The entered replacement serial number has already been sold.",
+  SERVICE_DONE_BY_NOT_ELIGIBLE: "The selected staff member is not eligible for service assignment.",
+  FORBIDDEN: "You do not have permission to perform this action.",
+  PAYMENT_METHOD_CASH_DISABLED: "Cash payments are currently disabled in store settings.",
+  PAYMENT_METHOD_GCASH_DISABLED: "GCash payments are currently disabled in store settings.",
+  PAYMENT_METHOD_BANK_TRANSFER_DISABLED: "Bank transfer payments are currently disabled in store settings.",
+  PAYMENT_METHOD_CARD_DISABLED: "Card terminal payments are currently disabled in store settings.",
+  PAYMENT_METHOD_CHEQUE_DISABLED: "Cheque payments are currently disabled in store settings.",
+  PAYMENT_METHOD_CREDIT_DISABLED: "Credit/Installment accounts are currently disabled in store settings.",
+  PAYMENT_METHOD_MIXED_DISABLED: "Mixed payment is currently disabled in store settings.",
+  CHEQUE_NUMBER_REQUIRED: "Cheque number is required for cheque payments.",
+  BANK_NAME_REQUIRED: "Bank name is required for this payment method.",
+  CARD_APPROVAL_CODE_REQUIRED: "Card approval code is required for card terminal payments.",
+  PAYMENT_REFERENCE_REQUIRED: "Payment reference number is required.",
+  PAYMENT_REMARKS_REQUIRED: "Payment remarks are required by store settings.",
 }
 
 function getApiErrorMessage(error, fallback) {
-  const is403 = error?.response?.status === 403
   const raw =
-    error?.response?.data?.message ||
     error?.response?.data?.error?.message ||
+    error?.response?.data?.message ||
     (typeof error?.response?.data?.error === "string" ? error.response.data.error : null) ||
     error?.message ||
     fallback
-  let translated = ERROR_CODE_TRANSLATIONS[raw] || raw
-  if (is403 && translated && !String(translated).toLowerCase().includes("account restricted")) {
-    translated = `Account restricted: ${translated}`
+
+  if (!raw || typeof raw !== "string") {
+    return fallback || "Unable to complete request. Please try again."
   }
-  return translated
+
+  if (ERROR_CODE_TRANSLATIONS[raw]) {
+    return ERROR_CODE_TRANSLATIONS[raw]
+  }
+
+  const isTechnical =
+    raw.includes("prisma.") ||
+    raw.includes("invocation:") ||
+    raw.includes("UserWhereInput") ||
+    raw.includes("WhereUniqueInput") ||
+    raw.includes("TypeError") ||
+    raw.includes("ReferenceError") ||
+    raw.includes("SyntaxError") ||
+    raw.includes("Cannot read property") ||
+    raw.includes("Cannot read properties") ||
+    raw.includes("is not a function") ||
+    raw.includes("SELECT ") ||
+    raw.includes("INSERT INTO") ||
+    raw.includes("UPDATE ") ||
+    raw.includes("DELETE FROM") ||
+    raw.includes("at Object.") ||
+    raw.includes(".js:") ||
+    raw.includes("{\n") ||
+    raw.includes("}\n")
+
+  if (isTechnical) {
+    return "Hindi maproseso ang transaksyon dahil sa maling detalye o validation error. Pakisuri ang mga nakalagay na impormasyon at subukan muli."
+  }
+
+  return raw
 }
 
 function getCatalogRows(response) {
@@ -664,6 +1018,39 @@ function getLineTotal(line, term = "CASH") {
   return Math.max(getLineGross(line, term) - Number(line.discountAmount || 0), 0)
 }
 
+function getLineSerializedUnits(line) {
+  if (!line || !line.item?.isSerialized) return []
+
+  const targetQty = Math.max(1, Math.floor(Number(line.quantity || 1)))
+
+  if (line.isCustomSerial) {
+    const list = Array.isArray(line.customSerialNumbers) ? [...line.customSerialNumbers] : []
+    const pending = line.customSerialNumber?.trim()
+    if (pending && !list.some((s) => s.toLowerCase() === pending.toLowerCase())) {
+      list.push(pending)
+    }
+    return list.slice(0, targetQty).map((sn) => ({
+      serialNumber: sn,
+      batchId: line.batchId || undefined,
+    }))
+  }
+
+  // Pre-existing serials from inventory
+  const selectedIds = Array.isArray(line.selectedSerialIds) ? [...line.selectedSerialIds] : []
+  if (line.serialId && !selectedIds.includes(line.serialId)) {
+    selectedIds.unshift(line.serialId)
+  }
+
+  return selectedIds.slice(0, targetQty).map((id) => {
+    const foundSerial = (line.serials || []).find((s) => s.id === id)
+    return {
+      serialId: id,
+      serialNumber: foundSerial?.serialNumber || undefined,
+      batchId: foundSerial?.batch?.id || line.batchId || undefined,
+    }
+  })
+}
+
 function roundMoney(value) {
   return Math.round((Number(value) + Number.EPSILON) * 100) / 100
 }
@@ -715,7 +1102,40 @@ function SaleDetailDialog({
   isCheckoutPreview = false,
   onConfirmCheckout = null,
   isSubmittingCheckout = false,
+  onRefreshSale = null,
 }) {
+  const [swapSerialItem, setSwapSerialItem] = useState(null)
+  const [targetNewSerial, setTargetNewSerial] = useState("")
+  const [swapReason, setSwapReason] = useState("")
+  const [isSwapping, setIsSwapping] = useState(false)
+  const [swapError, setSwapError] = useState("")
+
+  const handleExecuteSwapSerial = async () => {
+    if (!targetNewSerial.trim()) {
+      setSwapError("Please enter the physical serial number.")
+      return
+    }
+    setIsSwapping(true)
+    setSwapError("")
+    try {
+      await swapSaleSerial(sale.id, {
+        saleItemId: swapSerialItem.saleItemId,
+        newSerialNumber: targetNewSerial.trim(),
+        reason: swapReason.trim() || undefined,
+      })
+      setSwapSerialItem(null)
+      setTargetNewSerial("")
+      setSwapReason("")
+      if (onRefreshSale) {
+        onRefreshSale()
+      }
+    } catch (err) {
+      setSwapError(err?.response?.data?.message || err?.message || "Failed to swap serial number.")
+    } finally {
+      setIsSwapping(false)
+    }
+  }
+
   const [previewCustomerName, setPreviewCustomerName] = useState(sale?.customer?.fullName || "")
   const [previewCustomerAddress, setPreviewCustomerAddress] = useState(sale?.customer?.address || "")
   const [previewCustomerPhone, setPreviewCustomerPhone] = useState(
@@ -723,7 +1143,7 @@ function SaleDetailDialog({
   )
   const [previewCustomerEmail, setPreviewCustomerEmail] = useState(sale?.customer?.email || "")
   const [previewCustomerCompany, setPreviewCustomerCompany] = useState(sale?.customer?.companyName || "")
-  const [previewRemarks, setPreviewRemarks] = useState(sale?.remarks || "")
+  const [previewRemarks, setPreviewRemarks] = useState(cleanUserRemarks(sale?.remarks || ""))
   const [checkoutError, setCheckoutError] = useState("")
 
   useEffect(() => {
@@ -732,7 +1152,7 @@ function SaleDetailDialog({
     setPreviewCustomerPhone(sale?.customer?.mobileNumber || sale?.customer?.phone || "")
     setPreviewCustomerEmail(sale?.customer?.email || "")
     setPreviewCustomerCompany(sale?.customer?.companyName || "")
-    setPreviewRemarks(sale?.remarks || "")
+    setPreviewRemarks(cleanUserRemarks(sale?.remarks || ""))
     setCheckoutError("")
   }, [sale])
 
@@ -745,9 +1165,8 @@ function SaleDetailDialog({
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [onClose])
 
-  const branchObj = sale?.branch || {}
-  const branchAddress = branchObj.address || branchObj.name || "Main Branch"
-  const branchContact = branchObj.contactNo || "—"
+  const branchAddress = getBranchAddress(sale?.branch)
+  const branchContact = getBranchContact(sale?.branch)
 
   const paymentType = useMemo(() => {
     if (sale?.creditAccount) {
@@ -912,9 +1331,9 @@ function SaleDetailDialog({
                 <ReceiptText size={14} />
                 {isCheckoutPreview ? "SALE CHECKOUT PREVIEW" : "WARRANTY RECEIPT"}
               </span>
-              {sale?.quotation?.isPcBuild || sale?.remarks?.includes("[BUNDLE]") || sale?.remarks?.includes("[PC BUILD]") || sale?.isPcBuild ? (
+              {sale?.quotation?.isPcBuild || sale?.remarks?.includes("[PC BUILD]") || sale?.isPcBuild ? (
                 <span className="rounded-md bg-slate-800 px-2 py-1 text-xs font-bold text-white">
-                  📦 Bundle Item / Package
+                  🖥️ PC Build / Set
                 </span>
               ) : null}
             </div>
@@ -1015,10 +1434,10 @@ function SaleDetailDialog({
                   </span>
                   <input
                     className="w-full rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-[var(--color-maroon)] focus:ring-1 focus:ring-[var(--color-maroon)] transition"
-                    maxLength={30}
+                    maxLength={300}
                     value={previewCustomerName}
                     onChange={(e) => {
-                      setPreviewCustomerName(e.target.value.slice(0, 30))
+                      setPreviewCustomerName(e.target.value.slice(0, 300))
                       if (checkoutError) setCheckoutError("")
                     }}
                     placeholder="e.g. Juan Dela Cruz"
@@ -1050,13 +1469,13 @@ function SaleDetailDialog({
                   </span>
                   <input
                     className="w-full rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-medium text-slate-800 outline-none focus:border-[var(--color-maroon)] focus:ring-1 focus:ring-[var(--color-maroon)] transition"
-                    maxLength={50}
+                    maxLength={300}
                     value={previewCustomerAddress}
                     onChange={(e) => {
-                      setPreviewCustomerAddress(e.target.value.slice(0, 50))
+                      setPreviewCustomerAddress(e.target.value.slice(0, 300))
                       if (checkoutError) setCheckoutError("")
                     }}
-                    placeholder="House No., Street Name, Barangay, City/Municipality, Province"
+                    placeholder="e.g. Brgy. San Isidro, CSFP"
                     required
                   />
                 </label>
@@ -1106,7 +1525,7 @@ function SaleDetailDialog({
                   {/* Left Store Info */}
                   <div className="md:col-span-6 space-y-1">
                     <h1 className="text-sm font-black tracking-tight text-slate-950 uppercase leading-snug">
-                      {getReceiptBusinessName(sale?.branch)}
+                      POSYNCTIFY STORE & SERVICES
                     </h1>
                     <p className="text-[11px] text-slate-700 leading-normal">
                       {branchAddress}
@@ -1133,12 +1552,12 @@ function SaleDetailDialog({
 
                     <span className="font-bold text-slate-600">Address:</span>
                     <span className="col-span-2">
-                      {(isCheckoutPreview ? previewCustomerAddress : sale.customer?.address) || "—"}
+                      {(isCheckoutPreview ? previewCustomerAddress : (sale.customer?.address || sale.customerAddressSnapshot || sale.customerAddress || sale.quotation?.customer?.address)) || "—"}
                     </span>
 
                     <span className="font-bold text-slate-600">Contact No.:</span>
                     <span className="col-span-2">
-                      {(isCheckoutPreview ? previewCustomerPhone : (sale.customer?.mobileNumber || sale.customer?.email)) || "—"}
+                      {(isCheckoutPreview ? previewCustomerPhone : (sale.customer?.mobileNumber || sale.customer?.email || sale.customer?.contactNo || sale.customerPhone || sale.customerContactSnapshot || sale.quotation?.customer?.mobileNumber)) || "—"}
                     </span>
 
                     <span className="font-bold text-slate-600">Salesman:</span>
@@ -1197,9 +1616,30 @@ function SaleDetailDialog({
                               {item.warrantyBadge ? ` | ${item.warrantyBadge}` : ""}
                             </p>
                             {item.serialNumbers?.length > 0 ? (
-                              <p className="text-[11px] font-mono text-slate-600">
-                                S/N: <strong className="text-slate-800">{item.serialNumbers.join(", ")}</strong>
-                              </p>
+                              <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                                <p className="text-[11px] font-mono text-slate-600">
+                                  S/N: <strong className="text-slate-800">{item.serialNumbers.join(", ")}</strong>
+                                </p>
+                                {!isCheckoutPreview && sale.status === "COMPLETED" ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSwapSerialItem({
+                                        saleItemId: item.rawItem?.id || item.id,
+                                        currentSerial: item.serialNumbers[0],
+                                        itemName: item.description,
+                                      })
+                                      setTargetNewSerial("")
+                                      setSwapReason("")
+                                      setSwapError("")
+                                    }}
+                                    className="rounded px-1.5 py-0.5 text-[10px] font-bold text-amber-800 bg-amber-50 border border-amber-300 hover:bg-amber-100 transition print:hidden cursor-pointer"
+                                    title="Physical serial mismatch? Click to swap/correct serial number"
+                                  >
+                                    Swap Serial
+                                  </button>
+                                ) : null}
+                              </div>
                             ) : null}
                             {Number(item.returnedQuantity || 0) > 0 ? (
                               <p className="text-[10px] font-bold text-orange-700">
@@ -1248,14 +1688,18 @@ function SaleDetailDialog({
                 </div>
 
                 {/* Remarks / Notes */}
-                {(isCheckoutPreview ? previewRemarks : sale.remarks) ? (
-                  <div className="mt-2 mb-1 px-1 text-xs text-slate-700">
-                    <span className="font-bold text-slate-900">Remarks: </span>
-                    <span className="font-medium text-slate-800">
-                      {isCheckoutPreview ? previewRemarks : sale.remarks}
-                    </span>
-                  </div>
-                ) : null}
+                {(() => {
+                  const displayRemarks = stripSettlementTag(
+                    isCheckoutPreview ? previewRemarks : sale.remarks || ""
+                  )
+                  if (!displayRemarks) return null
+                  return (
+                    <div className="mt-2 mb-1 px-1 text-xs text-slate-700">
+                      <span className="font-bold text-slate-900">Remarks: </span>
+                      <span className="font-medium text-slate-800">{displayRemarks}</span>
+                    </div>
+                  )
+                })()}
 
                 {/* Double Border Separator */}
                 <div className="border-t-2 border-b border-slate-900 my-1 pt-0.5" />
@@ -1308,10 +1752,13 @@ function SaleDetailDialog({
                 {/* Warranty Disclaimers */}
                 <div className="border-t border-slate-200 pt-3 text-center space-y-1">
                   <p className="font-bold text-[11px] text-slate-900 uppercase">
-                    CONSUMABLES, OPENED ITEMS &amp; SERVICE FEES ARE NON-REFUNDABLE UNLESS DEFECTIVE
+                    NO WARRANTY ON SOFTWARE/S (O.S. - WINDOWS and MS OFFICE), IF ANY
                   </p>
                   <p className="text-[10px] text-slate-600">
                     Pls. read all WARRANTY GUIDELINES &amp; PROCEDURES at the back of this page. (BRING –IN WARRANTY)
+                  </p>
+                  <p className="font-bold text-[10px] text-red-700 uppercase">
+                    ALL PRICES ARE SUBJECT TO CHANGE WITHOUT PRIOR NOTICE
                   </p>
                 </div>
 
@@ -1473,6 +1920,78 @@ function SaleDetailDialog({
             </div>
           ) : null}
         </section>
+
+        {swapSerialItem ? (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/70 p-4">
+            <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl border border-slate-200 space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div>
+                  <h3 className="text-sm font-black text-slate-900">Correct / Swap Serial Number</h3>
+                  <p className="text-xs text-slate-500 truncate max-w-xs">{swapSerialItem.itemName}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setSwapSerialItem(null); setSwapError(""); }}
+                  className="text-slate-400 hover:text-slate-700 p-1"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                <div className="rounded-xl bg-slate-50 p-2.5 border border-slate-200">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Current Serial in System</span>
+                  <span className="font-mono font-bold text-rose-700">{swapSerialItem.currentSerial}</span>
+                </div>
+
+                <label className="block">
+                  <span className="text-[11px] font-bold text-slate-700 block">Physical Serial Number (To Assign) *</span>
+                  <input
+                    className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-mono font-bold text-slate-900 outline-none focus:border-[var(--color-maroon)]"
+                    onChange={(e) => setTargetNewSerial(e.target.value)}
+                    placeholder="Scan or type physical serial barcode..."
+                    value={targetNewSerial}
+                    autoFocus
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="text-[11px] font-bold text-slate-700 block">Reason for Correction (Optional)</span>
+                  <input
+                    className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-[var(--color-maroon)]"
+                    onChange={(e) => setSwapReason(e.target.value)}
+                    placeholder="e.g. Accidental wrong box handed out physically"
+                    value={swapReason}
+                  />
+                </label>
+
+                {swapError ? (
+                  <div className="rounded-xl bg-rose-50 border border-rose-200 p-2.5 text-xs font-semibold text-rose-700">
+                    {swapError}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="flex items-center justify-end gap-2 border-t border-slate-100 pt-3">
+                <button
+                  type="button"
+                  onClick={() => { setSwapSerialItem(null); setSwapError(""); }}
+                  className="rounded-xl border border-slate-200 px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isSwapping || !targetNewSerial.trim()}
+                  onClick={handleExecuteSwapSerial}
+                  className="rounded-xl bg-[var(--color-maroon)] px-4 py-1.5 text-xs font-bold text-white hover:opacity-90 disabled:opacity-50"
+                >
+                  {isSwapping ? "Swapping..." : "Confirm Serial Swap"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>,
     document.body,
@@ -1555,7 +2074,6 @@ function AppendSaleItemsDialog({ installmentRates, isSaving, onClose, onConfirm,
   const [paymentReference, setPaymentReference] = useState("")
   const [remarks, setRemarks] = useState("")
   const [message, setMessage] = useState("")
-  const [isPayMongoOpen, setIsPayMongoOpen] = useState(false)
 
   const termBasis = useMemo(() => {
     if (!isCreditSale) return 1
@@ -1747,16 +2265,13 @@ function AppendSaleItemsDialog({ installmentRates, isSaving, onClose, onConfirm,
 
     const tender = Number(paymentAmount || 0)
     if (!isCreditSale && tender < addedGrandTotal) {
-      setMessage(`Payment amount must be at least ${formatMoney(addedGrandTotal)}.`)
+      setMessage(`Payment amount must be at least ₱${formatMoney(addedGrandTotal)}.`)
       return
     }
     if (isCreditSale && tender < 0) {
       setMessage("Downpayment amount cannot be negative.")
       return
     }
-
-    const finalMethod = paymentMethod === "PAYMONGO" ? "GCASH" : paymentMethod
-    const finalRemarks = remarks.trim() || (paymentMethod === "PAYMONGO" ? "[PayMongo Digital QR Ph]" : undefined)
 
     const payload = {
       items: items.map((it) => ({
@@ -1769,14 +2284,13 @@ function AppendSaleItemsDialog({ installmentRates, isSaving, onClose, onConfirm,
       })),
       payments: tender > 0 ? [
         {
-          paymentMethod: finalMethod,
+          paymentMethod,
           amount: tender,
           referenceNo: paymentReference.trim() || undefined,
-          remarks: finalRemarks,
         },
       ] : [],
       term: isCreditSale ? selectedTerm : undefined,
-      remarks: finalRemarks,
+      remarks: remarks.trim() || undefined,
     }
 
     try {
@@ -1812,7 +2326,7 @@ function AppendSaleItemsDialog({ installmentRates, isSaving, onClose, onConfirm,
               Add Items to Sale #{sale.receiptCode}
             </h2>
             <p className="text-xs text-slate-500">
-              Customer: <strong className="text-slate-700">{sale.customer?.fullName || "Walk-in customer"}</strong> · Current Total: <strong className="text-slate-900 font-mono">{formatMoney(sale.grandTotal)}</strong>
+              Customer: <strong className="text-slate-700">{sale.customer?.fullName || "Walk-in customer"}</strong> · Current Total: <strong className="text-slate-900 font-mono">₱{formatMoney(sale.grandTotal)}</strong>
             </p>
           </div>
           <button
@@ -1864,8 +2378,8 @@ function AppendSaleItemsDialog({ installmentRates, isSaving, onClose, onConfirm,
                   </div>
                   <div className="rounded-xl bg-white border border-blue-100 p-2">
                     <span className="text-[10px] text-slate-400 block font-bold uppercase">Current Financed Balance</span>
-                    <span className="font-mono font-bold text-blue-900 text-sm">{formatMoney(sale.creditAccount.remainingBalance)}</span>
-                    <span className="text-[10px] text-slate-400 block">Due: {formatMoney(sale.creditAccount.monthlyDueAmount || 0)}/mo</span>
+                    <span className="font-mono font-bold text-blue-900 text-sm">₱{formatMoney(sale.creditAccount.remainingBalance)}</span>
+                    <span className="text-[10px] text-slate-400 block">Due: ₱{formatMoney(sale.creditAccount.monthlyDueAmount || 0)}/mo</span>
                   </div>
                   <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-2">
                     <span className="text-[10px] text-emerald-800 block font-bold uppercase">Additional Downpayment</span>
@@ -1911,7 +2425,7 @@ function AppendSaleItemsDialog({ installmentRates, isSaving, onClose, onConfirm,
                         <p className="text-[10px] text-slate-400">{item.itemCode} {item.brand ? `· ${item.brand}` : ""} {item.isSerialized ? "· Serialized" : ""}</p>
                       </div>
                       <div className="text-right">
-                        <p className="font-mono font-bold text-emerald-700">{formatMoney(item.price1)}</p>
+                        <p className="font-mono font-bold text-emerald-700">₱{formatMoney(item.price1)}</p>
                         <p className="text-[10px] text-slate-500">{Number(item.quantityAvailable ?? item.totalStock ?? item.stockQuantity ?? 0)} available</p>
                       </div>
                     </button>
@@ -1963,11 +2477,11 @@ function AppendSaleItemsDialog({ installmentRates, isSaving, onClose, onConfirm,
                               onChange={(e) => updateLine(line.id, "priceTier", e.target.value)}
                               value={line.priceTier}
                             >
-                              <option value="1">P1 ({formatMoney(line.item?.price1)})</option>
-                              <option value="2">P2 ({formatMoney(line.item?.price2)})</option>
-                              <option value="3">P3 ({formatMoney(line.item?.price3)})</option>
-                              <option value="4">P4 ({formatMoney(line.item?.price4)})</option>
-                              <option value="5">P5 ({formatMoney(line.item?.price5)})</option>
+                              <option value="1">P1 (₱{formatMoney(line.item?.price1)})</option>
+                              <option value="2">P2 (₱{formatMoney(line.item?.price2)})</option>
+                              <option value="3">P3 (₱{formatMoney(line.item?.price3)})</option>
+                              <option value="4">P4 (₱{formatMoney(line.item?.price4)})</option>
+                              <option value="5">P5 (₱{formatMoney(line.item?.price5)})</option>
                             </select>
                           </td>
                           <td className="p-2.5">
@@ -1980,20 +2494,20 @@ function AppendSaleItemsDialog({ installmentRates, isSaving, onClose, onConfirm,
                             />
                           </td>
                           <td className="p-2.5 text-right font-mono">
-                            <p className="font-semibold text-slate-700">{formatMoney(line.unitPrice)}</p>
+                            <p className="font-semibold text-slate-700">₱{formatMoney(line.unitPrice)}</p>
                             {isCreditSale && termBasis < 1 ? (
                               <p className="text-[10px] text-blue-700 font-bold">
-                                Financed: {formatMoney(Math.round((line.unitPrice / termBasis) * 100) / 100)}
+                                Financed: ₱{formatMoney(Math.round((line.unitPrice / termBasis) * 100) / 100)}
                               </p>
                             ) : null}
                           </td>
                           <td className="p-2.5 text-right font-mono">
                             <p className="font-bold text-slate-900">
-                              {formatMoney(Number(line.quantity || 0) * Number(line.unitPrice || 0))}
+                              ₱{formatMoney(Number(line.quantity || 0) * Number(line.unitPrice || 0))}
                             </p>
                             {isCreditSale && termBasis < 1 ? (
                               <p className="text-[10px] text-blue-900 font-black">
-                                Financed: {formatMoney(Math.round(((Number(line.quantity || 0) * Number(line.unitPrice || 0)) / termBasis) * 100) / 100)}
+                                Financed: ₱{formatMoney(Math.round(((Number(line.quantity || 0) * Number(line.unitPrice || 0)) / termBasis) * 100) / 100)}
                               </p>
                             ) : null}
                           </td>
@@ -2029,7 +2543,7 @@ function AppendSaleItemsDialog({ installmentRates, isSaving, onClose, onConfirm,
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
                     <div className="rounded-xl bg-white border border-blue-100 p-2">
                       <span className="text-[10px] text-slate-500 block">Added Items (Cash Price)</span>
-                      <span className="font-mono font-bold text-slate-900">{formatMoney(addedGrandTotal)}</span>
+                      <span className="font-mono font-bold text-slate-900">₱{formatMoney(addedGrandTotal)}</span>
                     </div>
                     <div className="rounded-xl bg-white border border-blue-100 p-2">
                       <span className="text-[10px] text-blue-700 block">Term Interest / Adjustment</span>
@@ -2037,14 +2551,14 @@ function AppendSaleItemsDialog({ installmentRates, isSaving, onClose, onConfirm,
                     </div>
                     <div className="rounded-xl bg-white border border-blue-100 p-2">
                       <span className="text-[10px] text-indigo-700 block">Added Items Financed Value</span>
-                      <span className="font-mono font-bold text-indigo-900">{formatMoney(financingSummary.addedFinancedAmount)}</span>
+                      <span className="font-mono font-bold text-indigo-900">₱{formatMoney(financingSummary.addedFinancedAmount)}</span>
                     </div>
                   </div>
 
                   <div className="rounded-xl bg-white border border-blue-100 p-2.5 space-y-1 text-xs">
                     <div className="flex justify-between text-slate-600">
                       <span>Current Financed Balance:</span>
-                      <span className="font-mono font-semibold text-slate-700">{formatMoney(financingSummary.prevRemainingBalance)}</span>
+                      <span className="font-mono font-semibold text-slate-700">₱{formatMoney(financingSummary.prevRemainingBalance)}</span>
                     </div>
                     <div className="flex justify-between text-blue-900 font-bold">
                       <span>Added to Financed Balance (after DP):</span>
@@ -2054,23 +2568,23 @@ function AppendSaleItemsDialog({ installmentRates, isSaving, onClose, onConfirm,
                       <div className="flex justify-between text-indigo-700 text-xs">
                         <span>Term Restructure Adjustment (on previous items):</span>
                         <span className="font-mono font-bold text-indigo-800">
-                          {financingSummary.termRestructureAdj > 0 ? "+" : "−"}{formatMoney(Math.abs(financingSummary.termRestructureAdj))}
+                          {financingSummary.termRestructureAdj > 0 ? "+" : "−"}₱{formatMoney(Math.abs(financingSummary.termRestructureAdj))}
                         </span>
                       </div>
                     ) : null}
                     {Number(paymentAmount || 0) > 0 ? (
                       <div className="flex justify-between text-emerald-700 text-xs">
                         <span>Additional Downpayment Paid:</span>
-                        <span className="font-mono font-bold text-emerald-800">−{formatMoney(Number(paymentAmount || 0))}</span>
+                        <span className="font-mono font-bold text-emerald-800">−₱{formatMoney(Number(paymentAmount || 0))}</span>
                       </div>
                     ) : null}
                     <div className="flex justify-between text-slate-900 font-black pt-1.5 border-t border-blue-100 text-sm">
                       <span>New Total Financed Balance:</span>
-                      <span className="font-mono text-base text-blue-950">{formatMoney(financingSummary.newRemainingBalance)}</span>
+                      <span className="font-mono text-base text-blue-950">₱{formatMoney(financingSummary.newRemainingBalance)}</span>
                     </div>
                     <div className="flex justify-between text-emerald-800 font-bold pt-1 border-t border-blue-100">
                       <span>New Monthly Amortization ({months} months):</span>
-                      <span className="font-mono text-sm text-emerald-900">{formatMoney(financingSummary.newMonthlyDue)} / mo</span>
+                      <span className="font-mono text-sm text-emerald-900">₱{formatMoney(financingSummary.newMonthlyDue)} / mo</span>
                     </div>
                   </div>
                 </div>
@@ -2078,15 +2592,15 @@ function AppendSaleItemsDialog({ installmentRates, isSaving, onClose, onConfirm,
                 <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 space-y-2">
                   <div className="flex justify-between text-xs text-slate-600">
                     <span>Additional Items Total:</span>
-                    <span className="font-mono font-bold text-emerald-800 text-sm">{formatMoney(addedGrandTotal)}</span>
+                    <span className="font-mono font-bold text-emerald-800 text-sm">₱{formatMoney(addedGrandTotal)}</span>
                   </div>
                   <div className="flex justify-between text-xs text-slate-600 pt-1 border-t border-emerald-200">
                     <span>Original Receipt Total:</span>
-                    <span className="font-mono font-semibold text-slate-700">{formatMoney(sale.grandTotal)}</span>
+                    <span className="font-mono font-semibold text-slate-700">₱{formatMoney(sale.grandTotal)}</span>
                   </div>
                   <div className="flex justify-between text-xs text-slate-900 font-black pt-1 border-t border-emerald-200">
                     <span>New Overall Receipt Grand Total:</span>
-                    <span className="font-mono text-base text-emerald-900">{formatMoney(newReceiptTotal)}</span>
+                    <span className="font-mono text-base text-emerald-900">₱{formatMoney(newReceiptTotal)}</span>
                   </div>
                 </div>
               )
@@ -2096,7 +2610,7 @@ function AppendSaleItemsDialog({ installmentRates, isSaving, onClose, onConfirm,
               <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <p className="text-[11px] font-bold uppercase tracking-wider text-slate-600">
-                    {isCreditSale ? "Additional Downpayment (Optional)" : `Payment for Added Items (${formatMoney(addedGrandTotal)})`}
+                    {isCreditSale ? "Additional Downpayment (Optional)" : `Payment for Added Items (₱${formatMoney(addedGrandTotal)})`}
                   </p>
                   {isCreditSale ? (
                     <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
@@ -2111,19 +2625,14 @@ function AppendSaleItemsDialog({ installmentRates, isSaving, onClose, onConfirm,
                     <select
                       className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 outline-none"
                       disabled={isSaving}
-                      onChange={(e) => {
-                        const val = e.target.value
-                        setPaymentMethod(val)
-                        if (val === "PAYMONGO") {
-                          setIsPayMongoOpen(true)
-                        }
-                      }}
+                      onChange={(e) => setPaymentMethod(e.target.value)}
                       value={paymentMethod}
                     >
                       <option value="CASH">Cash</option>
-                      <option value="PAYMONGO">PayMongo (QR Ph / GCash / Maya / Card)</option>
                       <option value="GCASH">GCash</option>
                       <option value="BANK_TRANSFER">Bank Transfer</option>
+                      <option value="CARD">Card / Terminal</option>
+                      <option value="CHEQUE">Cheque</option>
                       <option value="OTHER">Other</option>
                     </select>
                   </label>
@@ -2139,7 +2648,7 @@ function AppendSaleItemsDialog({ installmentRates, isSaving, onClose, onConfirm,
                           onClick={() => setPaymentAmount(String(addedGrandTotal))}
                           className="text-[10px] font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-1.5 py-0.5 rounded transition cursor-pointer"
                         >
-                          Exact ({formatMoney(addedGrandTotal)})
+                          Exact (₱{formatMoney(addedGrandTotal)})
                         </button>
                       ) : null}
                     </div>
@@ -2155,37 +2664,6 @@ function AppendSaleItemsDialog({ installmentRates, isSaving, onClose, onConfirm,
                     />
                   </label>
                 </div>
-
-                
-                {paymentMethod === "PAYMONGO" ? (
-                  <div className="col-span-full rounded-2xl border border-emerald-300 bg-emerald-50/80 p-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2.5 bg-emerald-700 text-white rounded-xl shadow-xs">
-                        <QrCode size={20} />
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
-                          <span>PayMongo Digital Checkout</span>
-                          <span className="text-[10px] font-mono bg-emerald-200/80 text-emerald-900 px-1.5 py-0.5 rounded font-bold">QR Ph / E-Wallets</span>
-                        </p>
-                        <p className="text-[11px] text-emerald-800">
-                          {paymentReference
-                            ? `Verified: ${paymentReference}`
-                            : "Customer scans QR Ph code or clicks PayMongo checkout link"}
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 rounded-xl bg-emerald-700 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-emerald-800 transition cursor-pointer"
-                      disabled={isSaving || addedGrandTotal <= 0}
-                      onClick={() => setIsPayMongoOpen(true)}
-                      type="button"
-                    >
-                      <Sparkles size={14} />
-                      {paymentReference ? "Re-open PayMongo QR" : "Open PayMongo Checkout"}
-                    </button>
-                  </div>
-                ) : null}
 
                 {Number(paymentAmount || 0) > 0 && paymentMethod !== "CASH" ? (
                   <label className="block">
@@ -2203,7 +2681,7 @@ function AppendSaleItemsDialog({ installmentRates, isSaving, onClose, onConfirm,
                 {paymentMethod === "CASH" && changeAmount > 0 ? (
                   <div className="flex items-center justify-between text-xs font-bold text-slate-700 bg-slate-50 p-2.5 rounded-xl">
                     <span>Change:</span>
-                    <span className="font-mono text-sm text-emerald-700">{formatMoney(changeAmount)}</span>
+                    <span className="font-mono text-sm text-emerald-700">₱{formatMoney(changeAmount)}</span>
                   </div>
                 ) : null}
 
@@ -2241,77 +2719,15 @@ function AppendSaleItemsDialog({ installmentRates, isSaving, onClose, onConfirm,
               {isSaving
                 ? "Appending items…"
                 : isCreditSale && financingSummary
-                  ? `Confirm & Append to Financing (+${formatMoney(financingSummary.netAddedToBalance)})`
-                  : `Confirm & Append (${formatMoney(addedGrandTotal)})`}
+                  ? `Confirm & Append to Financing (+₱${formatMoney(financingSummary.netAddedToBalance)})`
+                  : `Confirm & Append (₱${formatMoney(addedGrandTotal)})`}
             </button>
           </div>
         </form>
-        <PayMongoCheckoutModal
-          amount={addedGrandTotal}
-          cartItems={items.map((it) => ({
-            name: it.description || it.item?.itemName || "Item",
-            quantity: Math.max(1, Number(it.quantity) || 1),
-            amount: Number(it.unitPrice || 0),
-          }))}
-          customerEmail={sale.customer?.email}
-          customerName={sale.customer?.fullName || "Walk-in Customer"}
-          customerPhone={sale.customer?.contactNo || sale.customer?.mobileNumber}
-          isOpen={isPayMongoOpen}
-          onClose={() => setIsPayMongoOpen(false)}
-          onPaymentSuccess={async (res) => {
-            setIsPayMongoOpen(false)
-            const methodUpper = String(res.paymentMethod || "").toUpperCase()
-            const matchedMethod =
-              methodUpper === "GCASH"
-                ? "GCASH"
-                : methodUpper === "PAYMAYA" || methodUpper === "MAYA"
-                  ? "PAYMAYA"
-                  : methodUpper.includes("CARD")
-                    ? "CARD"
-                    : "OTHER"
-            const paymentRef = res.referenceNo || `PM-${matchedMethod}-${Date.now().toString().slice(-6)}`
-            const paymentNote = res.remarks || `[PayMongo Verified: ${matchedMethod}]`
-
-            setPaymentMethod(matchedMethod)
-            setPaymentReference(paymentRef)
-            setPaymentAmount(String(addedGrandTotal))
-            const updatedRemarks = remarks.trim() ? `${remarks.trim()} · ${paymentNote}` : paymentNote
-            setRemarks(updatedRemarks)
-
-            const payload = {
-              items: items.map((it) => ({
-                itemId: it.item?.id,
-                description: it.item ? undefined : it.description,
-                priceTier: it.item ? Number(it.priceTier || 1) : undefined,
-                quantity: Number(it.quantity),
-                unitPrice: it.item ? undefined : Number(it.unitPrice),
-                serialNumber: it.serialNumber?.trim() || undefined,
-              })),
-              payments: [
-                {
-                  paymentMethod: matchedMethod,
-                  amount: addedGrandTotal,
-                  referenceNo: paymentRef,
-                  remarks: paymentNote,
-                },
-              ],
-              term: isCreditSale ? selectedTerm : undefined,
-              remarks: updatedRemarks,
-            }
-
-            try {
-              await onConfirm(payload)
-            } catch (err) {
-              setMessage(getApiErrorMessage(err, "Unable to add items to this sale."))
-            }
-          }}
-          referenceNumber={`ADDON-${sale.receiptCode || "SALE"}-${Date.now().toString().slice(-4)}`}
-        />
       </div>
     </div>
   )
 }
-
 
 function ReturnSaleItemsDialog({ isSaving, onClose, onConfirm, sale }) {
   const eligibleItems = (sale.items || []).filter(
@@ -2691,6 +3107,235 @@ function JobOrderLookupDialog({ branchId, cart = [], onClose, onSelectJob, sales
   )
 }
 
+function ServiceCatalogLookup({
+  catalog = [],
+  value = "",
+  onChange,
+  onClear,
+  placeholder = "-- Type to search service catalog or pick below --",
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [typedQuery, setTypedQuery] = useState(null)
+  const [highlightedIndex, setHighlightedIndex] = useState(-1)
+  const containerRef = useRef(null)
+
+  const selectedItem = useMemo(
+    () => (catalog || []).find((s) => s.id === value),
+    [catalog, value]
+  )
+
+  const formatItemLabel = (s) => {
+    if (!s) return ""
+    const priceStr = `₱${Number(s.basePrice || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`
+    const deviceStr = s.deviceType ? ` (${s.deviceType})` : ""
+    return `${s.name} — ${priceStr}${deviceStr}`
+  }
+
+  const displayValue =
+    typedQuery !== null
+      ? typedQuery
+      : selectedItem
+      ? formatItemLabel(selectedItem)
+      : ""
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setIsOpen(false)
+        setTypedQuery(null)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
+  const searchResults = useMemo(() => {
+    const q = (typedQuery ?? "").trim().toLowerCase()
+    if (!q) return (catalog || []).slice(0, 50)
+    return (catalog || [])
+      .filter((s) => {
+        const name = (s.name || "").toLowerCase()
+        const desc = (s.description || "").toLowerCase()
+        const dev = (s.deviceType || "").toLowerCase()
+        const code = (s.code || "").toLowerCase()
+        return (
+          name.includes(q) ||
+          desc.includes(q) ||
+          dev.includes(q) ||
+          code.includes(q)
+        )
+      })
+      .slice(0, 50)
+  }, [catalog, typedQuery])
+
+  const handleSelectItem = (s) => {
+    if (!s) {
+      onChange("")
+      if (onClear) onClear()
+    } else {
+      onChange(s.id)
+    }
+    setTypedQuery(null)
+    setIsOpen(false)
+    setHighlightedIndex(-1)
+  }
+
+  const handleClear = () => {
+    onChange("")
+    if (onClear) onClear()
+    setTypedQuery("")
+    setIsOpen(false)
+    setHighlightedIndex(-1)
+  }
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <div className="relative flex items-center">
+        <Search className="absolute left-2.5 text-violet-400 pointer-events-none" size={13} />
+        <input
+          type="text"
+          autoComplete="off"
+          className="w-full rounded-lg border border-violet-200 bg-white pl-7 pr-7 py-1.5 text-xs font-semibold text-slate-800 outline-none transition focus:border-violet-500 focus:ring-1 focus:ring-violet-400 placeholder:text-slate-400 placeholder:font-normal"
+          placeholder={placeholder}
+          value={displayValue}
+          onChange={(e) => {
+            setTypedQuery(e.target.value)
+            setIsOpen(true)
+            setHighlightedIndex(-1)
+          }}
+          onFocus={() => {
+            setIsOpen(true)
+            if (typedQuery === null && !value) {
+              setTypedQuery("")
+            }
+          }}
+          onKeyDown={(e) => {
+            if (!isOpen) {
+              if (e.key === "ArrowDown" || e.key === "Enter") {
+                setIsOpen(true)
+                e.preventDefault()
+              }
+              return
+            }
+
+            if (e.key === "ArrowDown") {
+              e.preventDefault()
+              setHighlightedIndex((prev) =>
+                prev < searchResults.length - 1 ? prev + 1 : 0
+              )
+            } else if (e.key === "ArrowUp") {
+              e.preventDefault()
+              setHighlightedIndex((prev) =>
+                prev > 0 ? prev - 1 : searchResults.length - 1
+              )
+            } else if (e.key === "Enter") {
+              e.preventDefault()
+              if (highlightedIndex >= 0 && searchResults[highlightedIndex]) {
+                handleSelectItem(searchResults[highlightedIndex])
+              } else if (searchResults.length > 0) {
+                handleSelectItem(searchResults[0])
+              }
+            } else if (e.key === "Escape") {
+              setIsOpen(false)
+              setTypedQuery(null)
+            }
+          }}
+        />
+        {(displayValue || value) && (
+          <button
+            type="button"
+            onClick={handleClear}
+            className="absolute right-2 text-slate-400 hover:text-red-500 transition p-0.5 rounded cursor-pointer"
+            title="Clear selection"
+          >
+            <X size={13} />
+          </button>
+        )}
+      </div>
+
+      {isOpen && (
+        <div className="absolute z-50 left-0 right-0 mt-1 max-h-56 overflow-y-auto rounded-xl border border-violet-200 bg-white shadow-2xl">
+          <div className="sticky top-0 bg-violet-50/95 backdrop-blur-sm px-3 py-1.5 border-b border-violet-100 flex items-center justify-between text-[10px] text-violet-800 font-bold">
+            <span>
+              {typedQuery
+                ? `Filter: "${typedQuery}"`
+                : "Type to filter saved services..."}
+            </span>
+            <span className="font-semibold text-violet-500">
+              {searchResults.length} {searchResults.length === 1 ? "match" : "matches"}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => handleSelectItem(null)}
+            className={`block w-full border-b border-slate-100 px-3 py-1.5 text-left text-xs font-semibold transition hover:bg-slate-50 ${
+              !value ? "bg-violet-50 text-violet-700 font-bold" : "text-slate-500"
+            }`}
+          >
+            — None / Custom Manual Service —
+          </button>
+
+          {searchResults.length === 0 ? (
+            <div className="px-3 py-3 text-center text-xs text-slate-400">
+              No services matching "{typedQuery}".
+            </div>
+          ) : (
+            searchResults.map((s, idx) => {
+              const isSelected = s.id === value
+              const isHighlighted = highlightedIndex === idx
+              const price = Number(s.basePrice || 0)
+
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => handleSelectItem(s)}
+                  className={`flex w-full items-center justify-between px-3 py-2 text-left text-xs transition border-b border-slate-50 last:border-b-0 cursor-pointer ${
+                    isSelected
+                      ? "bg-violet-100/70 text-violet-900 font-bold"
+                      : isHighlighted
+                      ? "bg-violet-50 text-slate-900"
+                      : "hover:bg-slate-50 text-slate-800"
+                  }`}
+                >
+                  <div className="flex flex-col pr-2 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      {s.deviceType && (
+                        <span className="text-[9px] font-bold text-violet-700 bg-violet-100 border border-violet-200 px-1.5 py-0.2 rounded font-mono uppercase tracking-wider shrink-0">
+                          {s.deviceType}
+                        </span>
+                      )}
+                      <span className="font-semibold text-slate-900 truncate">
+                        {s.name}
+                      </span>
+                    </div>
+                    {s.description && s.description !== s.name && (
+                      <span className="text-[10px] text-slate-500 truncate mt-0.5">
+                        {s.description}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-right shrink-0 ml-2">
+                    <span className="font-mono font-bold text-xs text-slate-900 block">
+                      ₱{price.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                    </span>
+                    {s.markupPercent ? (
+                      <span className="text-[9px] text-emerald-600 font-semibold">
+                        +{s.markupPercent}% markup
+                      </span>
+                    ) : null}
+                  </div>
+                </button>
+              )
+            })
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 const DATE_FILTER_LABELS = {
   TODAY: "Today",
   YESTERDAY: "Yesterday",
@@ -2705,14 +3350,13 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
   const branchId = activeBranch?.id
   const canCreateSale = SALE_MANAGER_ROLES.has(user?.role)
   const canCancelSale = SALE_CANCELLER_ROLES.has(user?.role)
-  const canChangePrice = SALE_CANCELLER_ROLES.has(user?.role)
 
   const [posViewMode, setPosViewMode] = useState(
     initialContext?.viewMode || (initialContext?.saleId ? "SALES_HISTORY" : "REGISTER")
   )
   const [dateFilterPeriod, setDateFilterPeriod] = useState("TODAY") // "TODAY" | "YESTERDAY" | "THIS_WEEK" | "THIS_MONTH" | "THIS_YEAR" | "ALL"
   const [showSalesmenLeaderboard, setShowSalesmenLeaderboard] = useState(false)
-  // 1. SALES CATEGORY (Sold Categories: All Sales, Items, Parts, Services)
+  // 1. SALES CATEGORY (What was sold: All Sales, Items, Parts, Services)
   const [salesCategory, setSalesCategory] = useState({
     allSales: true,
     items: false,
@@ -2720,15 +3364,16 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
     services: false,
   })
 
-  // 2. PAYMENT METHOD (Settlement Method: All Methods, AR, Cash, Online)
+  // 2. PAYMENT METHOD (How it was paid: All Methods, AR, Cash, Online, Cheque)
   const [paymentMethodFilter, setPaymentMethodFilter] = useState({
     allMethods: true,
     ar: false,
     cash: false,
     online: false,
+    cheque: false,
   })
 
-  // 3. TOTAL COMPUTATION (Included in Total: Markup, Interest)
+  // 3. TOTAL COMPUTATION (Included in total: Mark-up, Interest)
   const [totalComputation, setTotalComputation] = useState({
     markup: true,
     interest: true,
@@ -2789,7 +3434,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
         }
       }
 
-      // If all categories are unchecked, revert to All Sales
+      // If all are unchecked, revert to All Sales
       const anyActive = updated.items || updated.parts || updated.services
       if (!anyActive) {
         setSelectedPriceTiers([])
@@ -2815,6 +3460,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
       ar: false,
       cash: false,
       online: false,
+      cheque: false,
     })
     setSalesPage(1)
   }
@@ -2827,6 +3473,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
           ar: key === "ar",
           cash: key === "cash",
           online: key === "online",
+          cheque: key === "cheque",
         }
       }
 
@@ -2836,24 +3483,26 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
         [key]: nextVal,
       }
 
-      // If all 3 specific payment methods are checked, revert to All Methods
-      if (updated.ar && updated.cash && updated.online) {
+      // If all specific payment methods are checked, revert to All Methods
+      if (updated.ar && updated.cash && updated.online && updated.cheque) {
         return {
           allMethods: true,
           ar: false,
           cash: false,
           online: false,
+          cheque: false,
         }
       }
 
-      // If all payment methods are unchecked, revert to All Methods
-      const anyActive = updated.ar || updated.cash || updated.online
+      // If all are unchecked, revert to All Methods
+      const anyActive = updated.ar || updated.cash || updated.online || updated.cheque
       if (!anyActive) {
         return {
           allMethods: true,
           ar: false,
           cash: false,
           online: false,
+          cheque: false,
         }
       }
 
@@ -2942,10 +3591,32 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
   const customerRequestIdRef = useRef(0)
   const customerDropdownRef = useRef(null)
   const customerInputRef = useRef(null)
+  const salesPersonInputRef = useRef(null)
+  const builderInputRef = useRef(null)
 
-  const [serviceStaffList, setServiceStaffList] = useState([])
+  const [serviceStaffList, setServiceStaffListState] = useState([])
+  const setServiceStaffList = (list) => {
+    const sanitized = (Array.isArray(list) ? list : []).filter((s) => {
+      if (!s) return false
+      const un = String(s.username || "").toLowerCase()
+      const fn = String(s.fullName || "").toLowerCase()
+      const em = String(s.email || "").toLowerCase()
+      if (un.includes("calix") || fn.includes("calix") || em.includes("calix")) return false
+      if (branchId && s.branchId && s.branchId !== branchId && s.role !== "SUPER_OWNER") {
+        return false
+      }
+      return true
+    })
+    setServiceStaffListState(sanitized)
+  }
   const [isLoadingServiceStaff, setIsLoadingServiceStaff] = useState(false)
-  const [selectedSalesPersonId, setSelectedSalesPersonId] = useState("")
+  const [selectedSalesPersonId, setSelectedSalesPersonId] = useState(() => {
+    const draft = branchId && user?.id ? getFormDraft(`pos_draft_${user.id}_${branchId}`) : null
+    return draft?.selectedSalesPersonId || ""
+  })
+  const [saleDate, setSaleDate] = useState(() =>
+    new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
+  )
   const [selectedServiceStaffId, setSelectedServiceStaffId] = useState(() => {
     const draft = branchId && user?.id ? getFormDraft(`pos_draft_${user.id}_${branchId}`) : null
     return draft?.selectedServiceStaffId || ""
@@ -2959,6 +3630,33 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
   const [isPriceTierDropdownOpen, setIsPriceTierDropdownOpen] = useState(false)
   const [tierDropdownPlacement, setTierDropdownPlacement] = useState("bottom")
   const priceTierDropdownRef = useRef(null)
+  const [leftColumnHeight, setLeftColumnHeight] = useState(null)
+  const leftColumnRef = useRef(null)
+  const [activeQuotationToConvert, setActiveQuotationToConvert] = useState(null)
+
+  useEffect(() => {
+    if (!leftColumnRef.current) return
+    const updateHeight = () => {
+      if (window.innerWidth >= 1024 && leftColumnRef.current) {
+        setLeftColumnHeight(leftColumnRef.current.offsetHeight)
+      } else {
+        setLeftColumnHeight(null)
+      }
+    }
+
+    const observer = new ResizeObserver(() => {
+      updateHeight()
+    })
+    observer.observe(leftColumnRef.current)
+    window.addEventListener("resize", updateHeight)
+
+    updateHeight()
+
+    return () => {
+      observer.disconnect()
+      window.removeEventListener("resize", updateHeight)
+    }
+  }, [posViewMode])
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -2983,65 +3681,6 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
     return Array.isArray(draft?.cart) ? draft.cart : []
   })
   const [cartMessage, setCartMessage] = useState("")
-
-  const [isRefreshingCartStock, setIsRefreshingCartStock] = useState(false)
-
-  const refreshCartStock = useCallback(async () => {
-    if (!branchId || cart.length === 0) return
-    const productLines = cart.filter((line) => line.type === "PRODUCT" && line.itemId)
-    if (productLines.length === 0) return
-
-    setIsRefreshingCartStock(true)
-    try {
-      const updatedLines = await Promise.all(
-        cart.map(async (line) => {
-          if (line.type !== "PRODUCT" || !line.itemId) return line
-          try {
-            const [batchRes, serialRes] = await Promise.all([
-              getInventoryBatches({
-                branchId,
-                itemId: line.itemId,
-                status: "ACTIVE",
-                limit: 100,
-              }),
-              line.item?.isSerialized
-                ? getInventorySerials({
-                    branchId,
-                    itemId: line.itemId,
-                    status: "AVAILABLE",
-                    limit: 100,
-                  })
-                : Promise.resolve({ data: [] }),
-            ])
-            const freshBatches = getInventoryRows(batchRes).filter(
-              (b) => Number(b.quantityAvailable || 0) > 0
-            )
-            const freshSerials = line.item?.isSerialized
-              ? getInventoryRows(serialRes)
-              : []
-
-            let currentBatchId = line.batchId
-            if (currentBatchId && !freshBatches.some((b) => b.id === currentBatchId)) {
-              currentBatchId = freshBatches[0]?.id || ""
-            }
-
-            return {
-              ...line,
-              batches: freshBatches,
-              serials: freshSerials,
-              batchId: currentBatchId,
-            }
-          } catch {
-            return line
-          }
-        })
-      )
-      setCart(updatedLines)
-    } finally {
-      setIsRefreshingCartStock(false)
-    }
-  }, [branchId, cart])
-
   const [showServiceForm, setShowServiceForm] = useState(false)
   const [showJobOrderLookup, setShowJobOrderLookup] = useState(false)
   const [serviceDescription, setServiceDescription] = useState("")
@@ -3106,6 +3745,11 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
     return validateSystemUnitCompleteness(cart)
   }, [isPcBuild, cart])
 
+  const [isPayMongoModalOpen, setIsPayMongoModalOpen] = useState(false)
+  const [isOnline, setIsOnline] = useState(() => (typeof navigator !== "undefined" ? navigator.onLine : true))
+  const [offlinePendingCount, setOfflinePendingCount] = useState(0)
+  const [isSyncingOffline, setIsSyncingOffline] = useState(false)
+  const [isPayMongoOpen, setIsPayMongoOpen] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState(() => {
     const draft = branchId && user?.id ? getFormDraft(`pos_draft_${user.id}_${branchId}`) : null
     return draft?.paymentMethod || "CASH"
@@ -3127,7 +3771,30 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
     const draft = branchId && user?.id ? getFormDraft(`pos_draft_${user.id}_${branchId}`) : null
     return draft?.paymentRemarks || ""
   })
-  const [isPayMongoModalOpen, setIsPayMongoModalOpen] = useState(false)
+  const [paymentBankName, setPaymentBankName] = useState(() => {
+    const draft = branchId && user?.id ? getFormDraft(`pos_draft_${user.id}_${branchId}`) : null
+    return draft?.paymentBankName || ""
+  })
+  const [paymentChequeDate, setPaymentChequeDate] = useState(() => {
+    const draft = branchId && user?.id ? getFormDraft(`pos_draft_${user.id}_${branchId}`) : null
+    return draft?.paymentChequeDate || new Date().toISOString().slice(0, 10)
+  })
+  const [paymentSettings, setPaymentSettings] = useState(() => ({
+    cash: true,
+    gcash: true,
+    bankTransfer: true,
+    cardTerminal: true,
+    cheque: true,
+    creditInstallment: true,
+    mixedPayment: true,
+    requiredFields: {
+      referenceNumber: true,
+      cardApprovalCode: true,
+      chequeNumber: true,
+      bankName: true,
+      remarks: false,
+    },
+  }))
   const [creditTerm, setCreditTerm] = useState(() => {
     const draft = branchId && user?.id ? getFormDraft(`pos_draft_${user.id}_${branchId}`) : null
     return draft?.creditTerm || "MONTH_3"
@@ -3151,6 +3818,20 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
       .then((res) => {
         if (isMounted && res?.data?.termBasis) {
           setInstallmentRates(res.data.termBasis)
+        }
+      })
+      .catch(() => {})
+    getPaymentMethodSettings()
+      .then((res) => {
+        if (isMounted && res?.data) {
+          setPaymentSettings((prev) => ({
+            ...prev,
+            ...res.data,
+            requiredFields: {
+              ...prev.requiredFields,
+              ...(res.data.requiredFields || {}),
+            },
+          }))
         }
       })
       .catch(() => {})
@@ -3181,9 +3862,12 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
         paymentAmount,
         paymentReference,
         paymentRemarks,
+        paymentBankName,
+        paymentChequeDate,
         creditTerm,
         selectedServiceStaffId,
         serviceStaffSearch,
+        selectedSalesPersonId,
       })
     } else {
       clearFormDraft(draftKey)
@@ -3208,9 +3892,12 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
     paymentAmount,
     paymentReference,
     paymentRemarks,
+    paymentBankName,
+    paymentChequeDate,
     creditTerm,
     selectedServiceStaffId,
     serviceStaffSearch,
+    selectedSalesPersonId,
   ])
 
   const [sales, setSales] = useState([])
@@ -3291,6 +3978,22 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
   const [saleCheckoutPreview, setSaleCheckoutPreview] = useState(null)
   const saleRequestRef = useRef({ signature: "", key: "" })
 
+  const [openPurchaseOrders, setOpenPurchaseOrders] = useState([])
+
+  const loadOpenPurchaseOrders = useCallback(async (targetBranchId) => {
+    try {
+      const res = await getPurchaseOrders({
+        ...(targetBranchId ? { branchId: targetBranchId } : {}),
+        status: "ORDERED",
+        limit: 100,
+      })
+      const list = res?.data?.data || res?.data || []
+      setOpenPurchaseOrders(Array.isArray(list) ? list : [])
+    } catch {
+      // ignore
+    }
+  }, [])
+
   const termTotals = useMemo(() => {
     let cashGross = 0
     let totalDiscount = 0
@@ -3333,8 +4036,40 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
     return { productGross, serviceGross, subtotal, totalDiscount, additionalCharge, grandTotal }
   }, [cart, serviceCharge, pricingTerm])
 
-  const isReceivableCheckout = RECEIVABLE_PROVIDER_VALUES.has(paymentMethod)
+  const isReceivableCheckout = Boolean(paymentSettings.creditInstallment !== false && RECEIVABLE_PROVIDER_VALUES.has(paymentMethod))
   const isInHouseCheckout = paymentMethod === "IN_HOUSE_INSTALLMENT"
+
+  const availableImmediateMethods = useMemo(() => {
+    const list = []
+    if (paymentSettings.cash !== false) list.push(["CASH", "Cash (Physical)"])
+    if (paymentSettings.gcash !== false) list.push(["GCASH", "GCash (Online)"])
+    if (paymentSettings.bankTransfer !== false) list.push(["BANK_TRANSFER", "Bank Transfer (Any Bank)"])
+    if (paymentSettings.cardTerminal !== false) list.push(["CARD", "Card / Payment Terminal"])
+    list.push(["OTHER", "Maya / PayMaya / Other Online"])
+    return list
+  }, [paymentSettings])
+
+  const availableReceivableProviders = useMemo(() => {
+    return RECEIVABLE_PROVIDERS.filter(([val]) => {
+      if (val === "CHEQUE" && paymentSettings.cheque === false) return false
+      return true
+    })
+  }, [paymentSettings.cheque])
+
+  useEffect(() => {
+    if (availableImmediateMethods.length > 0) {
+      const isCurrentValid =
+        availableImmediateMethods.some(([v]) => v === paymentMethod) ||
+        (paymentSettings.creditInstallment !== false && RECEIVABLE_PROVIDER_VALUES.has(paymentMethod))
+      if (!isCurrentValid) {
+        setPaymentMethod(availableImmediateMethods[0][0])
+      }
+      const isSettlementValid = availableImmediateMethods.some(([v]) => v === settlementMethod)
+      if (!isSettlementValid) {
+        setSettlementMethod(availableImmediateMethods[0][0])
+      }
+    }
+  }, [availableImmediateMethods, paymentMethod, settlementMethod, paymentSettings.creditInstallment])
 
   const effectivePaymentAmount = paymentAmountTouched
     ? paymentAmount
@@ -3529,11 +4264,14 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
           const rows = Array.isArray(response?.data) ? response.data : Array.isArray(response) ? response : []
           if (rows.length > 0) {
             setServiceStaffList(rows)
-            if (user?.id) {
-              setSelectedSalesPersonId((prev) => prev || user.id)
-              if (rows.some((staff) => staff.id === user.id)) {
-                setSelectedServiceStaffId((prev) => prev || user.id)
-              }
+            setSelectedSalesPersonId((prev) => {
+              if (prev && (prev === user?.id || rows.some((staff) => staff.id === prev))) return prev
+              return ""
+            })
+            if (user?.id && rows.some((staff) => staff.id === user.id)) {
+              setSelectedServiceStaffId((prev) => prev || user.id)
+            } else {
+              setSelectedServiceStaffId("")
             }
           } else {
             getQuotationServiceStaff({ branchId })
@@ -3541,6 +4279,10 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                 if (!isMounted) return
                 const qRows = Array.isArray(qRes?.data) ? qRes.data : Array.isArray(qRes) ? qRes : []
                 setServiceStaffList(qRows)
+                setSelectedSalesPersonId((prev) => {
+                  if (prev && (prev === user?.id || qRows.some((staff) => staff.id === prev))) return prev
+                  return ""
+                })
               })
               .catch(() => {})
           }
@@ -3593,6 +4335,14 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
       isMounted = false
     }
   }, [])
+
+  useEffect(() => {
+    if (branchId) {
+      loadOpenPurchaseOrders(branchId)
+    } else {
+      setOpenPurchaseOrders([])
+    }
+  }, [branchId, loadOpenPurchaseOrders])
 
   const loadSales = useCallback(async () => {
     if (!branchId) {
@@ -3739,6 +4489,19 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
   const addProduct = async (item, preselectedSerial = null) => {
     if (!branchId || addingItemId) return
 
+    // If item is non-serialized and already exists in cart, simply increment its quantity
+    if (!item.isSerialized) {
+      const existingLine = cart.find(
+        (line) => line.type === "PRODUCT" && line.itemId === item.id
+      )
+      if (existingLine) {
+        const currentQty = Math.max(1, Math.floor(Number(existingLine.quantity || 1)))
+        updateCartLine(existingLine.localId, { quantity: String(currentQty + 1) })
+        setItemSearch("")
+        return
+      }
+    }
+
     setAddingItemId(item.id)
     setCartMessage("")
 
@@ -3792,10 +4555,10 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
           discountAmount: "0",
           batchId: initialBatchId,
           serialId: initialSerialId,
-          customSerialNumber: preselectedSerial?.serialNumber || "",
+          customSerialNumber: "",
+          customSerialNumbers: preselectedSerial?.serialNumber ? [preselectedSerial.serialNumber] : [],
+          selectedSerialIds: initialSerialId ? [initialSerialId] : [],
           isCustomSerial,
-          customBatchCode: "",
-          isCustomBatch: (!item.isSerialized && batches.length === 0),
           warrantyType: item.isSerialized ? "MAJOR_PARTS" : "ACCESSORIES",
           warrantyDuration: parseItemWarranty(item),
           batches,
@@ -4081,6 +4844,196 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
     }
   }, [initialContext, branchId])
 
+  // Load Quotation directly into POS Cart for Conversion into Sale
+  const handleSelectQuotation = useCallback(async (quote) => {
+    if (!quote) return
+
+    // 1. Set Customer Details
+    if (quote.customerId) {
+      setSelectedCustomerId(quote.customerId)
+      const found = customers.find((c) => c.id === quote.customerId)
+      if (found) {
+        setCustomerSearch(found.fullName || "")
+        setCustomerPhone(found.mobileNumber || "")
+        setCustomerAddress(found.address || "")
+        setCustomerEmail(found.email || "")
+        setCustomerCompany(found.companyName || "")
+        if (found.priceTier) setSelectedPriceTier(Number(found.priceTier))
+      } else if (quote.customer) {
+        setCustomerSearch(quote.customer.fullName || "")
+        setCustomerPhone(quote.customer.mobileNumber || "")
+        setCustomerAddress(quote.customer.address || "")
+        setCustomerEmail(quote.customer.email || "")
+        if (quote.customer.priceTier) setSelectedPriceTier(Number(quote.customer.priceTier))
+      }
+    } else if (quote.customer?.fullName) {
+      setCustomerSearch(quote.customer.fullName)
+      setCustomerPhone(quote.customer.mobileNumber || "")
+      setCustomerAddress(quote.customer.address || "")
+      setCustomerEmail(quote.customer.email || "")
+      if (quote.customer.priceTier) setSelectedPriceTier(Number(quote.customer.priceTier))
+    } else if (quote.customerNameSnapshot) {
+      setCustomerSearch(quote.customerNameSnapshot)
+      setCustomerPhone(quote.customerContactSnapshot || "")
+      setCustomerAddress(quote.customerAddressSnapshot || "")
+    }
+
+    // 2. Sales Person
+    const parsedSettlement = parseQuotationSettlement(quote.notes || "") || {}
+    const effectiveSalesmanId = parsedSettlement.salesmanId || quote.salesmanId || quote.preparedById || quote.cashierId || ""
+    if (effectiveSalesmanId) {
+      setSelectedSalesPersonId(effectiveSalesmanId)
+    }
+
+    // 3. Pricing term & remarks
+    const rawTerm = parsedSettlement.pricingTerm || quote.pricingTerm || "CASH"
+    setPricingTerm(rawTerm)
+    const cleanRemarks = cleanUserRemarks(quote.remarks || quote.notes || "")
+    setRemarks(cleanRemarks)
+    setIsPcBuild(Boolean(quote.isPcBuild))
+
+    // 4. Quotation conversion tracking
+    setActiveQuotationToConvert({
+      id: quote.id,
+      quotationCode: quote.quotationCode,
+      customerName: quote.customer?.fullName || quote.customerNameSnapshot || "Customer",
+    })
+
+    // 5. Populate Cart Lines
+    const quoteItems = Array.isArray(quote.items) ? quote.items : []
+    const newCartLines = []
+
+    for (let i = 0; i < quoteItems.length; i++) {
+      const qItem = quoteItems[i]
+      if (qItem.type === "SERVICE" || (!qItem.itemId && !qItem.item)) {
+        // Service line
+        newCartLines.push({
+          localId: `quote-srv-${Date.now()}-${i}-${Math.random().toString(36).slice(2)}`,
+          type: "SERVICE",
+          description: qItem.description || "Service",
+          quantity: String(qItem.quantity || 1),
+          baseUnitPrice: String(qItem.baseUnitPrice || qItem.unitPrice || 0),
+          markupPercent: String(qItem.markupPercent || 0),
+          unitPrice: String(qItem.unitPrice || 0),
+          discountAmount: String(qItem.discountAmount || 0),
+          serviceStaffId: qItem.serviceStaffId || quote.serviceDoneById || null,
+          serviceStaffName: qItem.serviceStaffName || null,
+          serviceStaffRole: null,
+          warrantyDuration: qItem.warrantyDuration || "30 DAYS SERVICE WARRANTY",
+        })
+      } else {
+        // Product line
+        const matchedItem = qItem.item
+          ? {
+              ...qItem.item,
+              category: qItem.item.category || null,
+              categoryCode: qItem.item.category?.categoryCode || qItem.item.categoryCode || "",
+            }
+          : {
+              id: qItem.itemId,
+              itemCode: qItem.itemCode || qItem.item?.itemCode,
+              itemName: qItem.description || qItem.item?.itemName,
+              brand: qItem.item?.brand,
+              modelName: qItem.item?.modelName,
+              isSerialized: Boolean(qItem.item?.isSerialized),
+              hasWarranty: Boolean(qItem.warrantyDuration || qItem.item?.hasWarranty),
+              warrantyDurationMonths: qItem.item?.warrantyDurationMonths || 12,
+            }
+        let batches = []
+        let serials = []
+
+        try {
+          const itemIdToFetch = matchedItem.id || qItem.itemId
+          if (itemIdToFetch) {
+            const [batchRes, serialRes] = await Promise.all([
+              getInventoryBatches({ branchId, itemId: itemIdToFetch, status: "ACTIVE", limit: 100 }),
+              matchedItem.isSerialized
+                ? getInventorySerials({ branchId, itemId: itemIdToFetch, status: "AVAILABLE", limit: 100 })
+                : Promise.resolve(null),
+            ])
+            batches = getInventoryRows(batchRes).filter((b) => Number(b.quantityAvailable || 0) > 0)
+            serials = matchedItem.isSerialized ? getInventoryRows(serialRes) : []
+          }
+        } catch (err) {
+          console.warn("Could not load inventory batches/serials for quotation item:", err)
+        }
+
+        const lineQty = String(qItem.quantity || 1)
+
+        newCartLines.push({
+          localId: `quote-prod-${Date.now()}-${i}-${Math.random().toString(36).slice(2)}`,
+          type: "PRODUCT",
+          item: matchedItem,
+          itemId: matchedItem.id,
+          priceTier: Number(qItem.priceTier || 1),
+          quantity: lineQty,
+          markupPercent: String(qItem.markupPercent || 0),
+          discountAmount: String(qItem.discountAmount || 0),
+          batchId: batches[0]?.id || "",
+          serialId: "",
+          selectedSerialIds: [],
+          customSerialNumber: "",
+          customSerialNumbers: [],
+          isCustomSerial: true,
+          warrantyType: matchedItem.isSerialized ? "MAJOR_PARTS" : "ACCESSORIES",
+          warrantyDuration: qItem.warrantyDuration || (matchedItem.hasWarranty ? "1 YEAR WARRANTY" : ""),
+          batches,
+          serials,
+        })
+      }
+    }
+
+    setCart(newCartLines)
+    setPosViewMode("REGISTER")
+    setNoticeMessage(`Loaded Quotation ${quote.quotationCode || ""} (${newCartLines.length} item${newCartLines.length === 1 ? "" : "s"}) into cart ready for sale checkout!`)
+  }, [branchId, customers])
+
+  // Auto-load Quotation if redirected from Quotations module
+  useEffect(() => {
+    let quote = initialContext?.loadQuotation
+    if (!quote) {
+      try {
+        const storedJson = sessionStorage.getItem("pos_load_quotation_data")
+        if (storedJson) {
+          quote = JSON.parse(storedJson)
+        }
+      } catch {
+        // Ignore
+      }
+    }
+
+    let quoteId = quote?.id || initialContext?.loadQuotationId
+    if (!quoteId && !quote) {
+      try {
+        quoteId = sessionStorage.getItem("pos_load_quotation_id")
+      } catch {
+        // Ignore
+      }
+    }
+    if ((quote || quoteId) && branchId) {
+      try {
+        sessionStorage.removeItem("pos_load_quotation_id")
+        sessionStorage.removeItem("pos_load_quotation_data")
+      } catch {
+        // Ignore
+      }
+      if (quote && quote.items && quote.items.length > 0) {
+        handleSelectQuotation(quote)
+      } else if (quoteId) {
+        getQuotationById(quoteId)
+          .then((res) => {
+            const loaded = res?.data || res
+            if (loaded && loaded.id) {
+              handleSelectQuotation(loaded)
+            }
+          })
+          .catch((err) => {
+            console.error("Failed to load quotation into POS:", err)
+          })
+      }
+    }
+  }, [initialContext, branchId, handleSelectQuotation])
+
   // Load OCR-extracted quotation lines into the POS cart
   const loadOcrIntoCart = async (data) => {
     const ocrItems = Array.isArray(data?.items) ? data.items : []
@@ -4159,7 +5112,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                 customBatchCode: "",
                 isCustomBatch: !item.isSerialized && batches.length === 0,
                 warrantyType: item.isSerialized ? "MAJOR_PARTS" : "ACCESSORIES",
-                warrantyDuration: parseItemWarranty(item),
+                warrantyDuration: parseItemWarranty ? parseItemWarranty(item) : "NO WARRANTY",
                 batches,
                 serials,
               })
@@ -4195,6 +5148,91 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
     setNoticeMessage(`Loaded ${newLines.length} line(s)${ref} into the POS cart. Review and complete the sale.`)
   }
 
+  // Offline & sync event management
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true)
+      syncOfflineSales().catch(() => {})
+    }
+    const handleOffline = () => setIsOnline(false)
+
+    window.addEventListener("online", handleOnline)
+    window.addEventListener("offline", handleOffline)
+
+    getOfflineQueueCount().then(setOfflinePendingCount).catch(() => {})
+
+    const unsubscribe = subscribeToSyncChanges((evt) => {
+      if (evt.type === "SYNC_START") setIsSyncingOffline(true)
+      if (evt.type === "SYNC_END") {
+        setIsSyncingOffline(false)
+        setOfflinePendingCount(evt.pending || 0)
+        if (evt.synced > 0) {
+          setNoticeMessage(`Offline Sync: Successfully uploaded ${evt.synced} offline sale(s) to cloud!`)
+          loadSales()
+        }
+      }
+      if (evt.type === "ENQUEUED") {
+        setOfflinePendingCount(evt.count)
+      }
+    })
+
+    return () => {
+      window.removeEventListener("online", handleOnline)
+      window.removeEventListener("offline", handleOffline)
+      unsubscribe()
+    }
+  }, [])
+
+  // Auto-cache catalog and customers when loaded
+  useEffect(() => {
+    if (items && items.length > 0) {
+      cacheCatalogItems(items).catch(() => {})
+    }
+  }, [items])
+
+  useEffect(() => {
+    if (customers && customers.length > 0) {
+      cacheCustomers(customers).catch(() => {})
+    }
+  }, [customers])
+
+  // Offline fallback loader if starting without internet
+  useEffect(() => {
+    if (!navigator.onLine) {
+      getCachedCatalog().then((cached) => {
+        if (cached && cached.length > 0 && (!items || items.length === 0)) {
+          setItems(cached)
+        }
+      }).catch(() => {})
+      getCachedCustomers().then((cached) => {
+        if (cached && cached.length > 0 && (!customers || customers.length === 0)) {
+          setCustomers(cached)
+        }
+      }).catch(() => {})
+    }
+  }, [])
+
+  const handleTriggerManualSync = async () => {
+    if (!navigator.onLine) {
+      setCheckoutMessage("Cannot sync: No internet connection detected.")
+      return
+    }
+    setIsSyncingOffline(true)
+    try {
+      const res = await syncOfflineSales()
+      if (res.synced > 0) {
+        setNoticeMessage(`Synced ${res.synced} offline sale(s) successfully!`)
+        loadSales()
+      } else if (res.failed > 0) {
+        setCheckoutMessage(`Sync failed for ${res.failed} sale(s). Will retry automatically.`)
+      } else {
+        setNoticeMessage("All offline sales are already up to date.")
+      }
+    } finally {
+      setIsSyncingOffline(false)
+    }
+  }
+
   const ocrLoadedRef = useRef(false)
   useEffect(() => {
     if (!branchId || ocrLoadedRef.current) return
@@ -4218,19 +5256,6 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
   }, [initialContext, branchId])
 
   const updateCartLine = (localId, patch) => {
-    if (
-      !canChangePrice &&
-      (Object.hasOwn(patch, "baseUnitPrice") ||
-        Object.hasOwn(patch, "unitPrice") ||
-        Object.hasOwn(patch, "markupPercent"))
-    ) {
-      const targetLine = cart.find((l) => l.localId === localId)
-      if (targetLine && !targetLine.isJobOrder && targetLine.type !== "SERVICE") {
-        setCartMessage("Account restricted: Only owner or admin accounts can change product prices.")
-        return
-      }
-    }
-
     setCart((current) =>
       current.map((line) => {
         if (line.localId !== localId) return line
@@ -4325,7 +5350,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
     setShowServiceForm(false)
   }
 
-  const validateCart = (overrideCustomerName = null, overridePaymentDetails = null) => {
+  const validateCart = () => {
     if (!branchId) return "Select a branch before creating a sale."
     if (cart.length === 0) return "Cart is empty."
 
@@ -4334,9 +5359,13 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
       if (!pcBuildCheck.isComplete) {
         return pcBuildCheck.summaryMessage
       }
+      if (!selectedBuilderId) {
+        builderInputRef.current?.focus()
+        return "Assembled / Built By staff is required for PC Builds. Please search and select an assembler."
+      }
     }
 
-    const hasCustomer = Boolean(overrideCustomerName || selectedCustomerId || customerSearch.trim())
+    const hasCustomer = Boolean(selectedCustomerId || customerSearch.trim())
     if (!hasCustomer) {
       customerInputRef.current?.focus()
       return "Customer name is required before proceeding. Please enter or select a customer."
@@ -4378,33 +5407,49 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
       }
 
       if (line.item.isSerialized) {
-        if (quantity !== 1) return `${line.item.itemName} must be sold one serialized unit per line.`
-        const serialVal = line.isCustomSerial ? line.customSerialNumber?.trim() : line.serialId
-        if (!serialVal) return `Select or scan a serial number for ${line.item.itemName}.`
+        const requiredQty = Math.max(1, Math.floor(quantity))
+        const units = getLineSerializedUnits(line)
 
-        if (line.isCustomSerial) {
-          const customSn = line.customSerialNumber?.trim().toLowerCase()
-          if (customSn) {
-            const itemSerialKey = `${line.item?.id || line.itemId}:${customSn}`
+        if (units.length < requiredQty) {
+          return `${line.item.itemName} requires ${requiredQty} serial number${requiredQty > 1 ? "s" : ""}, but only ${units.length} entered.`
+        }
+
+        for (const unit of units) {
+          if (unit.serialNumber) {
+            const itemSerialKey = `${line.item?.id || line.itemId}:${unit.serialNumber.toLowerCase()}`
             if (customSerials.has(itemSerialKey)) {
-              return `The same serial cannot be used more than once for ${line.item.itemName} in a sale.`
+              return `Duplicate serial "${unit.serialNumber}" found for ${line.item.itemName}. Each unit must have a unique serial.`
             }
             customSerials.add(itemSerialKey)
+          } else if (unit.serialId) {
+            if (serialIds.has(unit.serialId)) {
+              return "The same serial unit cannot be used more than once in a sale."
+            }
+            serialIds.add(unit.serialId)
+          } else {
+            return `Missing serial number for one of the ${line.item.itemName} units.`
           }
-        } else if (line.serialId) {
-          if (serialIds.has(line.serialId)) return "The same serial unit cannot be used more than once in a sale."
-          serialIds.add(line.serialId)
         }
       } else {
-        if (!line.batchId) return `Select a branch batch for ${line.item.itemName}.`
-        batchQuantities.set(line.batchId, (batchQuantities.get(line.batchId) || 0) + quantity)
+        const isZeroStock = !line.batches || line.batches.length === 0 || line.batches.every((b) => Number(b.quantityAvailable || 0) <= 0)
+        if (isZeroStock) {
+          if (!line.batchCode?.trim() && !line.batchId) {
+            return `Please select an incoming PO batch or type a batch code for 0-stock item ${line.item.itemName}.`
+          }
+        } else {
+          if (!line.batchId && !line.batchCode) return `Select a branch batch for ${line.item.itemName}.`
+          if (line.batchId) {
+            batchQuantities.set(line.batchId, (batchQuantities.get(line.batchId) || 0) + quantity)
+          }
+        }
       }
     }
 
     for (const [batchId, requestedQuantity] of batchQuantities) {
       const line = cart.find((entry) => entry.batchId === batchId)
       const batch = line?.batches.find((entry) => entry.id === batchId)
-      if (batch && requestedQuantity > Number(batch.quantityAvailable || 0)) {
+      const isZeroStock = !line?.batches || line.batches.length === 0 || line.batches.every((b) => Number(b.quantityAvailable || 0) <= 0)
+      if (!isZeroStock && batch && requestedQuantity > Number(batch.quantityAvailable || 0)) {
         return `${line.item.itemName} exceeds the selected batch's available quantity.`
       }
     }
@@ -4412,10 +5457,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
     const additionalCharge = Number(serviceCharge || 0)
     if (!Number.isFinite(additionalCharge) || additionalCharge < 0) return "Additional service/delivery charge cannot be negative."
 
-    const finalMethod = overridePaymentDetails?.paymentMethod || paymentMethod
-    const tendered = overridePaymentDetails?.amount !== undefined
-      ? Number(overridePaymentDetails.amount)
-      : Number(effectivePaymentAmount || 0)
+    const tendered = Number(effectivePaymentAmount || 0)
     if (!Number.isFinite(tendered) || tendered < 0) return "Payment amount cannot be negative."
 
     if (isReceivableCheckout) {
@@ -4440,8 +5482,74 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
       }
     } else if (tendered < totals.grandTotal) {
       return "Immediate settlements must cover the transaction total, or select an AR provider."
-    } else if (finalMethod !== "CASH" && tendered > totals.grandTotal) {
+    } else if (paymentMethod !== "CASH" && tendered > totals.grandTotal) {
       return "Only cash checkout can include overpayment and customer change."
+    }
+
+    if (paymentMethod === "CHEQUE") {
+      if (paymentSettings.cheque === false) {
+        return "Cheque payment is currently disabled in store settings."
+      }
+      const chkRef = (paymentReference || providerReference).trim()
+      if (paymentSettings.requiredFields?.chequeNumber && !chkRef) {
+        return "Cheque number is required for cheque payments."
+      }
+      if (paymentSettings.requiredFields?.bankName && !paymentBankName.trim()) {
+        return "Bank name is required for cheque payments."
+      }
+      if (paymentSettings.requiredFields?.remarks && !paymentRemarks.trim() && !creditRemarks.trim()) {
+        return "Payment remarks are required by store settings."
+      }
+    }
+
+    const activeMethod = isReceivableCheckout ? settlementMethod : paymentMethod
+    if (tendered > 0) {
+      if (activeMethod === "CHEQUE") {
+        if (paymentSettings.cheque === false) {
+          return "Cheque payment is currently disabled in store settings."
+        }
+        if (paymentSettings.requiredFields?.chequeNumber && !paymentReference.trim()) {
+          return "Cheque number is required for cheque payments."
+        }
+        if (paymentSettings.requiredFields?.bankName && !paymentBankName.trim()) {
+          return "Bank name is required for cheque payments."
+        }
+      } else if (activeMethod === "CARD") {
+        if (paymentSettings.cardTerminal === false) {
+          return "Card / Terminal payment is currently disabled in store settings."
+        }
+        if (paymentSettings.requiredFields?.cardApprovalCode && !paymentReference.trim()) {
+          return "Approval code is required for card terminal payments."
+        }
+        if (paymentSettings.requiredFields?.bankName && !paymentBankName.trim()) {
+          return "Bank or terminal provider is required for card payments."
+        }
+      } else if (activeMethod === "BANK_TRANSFER") {
+        if (paymentSettings.bankTransfer === false) {
+          return "Bank transfer payment is currently disabled in store settings."
+        }
+        if (paymentSettings.requiredFields?.bankName && !paymentBankName.trim()) {
+          return "Bank name is required for bank transfer payments."
+        }
+        if (paymentSettings.requiredFields?.referenceNumber && !paymentReference.trim()) {
+          return "Reference number is required for bank transfer payments."
+        }
+      } else if (activeMethod === "GCASH" || activeMethod === "OTHER") {
+        if (activeMethod === "GCASH" && paymentSettings.gcash === false) {
+          return "GCash payment is currently disabled in store settings."
+        }
+        if (paymentSettings.requiredFields?.referenceNumber && !paymentReference.trim()) {
+          return "Reference number is required for online payments."
+        }
+      } else if (activeMethod === "CASH") {
+        if (paymentSettings.cash === false) {
+          return "Cash payment is currently disabled in store settings."
+        }
+      }
+
+      if (paymentSettings.requiredFields?.remarks && !paymentRemarks.trim()) {
+        return "Payment remarks are required by store settings."
+      }
     }
 
     return ""
@@ -4467,6 +5575,9 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
     setPaymentAmountTouched(false)
     setPaymentReference("")
     setPaymentRemarks("")
+    setPaymentBankName("")
+    setPaymentChequeDate(new Date().toISOString().slice(0, 10))
+    setSaleDate(new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }))
     setCreditTerm("MONTH_3")
     setCreditDueDay("")
     setCreditFirstDueDate("")
@@ -4474,6 +5585,8 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
     setProviderReference("")
     setCheckoutMessage("")
     setCartMessage("")
+    setSelectedSalesPersonId("")
+    setActiveQuotationToConvert(null)
     if (user?.id && branchId) {
       clearFormDraft(`pos_draft_${user.id}_${branchId}`)
     }
@@ -4485,6 +5598,12 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
     const validationMessage = validateCart()
     if (validationMessage) {
       setCheckoutMessage(validationMessage)
+      return
+    }
+
+    if (!selectedSalesPersonId) {
+      setCheckoutMessage("Please select a sales person before completing the sale.")
+      salesPersonInputRef.current?.focus()
       return
     }
     setCheckoutMessage("")
@@ -4518,7 +5637,9 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
 
     const previewSaleDoc = {
       receiptCode: "CHECKOUT-PREVIEW",
-      saleDate: new Date().toISOString(),
+      saleDate: saleDate
+        ? new Date(`${saleDate}T12:00:00+08:00`).toISOString()
+        : new Date().toISOString(),
       branch: activeBranch,
       customer: {
         ...customerObj,
@@ -4529,16 +5650,18 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
       },
       cashier: previewCashier,
       technician: technicianName ? { fullName: technicianName } : null,
-      remarks: isPcBuild
-        ? (() => {
-            const builder = serviceStaffList.find((s) => s.id === selectedBuilderId)
-            return builder?.fullName
-              ? `[BUNDLE] Prepared by: ${builder.fullName}${remarks.trim() ? ` | ${remarks.trim()}` : ""}`
-              : remarks.trim()
-                ? `[BUNDLE] ${remarks.trim()}`
-                : "[BUNDLE]"
-          })()
-        : remarks.trim() || undefined,
+      remarks: (() => {
+        const userNote = cleanUserRemarks(remarks)
+        if (isPcBuild) {
+          const builder = serviceStaffList.find((s) => s.id === selectedBuilderId)
+          return builder?.fullName
+            ? `[PC BUILD] Assembled by: ${builder.fullName}${userNote ? ` | ${userNote}` : ""}`
+            : userNote
+              ? `[PC BUILD] ${userNote}`
+              : "[PC BUILD]"
+        }
+        return userNote || undefined
+      })(),
       isPcBuild,
       subtotal: totals.subtotal,
       totalDiscount: totals.totalDiscount,
@@ -4622,11 +5745,15 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
           lineTotal,
           warrantyDuration: line.warrantyDuration || (line.item?.hasWarranty ? "1 YEAR WARRANTY" : "—"),
           availableStock,
-          serial: line.isCustomSerial
-            ? { serialNumber: line.customSerialNumber?.trim() || "PENDING SCAN" }
-            : line.serialId
-              ? { serialNumber: line.serials?.find((serial) => serial.id === line.serialId)?.serialNumber || "—" }
-              : null,
+          serial: line.item?.isSerialized
+            ? {
+                serialNumber:
+                  getLineSerializedUnits(line)
+                    .map((u) => u.serialNumber)
+                    .filter(Boolean)
+                    .join(", ") || (line.customSerialNumber?.trim() || "PENDING SCAN"),
+              }
+            : null,
           batch: line.batchId ? line.batches?.find((batch) => batch.id === line.batchId) : null,
         }
       }),
@@ -4638,33 +5765,27 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
   const submitSale = async (overrideCustomerDetails = null, overridePaymentDetails = null) => {
     if (!canCreateSale || isSubmittingSale) return
 
-    const matchedCustomer = customers.find((c) => c.id === selectedCustomerId)
-    const effectiveName = (
-      overrideCustomerDetails?.customerName ??
-      (matchedCustomer?.fullName || customerSearch.trim() || "Walk-in Customer")
-    ).trim()
-    const effectiveAddress = (
-      overrideCustomerDetails?.customerAddress ??
-      (matchedCustomer?.address || customerAddress)
-    ).trim()
-    const effectivePhone = (
-      overrideCustomerDetails?.customerPhone ??
-      (matchedCustomer?.mobileNumber || customerPhone)
-    ).trim()
-    const effectiveCompany = (
-      overrideCustomerDetails?.customerCompany ??
-      (matchedCustomer?.companyName || customerCompany || "")
-    ).trim()
-    const effectiveEmail = (
-      overrideCustomerDetails?.customerEmail ??
-      (matchedCustomer?.email || customerEmail)
-    ).trim()
-
-    const validationMessage = validateCart(effectiveName, overridePaymentDetails)
+    const validationMessage = validateCart()
     if (validationMessage) {
       setCheckoutMessage(validationMessage)
       return
     }
+
+    const effectiveName = (
+      overrideCustomerDetails?.customerName ?? customerSearch
+    ).trim()
+    const effectiveAddress = (
+      overrideCustomerDetails?.customerAddress ?? customerAddress
+    ).trim()
+    const effectivePhone = (
+      overrideCustomerDetails?.customerPhone ?? customerPhone
+    ).trim()
+    const effectiveCompany = (
+      overrideCustomerDetails?.customerCompany ?? customerCompany ?? ""
+    ).trim()
+    const effectiveEmail = (
+      overrideCustomerDetails?.customerEmail ?? customerEmail
+    ).trim()
 
     if (!effectiveName) {
       setCheckoutMessage("Customer name is required before completing the sale.")
@@ -4672,14 +5793,23 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
       return
     }
 
+    if (!selectedSalesPersonId) {
+      setCheckoutMessage("Please select a sales person before completing the sale.")
+      salesPersonInputRef.current?.focus()
+      return
+    }
+
     setIsSubmittingSale(true)
     setCheckoutMessage("")
 
-    const cartSnapshot = cart.map((line) => ({
-      serialNumber: line.isCustomSerial
-        ? line.customSerialNumber?.trim()
-        : line.serials?.find((serial) => serial.id === line.serialId)?.serialNumber || null,
-    }))
+    const cartSnapshot = cart.flatMap((line) => {
+      if (line.item?.isSerialized) {
+        return getLineSerializedUnits(line).map((u) => ({
+          serialNumber: u.serialNumber || null,
+        }))
+      }
+      return [{ serialNumber: null }]
+    })
 
     try {
       let effectiveCustomerId = selectedCustomerId || undefined
@@ -4745,46 +5875,28 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
       setCustomerCompany(effectiveCompany)
       setCustomerEmail(effectiveEmail)
 
-      const effectiveRemarks = (
+      const userNote = cleanUserRemarks(
         overrideCustomerDetails?.remarks ?? remarks
-      ).trim()
-      setRemarks(effectiveRemarks)
+      )
+      setRemarks(userNote)
 
-      const finalMethod = overridePaymentDetails?.paymentMethod || paymentMethod
-      const finalAmount = overridePaymentDetails?.amount !== undefined
-        ? Number(overridePaymentDetails.amount)
-        : Number(effectivePaymentAmount || 0)
-      const finalRef = overridePaymentDetails?.referenceNo !== undefined
-        ? String(overridePaymentDetails.referenceNo)
-        : paymentReference
-      const finalRemarks = overridePaymentDetails?.remarks !== undefined
-        ? String(overridePaymentDetails.remarks)
-        : paymentRemarks
-
-      setPaymentMethod(finalMethod)
-      setPaymentAmount(String(finalAmount))
-      setPaymentAmountTouched(true)
-      setPaymentReference(finalRef)
-      setPaymentRemarks(finalRemarks)
-
-      const settlementAmount = finalAmount
-      const termTag = pricingTerm !== "CASH" ? `[Term: ${PRICING_TERMS[pricingTerm]?.label || pricingTerm}]` : ""
+      const settlementAmount = Number(effectivePaymentAmount || 0)
       const builderStaff = serviceStaffList.find((s) => s.id === selectedBuilderId)
-      const rawBuildRemarks = isPcBuild
+      const formattedRemarks = isPcBuild
         ? builderStaff?.fullName
-          ? `[BUNDLE] Prepared by: ${builderStaff.fullName}${effectiveRemarks ? ` | ${effectiveRemarks}` : ""}`
-          : effectiveRemarks
-            ? `[BUNDLE] ${effectiveRemarks}`
-            : "[BUNDLE]"
-        : effectiveRemarks || ""
-      const formattedRemarks = [rawBuildRemarks, termTag].filter(Boolean).join(" ") || undefined
+          ? `[PC BUILD] Assembled by: ${builderStaff.fullName}${userNote ? ` | ${userNote}` : ""}`
+          : userNote
+            ? `[PC BUILD] ${userNote}`
+            : "[PC BUILD]"
+        : userNote || undefined
 
       const salePayload = {
         branchId,
         customerId: effectiveCustomerId,
+        saleDate: saleDate || undefined,
         serviceCharge: Number(serviceCharge || 0),
         remarks: formattedRemarks,
-        items: cart.map((line) => {
+        items: cart.flatMap((line) => {
           const explicitMarkup =
             line.markupPercent === "" ||
             line.markupPercent === undefined ||
@@ -4800,62 +5912,103 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
               ? `${rawDescription} [Done by: ${line.serviceStaffName}]`
               : rawDescription
 
-            return {
+            return [{
               description: finalDescription,
               quantity: Number(line.quantity),
               unitPrice: getLineUnitPrice(line, pricingTerm),
               markupPercent: effectiveMarkup,
               discountAmount: Number(line.discountAmount || 0),
-            }
+            }]
           }
 
-          return {
+          if (line.item?.isSerialized) {
+            const qty = Math.max(1, Math.floor(Number(line.quantity || 1)))
+            const lineSerials = getLineSerializedUnits(line)
+            const unitDiscount = Number(line.discountAmount || 0) / qty
+
+            return Array.from({ length: qty }, (_, idx) => {
+              const unit = lineSerials[idx] || {}
+              return {
+                itemId: line.itemId,
+                priceTier: Number(line.priceTier),
+                markupPercent: effectiveMarkup,
+                quantity: 1,
+                discountAmount: unitDiscount,
+                batchId: unit.batchId || (line.isCustomSerial ? undefined : (line.batchId || undefined)),
+                batchCode: line.batchCode?.trim() || undefined,
+                serialId: unit.serialId || undefined,
+                serialNumber: unit.serialNumber || undefined,
+                warrantyType: line.warrantyType || undefined,
+                warrantyDuration: line.warrantyDuration || undefined,
+              }
+            })
+          }
+
+          return [{
             itemId: line.itemId,
             priceTier: Number(line.priceTier),
             markupPercent: effectiveMarkup,
             quantity: Number(line.quantity),
             discountAmount: Number(line.discountAmount || 0),
-            batchId: (line.isCustomSerial || line.isCustomBatch) ? undefined : (line.batchId || undefined),
-            batchCode: (line.isCustomBatch && line.customBatchCode?.trim()) ? line.customBatchCode.trim() : undefined,
-            serialId: (!line.isCustomSerial && line.serialId) ? line.serialId : undefined,
-            serialNumber: (line.isCustomSerial && line.customSerialNumber?.trim()) ? line.customSerialNumber.trim() : undefined,
+            batchId: line.batchId || undefined,
+            batchCode: line.batchCode?.trim() || undefined,
+            serialId: undefined,
+            serialNumber: undefined,
             warrantyType: line.warrantyType || undefined,
             warrantyDuration: line.warrantyDuration || undefined,
-          }
+          }]
         }),
         payments:
-          finalAmount > 0
+          (overridePaymentDetails?.amount || settlementAmount) > 0
             ? [
                 {
-                  paymentMethod: isReceivableCheckout
+                  paymentMethod: overridePaymentDetails?.paymentMethod || (isReceivableCheckout
                     ? settlementMethod
-                    : finalMethod === "PAYMONGO"
-                      ? "GCASH"
-                      : finalMethod,
-                  amount: finalAmount,
-                  referenceNo: finalRef.trim() || undefined,
-                  remarks: finalRemarks.trim() || (finalMethod === "PAYMONGO" ? "[PayMongo Digital QR Ph]" : undefined),
+                    : (paymentMethod === "PAYMONGO" ? "GCASH" : paymentMethod)),
+                  amount: overridePaymentDetails?.amount || settlementAmount,
+                  referenceNo: overridePaymentDetails?.referenceNo || paymentReference.trim() || (paymentMethod === "PAYMONGO" ? `PM-${Date.now().toString().slice(-6)}` : undefined),
+                  remarks: overridePaymentDetails?.remarks || [
+                    paymentMethod === "PAYMONGO" ? "[PayMongo Digital QR Ph]" : "",
+                    paymentBankName ? `Bank: ${paymentBankName.trim()}` : "",
+                    paymentChequeDate && (paymentMethod === "CHEQUE" || settlementMethod === "CHEQUE") ? `Cheque Date: ${paymentChequeDate}` : "",
+                    paymentRemarks.trim(),
+                  ].filter(Boolean).join(" | ") || undefined,
+                  amount: settlementAmount,
+                  referenceNo: paymentReference.trim() || undefined,
+                  remarks: [
+                    paymentBankName ? `Bank: ${paymentBankName.trim()}` : "",
+                    paymentChequeDate && (paymentMethod === "CHEQUE" || settlementMethod === "CHEQUE") ? `Cheque Date: ${paymentChequeDate}` : "",
+                    paymentRemarks.trim(),
+                  ].filter(Boolean).join(" | ") || undefined,
                 },
               ]
             : [],
         receivable: isReceivableCheckout
           ? {
-              provider: finalMethod,
-              providerReferenceNo: providerReference.trim() || undefined,
-              term: creditTerm,
+              provider: paymentMethod,
+              providerReferenceNo: (paymentMethod === "CHEQUE" ? (paymentReference || providerReference) : providerReference).trim() || undefined,
+              term: paymentMethod === "CHEQUE" ? (creditTerm || "CASH_PROMO") : creditTerm,
               dueDay:
                 creditDueDay === ""
                   ? undefined
                   : Number(creditDueDay),
-              firstDueDate: creditFirstDueDate
+              firstDueDate: (paymentMethod === "CHEQUE" && paymentChequeDate)
+                ? new Date(`${paymentChequeDate}T00:00:00+08:00`).toISOString()
+                : creditFirstDueDate
                 ? new Date(
                     `${creditFirstDueDate}T00:00:00+08:00`,
                   ).toISOString()
                 : undefined,
-              remarks: creditRemarks.trim() || undefined,
+              remarks: [
+                paymentMethod === "CHEQUE" && paymentBankName ? `Bank: ${paymentBankName.trim()}` : "",
+                paymentMethod === "CHEQUE" && paymentChequeDate ? `Cheque Date: ${paymentChequeDate}` : "",
+                paymentMethod === "CHEQUE" && paymentRemarks ? paymentRemarks.trim() : "",
+                creditRemarks.trim(),
+              ].filter(Boolean).join(" | ") || undefined,
             }
           : undefined,
         cashierId: selectedSalesPersonId || user?.id || undefined,
+        quotationId: activeQuotationToConvert?.id || undefined,
       }
       const requestSignature = JSON.stringify(salePayload)
 
@@ -4866,13 +6019,66 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
         }
       }
 
-      const response = await createSale({
-        ...salePayload,
-        idempotencyKey: saleRequestRef.current.key,
-      })
+      let sale = null
+      let isOfflineTransaction = false
 
-      const sale = response?.data
-      if (!response?.success || !sale) throw new Error("Invalid sale response")
+      if (!isOnline || (typeof navigator !== "undefined" && !navigator.onLine)) {
+        sale = await processSaleOffline(
+          {
+            ...salePayload,
+            idempotencyKey: saleRequestRef.current.key,
+          },
+          {
+            branchCode: activeBranch?.code || "MAIN",
+            grandTotal: totals.grandTotal,
+            subtotal: totals.subtotal,
+            totalDiscount: totals.totalDiscount,
+            customer: {
+              fullName: effectiveName || "Walk-in Customer",
+              address: effectiveAddress || null,
+              mobileNumber: effectivePhone || null,
+            },
+            cashier: user,
+            branch: activeBranch,
+          }
+        )
+        isOfflineTransaction = true
+      } else {
+        try {
+          const response = await createSale({
+            ...salePayload,
+            idempotencyKey: saleRequestRef.current.key,
+          })
+          sale = response?.data
+          if (!response?.success || !sale) throw new Error("Invalid sale response")
+        } catch (apiErr) {
+          if (!apiErr?.response || apiErr.code === "ERR_NETWORK" || !navigator.onLine) {
+            sale = await processSaleOffline(
+              {
+                ...salePayload,
+                idempotencyKey: saleRequestRef.current.key,
+              },
+              {
+                branchCode: activeBranch?.code || "MAIN",
+                grandTotal: totals.grandTotal,
+                subtotal: totals.subtotal,
+                totalDiscount: totals.totalDiscount,
+                customer: {
+                  fullName: effectiveName || "Walk-in Customer",
+                  address: effectiveAddress || null,
+                  mobileNumber: effectivePhone || null,
+                },
+                cashier: user,
+                branch: activeBranch,
+              }
+            )
+            isOfflineTransaction = true
+            setIsOnline(false)
+          } else {
+            throw apiErr
+          }
+        }
+      }
 
       // Auto-save remembered customer-item price tiers
       if (effectiveCustomerId) {
@@ -4888,7 +6094,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
 
       const isCredit = isReceivableCheckout
       const termBasis = isCredit ? (installmentCalculation?.termBasis || 1) : 1
-      const downpayment = finalAmount
+      const downpayment = Number(effectivePaymentAmount || 0)
       const financedBalance = isCredit ? (installmentCalculation?.financedBalance || 0) : 0
       const regularTotal = isCredit ? (installmentCalculation?.regularPriceTotalAmount || totals.grandTotal) : totals.grandTotal
 
@@ -5158,10 +6364,18 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
       customerInputRef.current?.focus()
       return
     }
+    if (!selectedSalesPersonId) {
+      setCheckoutMessage("Please select a sales person before previewing quotation.")
+      salesPersonInputRef.current?.focus()
+      return
+    }
     setCheckoutMessage("")
 
     const matchedCustomer = customers.find((c) => c.id === selectedCustomerId)
     const customerObj = matchedCustomer || (customerSearch.trim() ? { fullName: customerSearch.trim() } : { fullName: "Walk-in customer" })
+
+    const assignedSalesPerson = serviceStaffList.find((s) => s.id === selectedSalesPersonId)
+    const effectiveSalesman = assignedSalesPerson || user || { fullName: "Staff" }
 
     const previewQuotation = {
       quotationCode: "PREVIEW",
@@ -5169,15 +6383,19 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
       branch: activeBranch,
       customer: customerObj,
       preparedBy: user,
+      salesman: effectiveSalesman.fullName || effectiveSalesman.username || "Staff",
+      cashier: effectiveSalesman,
       isPcBuild,
       subtotal: totals.subtotal,
       totalDiscount: totals.totalDiscount,
       grandTotal: totals.grandTotal,
       pricingTerm,
-      notes: [
-        remarks.trim(),
-        `[Term: ${PRICING_TERMS[pricingTerm]?.label || pricingTerm}]`,
-      ].filter(Boolean).join(" "),
+      remarks: cleanUserRemarks(remarks) || undefined,
+      notes: serializeQuotationNotes(cleanUserRemarks(remarks), {
+        salesmanId: effectiveSalesman.id,
+        salesmanName: effectiveSalesman.fullName || effectiveSalesman.username || "Staff",
+        pricingTerm,
+      }),
       items: cart.map((line, index) => ({
         id: line.localId || `item-${index}`,
         lineNo: index + 1,
@@ -5204,6 +6422,16 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
     if (!hasCustomer) {
       setCheckoutMessage("Customer name is required before creating a quotation. Please enter or select a customer.")
       customerInputRef.current?.focus()
+      return
+    }
+    if (!selectedSalesPersonId) {
+      setCheckoutMessage("Please select a sales person before creating a quotation.")
+      salesPersonInputRef.current?.focus()
+      return
+    }
+    if (isPcBuild && !selectedBuilderId) {
+      setCheckoutMessage("Assembled / Built By staff is required for PC Builds. Please search and select an assembler.")
+      builderInputRef.current?.focus()
       return
     }
     setCheckoutMessage("")
@@ -5253,11 +6481,13 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
       )
       const serviceDoneById = serviceLineWithDoneBy?.serviceStaffId || undefined
 
-      const formattedRemarks = [
-        isPcBuild ? "[BUNDLE]" : "",
-        remarks.trim(),
-        `[Term: ${PRICING_TERMS[pricingTerm]?.label || pricingTerm}]`,
-      ].filter(Boolean).join(" ")
+      const userNote = cleanUserRemarks(remarks)
+      const formattedRemarks = isPcBuild
+        ? (userNote ? `[PC BUILD] | ${userNote}` : "[PC BUILD]")
+        : (userNote || undefined)
+
+      const assignedSalesPerson = serviceStaffList.find((s) => s.id === selectedSalesPersonId)
+      const effectiveSalesman = assignedSalesPerson || user || { fullName: "Staff" }
 
       const settlementConfig = {
         paymentMethod,
@@ -5269,13 +6499,15 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
         creditFirstDueDate: isReceivableCheckout ? creditFirstDueDate : undefined,
         providerReference: isReceivableCheckout ? providerReference.trim() : undefined,
         pricingTerm,
+        salesmanId: effectiveSalesman.id,
+        salesmanName: effectiveSalesman.fullName || effectiveSalesman.username || "Staff",
       }
 
       const quotationPayload = {
         branchId,
         customerId: effectiveCustomerId,
         serviceDoneById,
-        title: isPcBuild ? "Bundle Item Quotation" : (formattedRemarks || undefined),
+        title: isPcBuild ? "PC Build Quotation" : (formattedRemarks || undefined),
         notes: serializeQuotationNotes(formattedRemarks, settlementConfig),
         isPcBuild,
         items: cart.map((line) => {
@@ -5302,11 +6534,17 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
             }
           }
 
-          const serialText = line.isCustomSerial
-            ? line.customSerialNumber?.trim()
-            : line.serialId
-              ? line.serials?.find((s) => s.id === line.serialId)?.serialNumber
-              : null
+          const serialsList = getLineSerializedUnits(line)
+            .map((u) => u.serialNumber)
+            .filter(Boolean)
+          const serialText =
+            serialsList.length > 0
+              ? serialsList.join(", ")
+              : line.isCustomSerial
+                ? line.customSerialNumber?.trim() || null
+                : line.serialId
+                  ? line.serials?.find((s) => s.id === line.serialId)?.serialNumber
+                  : null
 
           return {
             itemId: line.itemId,
@@ -5337,7 +6575,11 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
       const displayCode = String(createdQuote.quotationCode || "").match(/\d+$/)?.[0]?.padStart(5, "0") || createdQuote.quotationCode
 
       setNoticeMessage(`Quotation No. ${displayCode} created successfully!`)
-      setActiveQuotationDoc(createdQuote)
+      setActiveQuotationDoc({
+        ...createdQuote,
+        salesman: effectiveSalesman.fullName || effectiveSalesman.username || "Staff",
+        cashier: effectiveSalesman,
+      })
       setIsQuotationPreviewMode(false)
       setIsQuotationDocOpen(true)
       await loadQuotations()
@@ -5493,7 +6735,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
             paymentMethodFilter.online ? "Online (GCash/Bank/Maya)" : null,
           ].filter(Boolean).join(", ") || "None"
 
-      const compSummary = `Mark-up: ${totalComputation.markup ? "Kasama" : "Excluded"}, Interest: ${totalComputation.interest ? "Kasama" : "Excluded"}`
+      const compSummary = `Mark-up: ${totalComputation.markup ? "Included" : "Excluded"}, Interest: ${totalComputation.interest ? "Included" : "Excluded"}`
 
       const itemColumns = [
         ["Receipt Code", (row) => row.receiptCode],
@@ -5507,7 +6749,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
         ["Quantity", (row) => row.quantity],
         ["Unit Cost", (row) => row.unitCost],
         ["Unit Selling Price", (row) => row.unitPrice],
-        ["Retail Markup", (row) => row.lineMarkup],
+        ["Mark-up", (row) => row.lineMarkup],
         ["Line Total", (row) => row.lineTotal],
       ]
 
@@ -5535,8 +6777,8 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
         totals: [
           ["Total Units Sold", totalItemsQty],
           ["Total Revenue", totalItemsRevenue],
-          ["Total Cost of Goods (COGS)", totalItemsCost],
-          ["Total Retail Markup", totalItemsMarkup],
+          ["Total Cost of Goods", totalItemsCost],
+          ["Total Mark-up", totalItemsMarkup],
           ["Total Gross Profit", totalItemsProfit],
         ],
       })
@@ -5557,7 +6799,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
             paymentMethodFilter.online ? "Online (GCash/Bank/Maya)" : null,
           ].filter(Boolean).join(", ") || "None"
 
-      const compSummary = `Mark-up: ${totalComputation.markup ? "Kasama" : "Excluded"}, Interest: ${totalComputation.interest ? "Kasama" : "Excluded"}`
+      const compSummary = `Mark-up: ${totalComputation.markup ? "Included" : "Excluded"}, Interest: ${totalComputation.interest ? "Included" : "Excluded"}`
 
       // Helper function to calculate effective computed total per receipt
       const getSaleReceiptComputed = (sale) => {
@@ -5635,7 +6877,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
         ["Items Count", (row) => (row.items || []).length],
         ["Subtotal", (row) => Number(row.subtotal || 0)],
         ["Discount", (row) => Number(row.totalDiscount || 0)],
-        ["Retail Markup", (row) => getSaleReceiptComputed(row).saleMarkupTotal],
+        ["Mark-up", (row) => getSaleReceiptComputed(row).saleMarkupTotal],
         ["Interest Charge", (row) => getSaleReceiptComputed(row).saleInterest],
         ["Computed Total", (row) => getSaleReceiptComputed(row).computedReceiptTotal],
         ["Original Grand Total", (row) => Number(row.creditAccount?.regularPriceTotalAmount || row.grandTotal || 0)],
@@ -5679,9 +6921,9 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
           ["Actual Physical Cash in Drawer", detailedMetrics.totalPhysicalCash],
           ["Online Real-Time Payments (GCash/Maya/Bank)", detailedMetrics.totalOnlinePayments],
           ["Accounts Receivable Balance (AR)", detailedMetrics.totalArBalance],
-          ["Item Retail Markup", detailedMetrics.totalMarkup],
+          ["Item Mark-up", detailedMetrics.totalMarkup],
           ["Financing Interest Charges", detailedMetrics.totalInterest],
-          ["Total Cost of Goods (COGS)", detailedMetrics.totalCost],
+          ["Total Cost of Goods", detailedMetrics.totalCost],
           ["Total Business Gross Profit", detailedMetrics.overallGrossProfit],
           ["Top Sales Account (Highest Salesperson)", detailedMetrics.topSalesPerson ? `${detailedMetrics.topSalesPerson.name} (${formatMoney(detailedMetrics.topSalesPerson.totalSales)} · ${detailedMetrics.topSalesPerson.count} sales)` : "—"],
         ],
@@ -5737,13 +6979,18 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
   }
 
   const selectedSerialIds = useMemo(
-    () =>
-      new Set(
-        cart
-          .filter((line) => !line.isCustomSerial)
-          .map((line) => line.serialId)
-          .filter(Boolean),
-      ),
+    () => {
+      const set = new Set()
+      cart.forEach((line) => {
+        if (!line.isCustomSerial) {
+          if (line.serialId) set.add(line.serialId)
+          if (Array.isArray(line.selectedSerialIds)) {
+            line.selectedSerialIds.forEach((id) => set.add(id))
+          }
+        }
+      })
+      return set
+    },
     [cart],
   )
 
@@ -5809,16 +7056,17 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
     let totalInterest = 0 // Interest / financing charges
     let totalArBalance = 0 // Accounts Receivable (unpaid balance)
 
-    // Payments: Physical Cash vs Online Real-Time
+    // Payments: Physical Cash vs Online Real-Time vs Cheque
     let totalPhysicalCash = 0 // Actual paper cash in drawer
     let totalOnlinePayments = 0 // Real-time electronic payments
     let totalGcash = 0
     let totalMaya = 0
     let totalBankTransfer = 0
+    let totalCheque = 0
 
     // Grand Totals
     let computedGrandTotal = 0
-    let kabuuangSale = 0 // Raw kabuuang sale
+    let kabuuangSale = 0 // Raw unfiltered gross sales
 
     // Sales Person / Salesman aggregation
     const salesPersonsMap = {}
@@ -5869,6 +7117,10 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
             totalBankTransfer += amt
           } else if (m === "CASH") {
             totalPhysicalCash += amt
+          } else if (m === "CHEQUE") {
+            totalCheque += amt
+          } else if (m === "CARD") {
+            totalOnlinePayments += amt
           } else {
             totalPhysicalCash += amt
           }
@@ -5881,6 +7133,8 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
           if (m.includes("GCASH")) totalGcash += upfrontPaid
           else if (m.includes("MAYA")) totalMaya += upfrontPaid
           else totalBankTransfer += upfrontPaid
+        } else if (isChequeSale(sale)) {
+          totalCheque += upfrontPaid
         } else if (!sale.creditAccount && upfrontPaid > 0) {
           totalPhysicalCash += upfrontPaid
         }
@@ -5940,7 +7194,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
           }
           const costTotal = unitCost > 0 ? unitCost * qty : 0
 
-          // Markup (Item Retail Markup)
+          // Item Mark-up
           const markupPct = Number(line.markupPercent || 0)
           const baseUnit = Number(line.baseUnitPriceSnapshot || 0)
           const unitPrice = Number(line.unitPrice || 0)
@@ -6010,6 +7264,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
       const hasCash = hasCashPayment(sale)
       const hasAr = Boolean(sale.creditAccount)
       const hasOnline = isOnlineSale(sale)
+      const hasCheque = isChequeSale(sale)
 
       let matchesPayment = false
       if (paymentMethodFilter.allMethods) {
@@ -6018,6 +7273,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
         if (paymentMethodFilter.ar && hasAr) matchesPayment = true
         if (paymentMethodFilter.cash && hasCash) matchesPayment = true
         if (paymentMethodFilter.online && hasOnline) matchesPayment = true
+        if (paymentMethodFilter.cheque && hasCheque) matchesPayment = true
       }
 
       if (!matchesCategory || !matchesPayment) return
@@ -6099,7 +7355,8 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
       totalGcash,
       totalMaya,
       totalBankTransfer,
-      totalCollectedCash: totalPhysicalCash + totalOnlinePayments,
+      totalCheque,
+      totalCollectedCash: totalPhysicalCash + totalOnlinePayments + totalCheque,
       estimatedProfit: overallGrossProfit,
       overallGrossProfit,
       computedGrandTotal,
@@ -6136,6 +7393,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
       const hasCash = hasCashPayment(sale)
       const hasAr = Boolean(sale.creditAccount)
       const hasOnline = isOnlineSale(sale)
+      const hasCheque = isChequeSale(sale)
 
       let matchesPay = false
       if (paymentMethodFilter.allMethods) {
@@ -6144,6 +7402,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
         if (paymentMethodFilter.ar && hasAr) matchesPay = true
         if (paymentMethodFilter.cash && hasCash) matchesPay = true
         if (paymentMethodFilter.online && hasOnline) matchesPay = true
+        if (paymentMethodFilter.cheque && hasCheque) matchesPay = true
       }
 
       return matchesCat && matchesPay
@@ -6158,6 +7417,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
       const hasCash = hasCashPayment(sale)
       const hasAr = Boolean(sale.creditAccount)
       const hasOnline = isOnlineSale(sale)
+      const hasCheque = isChequeSale(sale)
 
       let matchesPay = false
       if (paymentMethodFilter.allMethods) {
@@ -6166,6 +7426,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
         if (paymentMethodFilter.ar && hasAr) matchesPay = true
         if (paymentMethodFilter.cash && hasCash) matchesPay = true
         if (paymentMethodFilter.online && hasOnline) matchesPay = true
+        if (paymentMethodFilter.cheque && hasCheque) matchesPay = true
       }
 
       if (!matchesPay) return
@@ -6337,8 +7598,37 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
       ) : null}
 
       {posViewMode === "REGISTER" && canCreateSale ? (
-        <div className="grid min-w-0 gap-4 lg:grid-cols-12 items-start">
-          <div className="lg:col-span-5 min-w-0 space-y-3">
+        <div className="space-y-4">
+          {activeQuotationToConvert ? (
+            <div className="flex items-center justify-between gap-3 rounded-2xl border border-indigo-200 bg-indigo-50/90 px-4 py-2.5 text-xs text-indigo-950 shadow-2xs">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span className="grid size-7 place-items-center rounded-xl bg-indigo-600 text-white shrink-0 font-bold text-xs shadow-xs">
+                  <FileText size={14} />
+                </span>
+                <div className="min-w-0 truncate">
+                  <span className="font-black text-indigo-950">
+                    Converting Quotation {activeQuotationToConvert.quotationCode} ({activeQuotationToConvert.customerName}) to Sale
+                  </span>
+                  <span className="hidden md:inline text-indigo-700 ml-2 font-medium">
+                    · All items, pricing, and customer details loaded into cart. Assign serials if needed, select payment, and click Complete Sale.
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveQuotationToConvert(null)
+                  setNoticeMessage("Quotation conversion cancelled. Cart preserved.")
+                }}
+                className="shrink-0 text-[11px] font-bold text-indigo-700 hover:text-red-700 hover:underline cursor-pointer"
+              >
+                Cancel Conversion
+              </button>
+            </div>
+          ) : null}
+
+          <div className="grid min-w-0 gap-4 lg:grid-cols-12 items-start">
+          <div ref={leftColumnRef} className="lg:col-span-5 min-w-0 space-y-3">
             {/* Customer & Price Tier Card (at the very top) */}
             <section className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-2xs space-y-2.5">
               <div className="flex items-center justify-between">
@@ -6379,14 +7669,14 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                   <input
                     ref={customerInputRef}
                     aria-label="Search or enter customer name"
-                    maxLength={30}
+                    maxLength={300}
                     className={`w-full rounded-xl border bg-slate-50/50 py-1.5 pl-3 pr-8 text-xs font-medium outline-none transition focus:bg-white ${
                       !selectedCustomerId && !customerSearch.trim() && checkoutMessage?.includes("Customer name is required")
                         ? "border-red-400 focus:border-red-500"
                         : "border-slate-200 focus:border-[var(--color-maroon)]"
                     }`}
                     onChange={(event) => {
-                      const val = event.target.value.slice(0, 30)
+                      const val = event.target.value.slice(0, 300)
                       setCustomerSearch(val)
                       setIsCustomerDropdownOpen(true)
                       if (!val.trim()) {
@@ -6504,9 +7794,9 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                   <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Address</span>
                   <input
                     className="mt-0.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-2.5 py-1.5 text-xs outline-none transition focus:bg-white focus:border-[var(--color-maroon)]"
-                    maxLength={50}
-                    onChange={(e) => setCustomerAddress(e.target.value.slice(0, 50))}
-                    placeholder="House No., Street Name, Barangay, City/Municipality, Province"
+                    maxLength={300}
+                    onChange={(e) => setCustomerAddress(e.target.value.slice(0, 300))}
+                    placeholder="City / Municipality"
                     value={customerAddress}
                   />
                 </label>
@@ -6534,41 +7824,34 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                 </div>
               ) : null}
 
-              {/* Sales Person / Attributed Staff Selector */}
-              <div className="pt-2 border-t border-slate-100">
-                <label className="block">
+              {/* Sales Person & Transaction Date */}
+              <div className="pt-2 border-t border-slate-100 grid gap-2 sm:grid-cols-2">
+                <div className="block">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">
-                      Sales Person
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1">
+                      Sales Person <span className="text-red-500 font-bold">*</span>
                     </span>
-                    {selectedSalesPersonId && user?.id && selectedSalesPersonId !== user.id ? (
-                      <button
-                        type="button"
-                        onClick={() => setSelectedSalesPersonId(user.id)}
-                        className="text-[10px] font-bold text-[var(--color-maroon)] hover:underline"
-                      >
-                        Reset ({user.fullName})
-                      </button>
-                    ) : null}
                   </div>
-                  <select
+                  <SalesPersonCombobox
+                    value={selectedSalesPersonId}
+                    onChange={(id) => setSelectedSalesPersonId(id)}
+                    staffList={serviceStaffList}
+                    currentUser={user}
+                    placeholder="Search sales person / staff *..."
+                    inputRef={salesPersonInputRef}
+                  />
+                </div>
+
+                <label className="block">
+                  <span className="mb-1 text-[10px] font-black uppercase tracking-wider text-slate-500 block">
+                    Transaction Date
+                  </span>
+                  <input
+                    type="date"
+                    value={saleDate}
+                    onChange={(e) => setSaleDate(e.target.value)}
                     className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-2.5 py-1.5 text-xs font-semibold text-slate-800 outline-none transition focus:bg-white focus:border-[var(--color-maroon)]"
-                    value={selectedSalesPersonId || user?.id || ""}
-                    onChange={(e) => setSelectedSalesPersonId(e.target.value)}
-                  >
-                    {user ? (
-                      <option value={user.id}>
-                        {user.fullName}
-                      </option>
-                    ) : null}
-                    {serviceStaffList
-                      .filter((staff) => staff.id !== user?.id)
-                      .map((staff) => (
-                        <option key={staff.id} value={staff.id}>
-                          {staff.fullName}
-                        </option>
-                      ))}
-                  </select>
+                  />
                 </label>
               </div>
 
@@ -6645,8 +7928,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                   aria-label="Search products or job orders by barcode, code, or JO number"
                   autoComplete="off"
                   className="w-full rounded-xl border border-slate-200 bg-slate-50/50 py-1.5 pl-9 pr-9 text-xs font-medium text-slate-800 outline-none transition focus:border-[var(--color-maroon)] focus:bg-white focus:ring-2 focus:ring-rose-500/10"
-                  maxLength={100}
-                  onChange={(event) => setItemSearch(event.target.value.slice(0, 100))}
+                  onChange={(event) => setItemSearch(event.target.value)}
                   placeholder="Scan barcode / serial or enter J.O. # (e.g. 202609020001)…"
                   value={itemSearch}
                 />
@@ -6728,7 +8010,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                         </span>
                         <span className="mt-1 flex items-center gap-2">
                           <span className="text-xs font-mono font-bold text-[var(--color-maroon)]">
-                            From {formatMoney(item[`price${defaultPriceTier(item)}`])}
+                            From ₱{formatMoney(item[`price${defaultPriceTier(item)}`])}
                           </span>
                           <span
                             className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
@@ -6907,18 +8189,17 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                           </button>
                         ) : null}
                       </div>
-                      <select
-                        className="w-full rounded-lg border border-violet-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-800 outline-none focus:border-violet-500 transition"
+                      <ServiceCatalogLookup
+                        catalog={serviceCatalog}
                         value={selectedServiceCatalogId}
-                        onChange={(e) => handleSelectServiceCatalog(e.target.value)}
-                      >
-                        <option value="">-- Select from Saved Service Catalog or type below --</option>
-                        {serviceCatalog.map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.name} — ₱{Number(s.basePrice || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })} {s.deviceType ? `(${s.deviceType})` : ""}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(catalogId) => handleSelectServiceCatalog(catalogId)}
+                        onClear={() => {
+                          setSelectedServiceCatalogId("")
+                          setServiceDescription("")
+                          setServiceUnitPrice("")
+                          setServiceMarkup("")
+                        }}
+                      />
                     </div>
                   ) : null}
 
@@ -6974,10 +8255,13 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
             </section>
           </div>
 
-          {/* Right Column: Active Cart & Settlement */}
-          <section className="lg:col-span-7 min-w-0 self-start rounded-2xl border border-slate-200 bg-white shadow-2xs lg:sticky lg:top-4 overflow-hidden flex flex-col">
+          {/* Right Column: Active Cart (Full Cart) */}
+          <section
+            style={leftColumnHeight ? { height: `${leftColumnHeight}px`, maxHeight: `${leftColumnHeight}px` } : undefined}
+            className="lg:col-span-7 min-w-0 rounded-2xl border border-slate-200 bg-white shadow-2xs overflow-hidden flex flex-col"
+          >
             {/* Cart Header */}
-            <header className="flex items-center justify-between border-b border-slate-200 bg-slate-50/75 px-3.5 py-2.5">
+            <header className="flex items-center justify-between border-b border-slate-200 bg-slate-50/75 px-3.5 py-2.5 shrink-0">
               <div className="flex items-center gap-2">
                 <span className="grid size-7 place-items-center rounded-lg bg-[var(--color-maroon)] text-white">
                   <ShoppingCart size={15} />
@@ -6996,82 +8280,109 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                     onChange={(e) => setIsPcBuild(e.target.checked)}
                     className="size-3.5 rounded border-slate-300 text-[var(--color-maroon)] focus:ring-[var(--color-maroon)]"
                   />
-                  <span className="text-[11px] font-bold text-slate-700">📦 Bundle Item</span>
+                  <span className="text-[11px] font-bold text-slate-700">🖥️ PC Build</span>
                 </label>
                 {cart.length > 0 ? (
-                  <div className="flex items-center gap-2.5">
-                    <button
-                      className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 hover:text-slate-800 transition"
-                      onClick={refreshCartStock}
-                      title="Sync Cart Stock with latest inventory"
-                      type="button"
-                    >
-                      <RefreshCw className={`size-3 ${isRefreshingCartStock ? "animate-spin text-emerald-600" : ""}`} />
-                      <span>Sync Stock</span>
-                    </button>
-                    <button className="text-[11px] font-bold text-red-600 hover:text-red-700" onClick={() => { if (window.confirm("Clear all items in cart?")) setCart([]) }} type="button">
-                      Clear
-                    </button>
-                  </div>
+                  <button className="text-[11px] font-bold text-red-600 hover:text-red-700" onClick={() => { if (window.confirm("Clear all items in cart?")) setCart([]) }} type="button">
+                    Clear
+                  </button>
                 ) : null}
               </div>
             </header>
 
             {isPcBuild ? (
-              <div className="border-b border-rose-200 bg-rose-50/75 px-3 py-2 text-xs space-y-2">
+              <div className="border-b border-rose-200 bg-rose-50/75 px-3 py-2 text-xs space-y-2 shrink-0">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-bold text-[var(--color-maroon)] flex items-center gap-1.5">
+                  <span className="font-bold text-[var(--color-maroon)] flex items-center gap-1.5 shrink-0">
                     <Wrench size={13} />
-                    Prepared / Assembled By:
+                    Assembled / Built By <span className="text-red-600 font-black">*</span>
                   </span>
-                  <select
-                    className="rounded-lg border border-rose-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-800 outline-none focus:border-[var(--color-maroon)]"
+                  <BuilderCombobox
                     value={selectedBuilderId}
-                    onChange={(e) => setSelectedBuilderId(e.target.value)}
-                  >
-                    <option value="">-- Select Staff / Handler (Optional) --</option>
-                    {serviceStaffList.map((staff) => (
-                      <option key={staff.id} value={staff.id}>
-                        {staff.fullName}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(id) => setSelectedBuilderId(id)}
+                    staffList={serviceStaffList}
+                    currentUser={user}
+                    placeholder="Search assembler / staff *..."
+                    inputRef={builderInputRef}
+                  />
                 </div>
 
-                {/* Bundle / Package Summary */}
+                {/* System Unit Completeness Checklist */}
                 <div className="rounded-xl border border-rose-200 bg-white/95 p-2 space-y-1.5 shadow-2xs">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[10px] font-black uppercase tracking-wider text-slate-700 flex items-center gap-1">
-                      📦 Bundle / Package Configuration
+                      🖥️ System Unit Requirements
                     </span>
                     {systemUnitCompleteness?.isComplete ? (
                       <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 border border-emerald-300 px-2 py-0.5 text-[9px] font-black text-emerald-800">
-                        <CheckCircle2 size={11} /> Ready ({cart.filter((l) => l.type !== "SERVICE").length} item lines)
+                        <CheckCircle2 size={11} /> Complete ({systemUnitCompleteness?.corePartsCount || 0}/6 parts)
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 border border-rose-300 px-2 py-0.5 text-[9px] font-black text-rose-800">
-                        <AlertCircle size={11} /> Add bundle items
+                        <AlertCircle size={11} /> Incomplete ({systemUnitCompleteness?.corePartsCount || 0}/3 required)
                       </span>
                     )}
                   </div>
 
-                  <p className="text-[9px] text-slate-600">
-                    💡 All products in this cart will be grouped and tracked together as a Bundle / Package.
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1">
+                    {CORE_SYSTEM_UNIT_PARTS.map((part) => {
+                      const isPresent = Boolean(
+                        systemUnitCompleteness?.hasPackage ||
+                        systemUnitCompleteness?.foundComponents[part.key]?.length > 0
+                      )
+                      const matchedCount = systemUnitCompleteness?.foundComponents[part.key]?.length || 0
+                      const matchedItem = systemUnitCompleteness?.foundComponents[part.key]?.[0]
+                      const titleText = matchedItem
+                        ? `${part.name}: ${matchedItem.item?.itemName || matchedItem.description || "In cart"}`
+                        : `Required: ${part.name} (Missing)`
+
+                      return (
+                        <div
+                          key={part.key}
+                          className={`flex items-center justify-between rounded-md border px-2 py-1 text-[10px] font-semibold transition ${
+                            isPresent
+                              ? "border-emerald-200 bg-emerald-50/80 text-emerald-900"
+                              : systemUnitCompleteness?.isComplete
+                              ? "border-slate-200 bg-slate-50/50 text-slate-500"
+                              : "border-rose-200 bg-rose-50/40 text-rose-700"
+                          }`}
+                          title={titleText}
+                        >
+                          <span className="truncate">{part.shortName}</span>
+                          {isPresent ? (
+                            <span className="flex items-center gap-0.5 shrink-0 text-emerald-600 font-bold ml-1 text-[9px]">
+                              {matchedCount > 1 ? `x${matchedCount}` : ""}
+                              <Check size={11} />
+                            </span>
+                          ) : (
+                            <span className={`shrink-0 text-[8px] font-black uppercase ml-1 ${
+                              systemUnitCompleteness?.isComplete ? "text-slate-400" : "text-rose-600"
+                            }`}>
+                              {systemUnitCompleteness?.isComplete ? "Opt" : "Need"}
+                            </span>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  <p className="text-[9px] text-slate-500 italic">
+                    💡 Peripherals (Monitor, Keyboard, Mouse) are optional. Requires at least 3 of the 6 core system unit parts (CPU, Mobo, RAM, Storage, PSU, Case).
                   </p>
                 </div>
               </div>
             ) : null}
 
-            {cartMessage ? <div className="border-b border-amber-200 bg-amber-50 p-2.5 text-xs font-semibold text-amber-800">{cartMessage}</div> : null}
+            {cartMessage ? <div className="border-b border-amber-200 bg-amber-50 p-2.5 text-xs font-semibold text-amber-800 shrink-0">{cartMessage}</div> : null}
 
             {cart.length === 0 ? (
-              <div className="h-[200px] grid place-content-center p-4 text-center text-slate-400">
-                <ShoppingCart className="mx-auto text-slate-300" size={30} />
-                <p className="mt-1.5 text-xs font-bold text-slate-600">Cart is empty</p>
-                <p className="mt-0.5 text-[11px] text-slate-400">Search product or add service line on the left.</p>
+              <div className="flex-1 min-h-[300px] lg:min-h-0 grid place-content-center p-6 text-center text-slate-400">
+                <ShoppingCart className="mx-auto text-slate-300" size={36} />
+                <p className="mt-2 text-sm font-bold text-slate-600">Cart is empty</p>
+                <p className="mt-0.5 text-xs text-slate-400">Search product or add service line on the left.</p>
               </div>
             ) : (
-              <div className="h-[200px] space-y-2 overflow-y-auto p-2.5 text-xs">
+              <div className="flex-1 min-h-[300px] lg:min-h-0 space-y-2 overflow-y-auto p-2.5 text-xs">
                 {cart.map((line, index) => {
                   const gross = getLineGross(line)
                   const selectedBatch = line.batches?.find((batch) => batch.id === line.batchId)
@@ -7091,7 +8402,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                             ) : null}
                             {isPcBuild && line.type === "PRODUCT" ? (
                               <span className="rounded bg-rose-50 border border-rose-200 px-1.5 py-0.2 text-[9px] font-black text-[var(--color-maroon)]">
-                                Bundle Item
+                                PC Part
                               </span>
                             ) : null}
                           </div>
@@ -7159,13 +8470,12 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                             <label className="block">
                               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Qty</span>
                               <input
-                                className="mt-0.5 w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-bold outline-none focus:border-[var(--color-maroon)] disabled:bg-slate-100"
-                                disabled={line.item.isSerialized}
-                                min="0.01"
+                                className="mt-0.5 w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-bold outline-none focus:border-[var(--color-maroon)]"
+                                min={line.item.isSerialized ? "1" : "0.01"}
                                 onChange={(event) =>
                                   updateCartLine(line.localId, { quantity: event.target.value })
                                 }
-                                step="0.01"
+                                step={line.item.isSerialized ? "1" : "0.01"}
                                 type="number"
                                 value={line.quantity}
                               />
@@ -7190,155 +8500,313 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
 
                           {/* Serial or Source Batch */}
                           {line.item.isSerialized ? (
-                            <div className="space-y-1">
-                              <div className="flex items-center justify-between text-[10px]">
-                                <span className="font-bold uppercase tracking-wider text-slate-500">
-                                  {line.isCustomSerial ? "Barcode / Serial Input" : "Available Serial"}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    updateCartLine(line.localId, {
-                                      isCustomSerial: !line.isCustomSerial,
-                                      serialId: !line.isCustomSerial ? "" : (line.serials[0]?.id || ""),
-                                      batchId: !line.isCustomSerial ? "" : (line.serials[0]?.batch?.id || ""),
-                                      customSerialNumber: "",
-                                    })
-                                  }
-                                  className="font-bold text-[var(--color-maroon)] underline hover:opacity-80"
-                                >
-                                  {line.isCustomSerial
-                                    ? "← Choose from existing serials"
-                                    : "+ Scan / Enter New Serial Barcode"}
-                                </button>
-                              </div>
+                            <div className="space-y-1.5 pt-0.5">
+                              {(() => {
+                                const targetQty = Math.max(1, Math.floor(Number(line.quantity || 1)))
+                                const enteredSerials = Array.isArray(line.customSerialNumbers) ? line.customSerialNumbers : []
+                                const selectedExistingIds = Array.isArray(line.selectedSerialIds)
+                                  ? line.selectedSerialIds
+                                  : line.serialId
+                                    ? [line.serialId]
+                                    : []
 
-                              {line.isCustomSerial ? (
-                                <div>
-                                  <input
-                                    autoFocus
-                                    className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-mono outline-none focus:border-[var(--color-maroon)] focus:ring-1 focus:ring-[var(--color-maroon)]"
-                                    placeholder="Scan barcode or type serial number…"
-                                    value={line.customSerialNumber || ""}
-                                    onChange={(event) =>
-                                      updateCartLine(line.localId, {
-                                        customSerialNumber: event.target.value,
-                                      })
-                                    }
-                                  />
-                                </div>
-                              ) : (
-                                <select
-                                  className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-mono outline-none focus:border-[var(--color-maroon)]"
-                                  onChange={(event) =>
-                                    updateCartLine(line.localId, { serialId: event.target.value })
-                                  }
-                                  value={line.serialId}
-                                >
-                                  <option value="">Select one serial</option>
-                                  {line.serials.map((serial) => (
-                                    <option
-                                      disabled={
-                                        selectedSerialIds.has(serial.id) &&
-                                        serial.id !== line.serialId
-                                      }
-                                      key={serial.id}
-                                      value={serial.id}
-                                    >
-                                      {serial.serialNumber} · {serial.batch?.batchCode || "No batch"}
-                                    </option>
-                                  ))}
-                                </select>
-                              )}
+                                const isComplete = line.isCustomSerial
+                                  ? enteredSerials.length >= targetQty || (targetQty === 1 && Boolean(line.customSerialNumber?.trim()))
+                                  : selectedExistingIds.length >= targetQty
+
+                                return (
+                                  <>
+                                    <div className="flex items-center justify-between text-[10px]">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="font-bold uppercase tracking-wider text-slate-600">
+                                          {line.isCustomSerial ? "Barcode / Serial Input" : "Available Serial"}
+                                        </span>
+                                        {line.isCustomSerial ? (
+                                          <span
+                                            className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold transition ${
+                                              isComplete
+                                                ? "bg-emerald-100 text-emerald-800"
+                                                : "bg-amber-100 text-amber-900"
+                                            }`}
+                                          >
+                                            {isComplete ? "✓ " : ""}
+                                            {enteredSerials.length}/{targetQty} serial{targetQty > 1 ? "s" : ""}
+                                          </span>
+                                        ) : (
+                                          <span
+                                            className={`rounded-md px-1.5 py-0.5 text-[10px] font-bold transition ${
+                                              isComplete
+                                                ? "bg-emerald-100 text-emerald-800"
+                                                : "bg-amber-100 text-amber-900"
+                                            }`}
+                                          >
+                                            {isComplete ? "✓ " : ""}
+                                            {selectedExistingIds.length}/{targetQty} selected
+                                          </span>
+                                        )}
+                                      </div>
+
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          updateCartLine(line.localId, {
+                                            isCustomSerial: !line.isCustomSerial,
+                                            serialId: !line.isCustomSerial ? "" : (line.serials[0]?.id || ""),
+                                            selectedSerialIds: !line.isCustomSerial ? [] : (line.serials[0]?.id ? [line.serials[0].id] : []),
+                                            batchId: !line.isCustomSerial ? "" : (line.serials[0]?.batch?.id || ""),
+                                            customSerialNumber: "",
+                                            customSerialNumbers: [],
+                                          })
+                                        }
+                                        className="font-bold text-[var(--color-maroon)] underline hover:opacity-80 cursor-pointer"
+                                      >
+                                        {line.isCustomSerial
+                                          ? "← Choose from existing serials"
+                                          : "+ Scan / Enter New Serial Barcode"}
+                                      </button>
+                                    </div>
+
+                                    {line.isCustomSerial ? (
+                                      <div className="space-y-1.5">
+                                        <input
+                                          autoFocus
+                                          className={`w-full rounded-lg border bg-white px-2.5 py-1 text-xs font-mono outline-none transition ${
+                                            isComplete
+                                              ? "border-emerald-400 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-500"
+                                              : "border-slate-300 focus:border-[var(--color-maroon)] focus:ring-1 focus:ring-[var(--color-maroon)]"
+                                          }`}
+                                          placeholder={
+                                            enteredSerials.length < targetQty
+                                              ? `Scan or type serial ${enteredSerials.length + 1} of ${targetQty} (press Enter)…`
+                                              : `All ${targetQty} serials entered (press Enter to add more)`
+                                          }
+                                          value={line.customSerialNumber || ""}
+                                          onChange={(event) =>
+                                            updateCartLine(line.localId, {
+                                              customSerialNumber: event.target.value,
+                                            })
+                                          }
+                                          onKeyDown={(event) => {
+                                            if (event.key === "Enter") {
+                                              event.preventDefault()
+                                              event.stopPropagation()
+                                              const raw = (line.customSerialNumber || "").trim()
+                                              if (!raw) return
+
+                                              // Check if duplicate on this line
+                                              if (enteredSerials.some((s) => s.toLowerCase() === raw.toLowerCase())) {
+                                                setCartMessage(`Serial "${raw}" is already added to this item.`)
+                                                return
+                                              }
+
+                                              // Check if duplicate across other cart lines
+                                              const inOtherLine = cart.some((cLine) => {
+                                                if (cLine.localId === line.localId) return false
+                                                const otherUnits = getLineSerializedUnits(cLine)
+                                                return otherUnits.some((u) => u.serialNumber?.toLowerCase() === raw.toLowerCase())
+                                              })
+                                              if (inOtherLine) {
+                                                setCartMessage(`Serial "${raw}" is already used in another cart line.`)
+                                                return
+                                              }
+
+                                              const nextList = [...enteredSerials, raw]
+                                              updateCartLine(line.localId, {
+                                                customSerialNumbers: nextList,
+                                                customSerialNumber: "",
+                                              })
+                                              setCartMessage("")
+                                            }
+                                          }}
+                                        />
+
+                                        {/* Serial Badges / Chips */}
+                                        {enteredSerials.length > 0 ? (
+                                          <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                                            {enteredSerials.map((sn, idx) => (
+                                              <span
+                                                key={idx}
+                                                className="inline-flex items-center gap-1 rounded-md bg-slate-100 border border-slate-300/80 px-2 py-0.5 text-[11px] font-mono font-bold text-slate-800 shadow-2xs"
+                                              >
+                                                <span className="text-[9px] text-slate-500 font-sans font-normal">#{idx + 1}</span>
+                                                <span>{sn}</span>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    const updated = enteredSerials.filter((_, i) => i !== idx)
+                                                    updateCartLine(line.localId, { customSerialNumbers: updated })
+                                                  }}
+                                                  className="text-slate-400 hover:text-red-600 ml-0.5 font-bold cursor-pointer text-xs leading-none"
+                                                  title="Remove this serial"
+                                                >
+                                                  ×
+                                                </button>
+                                              </span>
+                                            ))}
+                                            {enteredSerials.length > 1 ? (
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  updateCartLine(line.localId, { customSerialNumbers: [], customSerialNumber: "" })
+                                                }
+                                                className="text-[10px] text-slate-400 hover:text-red-600 underline ml-1 cursor-pointer"
+                                              >
+                                                Clear all
+                                              </button>
+                                            ) : null}
+                                          </div>
+                                        ) : null}
+                                      </div>
+                                    ) : (
+                                      <div className="space-y-1.5">
+                                        <select
+                                          className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-mono outline-none focus:border-[var(--color-maroon)]"
+                                          onChange={(event) => {
+                                            const val = event.target.value
+                                            if (!val) return
+                                            if (targetQty === 1) {
+                                              updateCartLine(line.localId, {
+                                                serialId: val,
+                                                selectedSerialIds: [val],
+                                              })
+                                            } else {
+                                              const updated = selectedExistingIds.includes(val)
+                                                ? selectedExistingIds
+                                                : [...selectedExistingIds, val]
+                                              updateCartLine(line.localId, {
+                                                selectedSerialIds: updated,
+                                                serialId: updated[0] || "",
+                                              })
+                                            }
+                                          }}
+                                          value={targetQty === 1 ? (line.serialId || "") : ""}
+                                        >
+                                          <option value="">
+                                            {targetQty === 1
+                                              ? "Select one serial"
+                                              : selectedExistingIds.length < targetQty
+                                                ? `-- Select serial ${selectedExistingIds.length + 1} of ${targetQty} --`
+                                                : `All ${targetQty} serials selected`}
+                                          </option>
+                                          {line.serials.map((serial) => (
+                                            <option
+                                              disabled={selectedSerialIds.has(serial.id) && !selectedExistingIds.includes(serial.id)}
+                                              key={serial.id}
+                                              value={serial.id}
+                                            >
+                                              {serial.serialNumber} · {serial.batch?.batchCode || "No batch"}
+                                            </option>
+                                          ))}
+                                        </select>
+
+                                        {/* Selected existing serials chips */}
+                                        {targetQty > 1 && selectedExistingIds.length > 0 ? (
+                                          <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                                            {selectedExistingIds.map((id, idx) => {
+                                              const found = line.serials?.find((s) => s.id === id)
+                                              return (
+                                                <span
+                                                  key={id}
+                                                  className="inline-flex items-center gap-1 rounded-md bg-blue-50 border border-blue-200 px-2 py-0.5 text-[11px] font-mono font-bold text-blue-900 shadow-2xs"
+                                                >
+                                                  <span className="text-[9px] text-blue-500 font-sans font-normal">#{idx + 1}</span>
+                                                  <span>{found?.serialNumber || id}</span>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      const updated = selectedExistingIds.filter((sid) => sid !== id)
+                                                      updateCartLine(line.localId, {
+                                                        selectedSerialIds: updated,
+                                                        serialId: updated[0] || "",
+                                                      })
+                                                    }}
+                                                    className="text-blue-400 hover:text-red-600 ml-0.5 font-bold cursor-pointer text-xs leading-none"
+                                                    title="Remove serial"
+                                                  >
+                                                    ×
+                                                  </button>
+                                                </span>
+                                              )
+                                            })}
+                                          </div>
+                                        ) : null}
+                                      </div>
+                                    )}
+                                  </>
+                                )
+                              })()}
                             </div>
+                          ) : line.batches && line.batches.length > 0 && line.batches.some((b) => Number(b.quantityAvailable || 0) > 0) ? (
+                            <label className="block">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Source Batch</span>
+                              <select
+                                className="mt-0.5 w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs outline-none focus:border-[var(--color-maroon)]"
+                                onChange={(event) => updateCartLine(line.localId, { batchId: event.target.value })}
+                                value={line.batchId}
+                              >
+                                <option value="">Select active batch</option>
+                                {line.batches.map((batch) => (
+                                  <option key={batch.id} value={batch.id}>
+                                    {batch.batchCode}{batch.supplierName ? ` [${batch.supplierName}]` : ""} · {Number(batch.quantityAvailable || 0)} available
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
                           ) : (
-                            <div className="space-y-1">
-                              <div className="flex items-center justify-between text-[10px]">
-                                <span className="font-bold uppercase tracking-wider text-slate-500">
-                                  {line.isCustomBatch ? "Custom / New Batch Code" : "Source Batch"}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    updateCartLine(line.localId, {
-                                      isCustomBatch: !line.isCustomBatch,
-                                      batchId: !line.isCustomBatch ? "" : (line.batches[0]?.id || ""),
-                                      customBatchCode: "",
-                                    })
-                                  }
-                                  className="font-bold text-[var(--color-maroon)] underline hover:opacity-80 cursor-pointer"
-                                >
-                                  {line.isCustomBatch
-                                    ? "← Choose from existing batches"
-                                    : "+ Type / Add New Batch"}
-                                </button>
-                              </div>
+                            (() => {
+                              const itemPoBatches = openPurchaseOrders.flatMap((po) =>
+                                (po.items || [])
+                                  .filter((poLine) => poLine.itemId === line.itemId && poLine.batchCode)
+                                  .map((poLine) => ({
+                                    poCode: po.poCode,
+                                    batchCode: poLine.batchCode,
+                                    quantity: poLine.quantity,
+                                  }))
+                              )
 
-                              {line.isCustomBatch ? (
-                                <div className="space-y-1">
-                                  <input
-                                    autoFocus
-                                    list={`batch-suggestions-${line.localId}`}
-                                    className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-mono outline-none focus:border-[var(--color-maroon)] focus:ring-1 focus:ring-[var(--color-maroon)]"
-                                    placeholder="Type new batch code (e.g. BATCH-2026-001)…"
-                                    value={line.customBatchCode || ""}
-                                    onChange={(event) => {
-                                      const val = event.target.value
-                                      const matched = line.batches.find(
-                                        (b) => b.batchCode?.toLowerCase() === val.trim().toLowerCase()
-                                      )
-                                      updateCartLine(line.localId, {
-                                        customBatchCode: val,
-                                        batchId: matched ? matched.id : "",
-                                      })
-                                    }}
-                                  />
-                                  <datalist id={`batch-suggestions-${line.localId}`}>
-                                    {line.batches.map((batch) => (
-                                      <option key={batch.id} value={batch.batchCode}>
-                                        {Number(batch.quantityAvailable || 0)} available
-                                      </option>
-                                    ))}
-                                  </datalist>
-                                  <p className="text-[10px] text-slate-400">
-                                    Type any new batch code or pick from suggestions
-                                  </p>
+                              return (
+                                <div className="space-y-1.5 rounded-xl border border-amber-300 bg-amber-50/75 p-2 text-xs">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-900 flex items-center gap-1">
+                                      ⚠️ 0 Stock / Advance Sale (Batch Required)
+                                    </span>
+                                    {itemPoBatches.length > 0 ? (
+                                      <span className="rounded bg-amber-200/80 px-1.5 py-0.5 text-[9px] font-bold text-amber-950">
+                                        {itemPoBatches.length} PO Batch Available
+                                      </span>
+                                    ) : null}
+                                  </div>
+
+                                  <div className="grid gap-2 sm:grid-cols-2">
+                                    <label className="block">
+                                      <span className="text-[10px] font-bold uppercase text-slate-600 block">Pick Incoming PO Batch</span>
+                                      <select
+                                        className="mt-0.5 w-full rounded-lg border border-amber-300 bg-white px-2 py-1 text-xs font-semibold text-slate-800 outline-none focus:border-[var(--color-maroon)]"
+                                        onChange={(e) => updateCartLine(line.localId, { batchCode: e.target.value })}
+                                        value={line.batchCode || ""}
+                                      >
+                                        <option value="">{itemPoBatches.length > 0 ? "Select PO Batch..." : "No Open PO for this item"}</option>
+                                        {itemPoBatches.map((poLine, i) => (
+                                          <option key={i} value={poLine.batchCode}>
+                                            {poLine.batchCode} ({poLine.poCode} · Qty {poLine.quantity})
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </label>
+
+                                    <label className="block">
+                                      <span className="text-[10px] font-bold uppercase text-slate-600 block">Or Type Batch Code</span>
+                                      <input
+                                        className="mt-0.5 w-full rounded-lg border border-amber-300 bg-white px-2 py-1 text-xs font-mono font-semibold text-slate-800 outline-none focus:border-[var(--color-maroon)] placeholder:font-normal placeholder:text-slate-400"
+                                        onChange={(e) => updateCartLine(line.localId, { batchCode: e.target.value })}
+                                        placeholder="Type custom batch code..."
+                                        value={line.batchCode || ""}
+                                      />
+                                    </label>
+                                  </div>
                                 </div>
-                              ) : (
-                                <select
-                                  className="w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs outline-none focus:border-[var(--color-maroon)]"
-                                  onChange={(event) => {
-                                    if (event.target.value === "__NEW_BATCH__") {
-                                      updateCartLine(line.localId, {
-                                        isCustomBatch: true,
-                                        batchId: "",
-                                        customBatchCode: "",
-                                      })
-                                    } else {
-                                      updateCartLine(line.localId, {
-                                        batchId: event.target.value,
-                                        isCustomBatch: false,
-                                      })
-                                    }
-                                  }}
-                                  value={line.batchId || ""}
-                                >
-                                  <option value="">
-                                    {line.batches.length === 0
-                                      ? "No active batches (Click to type new)"
-                                      : "Select active batch"}
-                                  </option>
-                                  {line.batches.map((batch) => (
-                                    <option key={batch.id} value={batch.id}>
-                                      {batch.batchCode} · {Number(batch.quantityAvailable || 0)} available
-                                    </option>
-                                  ))}
-                                  <option value="__NEW_BATCH__" className="font-bold text-[var(--color-maroon)]">
-                                    + Type / Add new batch…
-                                  </option>
-                                </select>
-                              )}
-                            </div>
+                              )
+                            })()
                           )}
 
                           {/* Line Total & Warranty Banner */}
@@ -7393,51 +8861,15 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                                 {line.isJobOrder ? "Price (Editable)" : "Base Price"}
                               </span>
                               <input
-                                className={`mt-0.5 w-full rounded-lg border px-2 py-1 text-xs font-mono font-bold ${
-                                  line.isJobOrder
-                                    ? "border-rose-300 bg-rose-50/50 text-[var(--color-maroon)] focus:border-[var(--color-maroon)] focus:bg-white"
-                                    : !canChangePrice && line.type !== "SERVICE"
-                                    ? "border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed"
-                                    : "border-slate-200 bg-white"
-                                }`}
+                                className={`mt-0.5 w-full rounded-lg border px-2 py-1 text-xs font-mono font-bold ${line.isJobOrder ? "border-rose-300 bg-rose-50/50 text-[var(--color-maroon)] focus:border-[var(--color-maroon)] focus:bg-white" : "border-slate-200 bg-white"}`}
                                 min="0"
-                                readOnly={!canChangePrice && !line.isJobOrder && line.type !== "SERVICE"}
-                                title={!canChangePrice && !line.isJobOrder && line.type !== "SERVICE" ? "Account restricted: Only owner or admin accounts can change price." : ""}
-                                onClick={() => {
-                                  if (!canChangePrice && !line.isJobOrder && line.type !== "SERVICE") {
-                                    setCartMessage("Account restricted: Only owner or admin accounts can change item prices.")
-                                  }
-                                }}
                                 onChange={(event) => updateCartLine(line.localId, { baseUnitPrice: event.target.value })}
                                 step="0.01"
                                 type="number"
                                 value={line.baseUnitPrice ?? line.unitPrice}
                               />
                             </label>
-                            <label className="block">
-                              <span className="text-[10px] font-bold uppercase text-slate-500 block">Markup %</span>
-                              <input
-                                className={`mt-0.5 w-full rounded-lg border px-2 py-1 text-xs ${
-                                  !canChangePrice && line.type !== "SERVICE"
-                                    ? "border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed"
-                                    : "border-slate-200 bg-white"
-                                }`}
-                                max="99.9999"
-                                min="0"
-                                readOnly={!canChangePrice && line.type !== "SERVICE"}
-                                title={!canChangePrice && line.type !== "SERVICE" ? "Account restricted: Only owner or admin accounts can set markup." : ""}
-                                onClick={() => {
-                                  if (!canChangePrice && line.type !== "SERVICE") {
-                                    setCartMessage("Account restricted: Only owner or admin accounts can change item markup.")
-                                  }
-                                }}
-                                onChange={(event) => updateCartLine(line.localId, { markupPercent: event.target.value })}
-                                placeholder="0"
-                                step="0.01"
-                                type="number"
-                                value={line.markupPercent ?? ""}
-                              />
-                            </label>
+                            <label className="block"><span className="text-[10px] font-bold uppercase text-slate-500 block">Markup %</span><input className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1 text-xs" max="99.9999" min="0" onChange={(event) => updateCartLine(line.localId, { markupPercent: event.target.value })} placeholder="0" step="0.01" type="number" value={line.markupPercent ?? ""} /></label>
                             <label className="block"><span className="text-[10px] font-bold uppercase text-slate-500 block">Discount</span><input className="mt-0.5 w-full rounded-lg border border-slate-200 px-2 py-1 text-xs font-mono" min="0" onChange={(event) => updateCartLine(line.localId, { discountAmount: event.target.value })} step="0.01" type="number" value={line.discountAmount} /></label>
                           </div>
                           <div className="flex items-center justify-between pt-1">
@@ -7455,9 +8887,14 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                 })}
               </div>
             )}
+          </section>
+        </div>
 
-            {/* Surcharges, Totals, & Payment Setup */}
-            <div className="space-y-2.5 border-t border-slate-200 p-3.5 bg-slate-50/50 text-xs">
+        {/* Surcharges, Totals, & Payment Setup (Bottom Section) */}
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs text-xs space-y-3 mt-4">
+          <div className="grid gap-4 lg:grid-cols-12 items-start">
+            {/* Left Column: Surcharges, Remarks, Pricing Term, & Totals Breakdown */}
+            <div className="lg:col-span-5 min-w-0 space-y-3">
               <div className="grid gap-2 sm:grid-cols-2">
                 <label className="block">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Surcharge / Delivery Fee</span>
@@ -7530,7 +8967,10 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                   <span className="font-mono text-base font-black text-slate-900">{formatMoney(totals.grandTotal)}</span>
                 </div>
               </div>
+            </div>
 
+            {/* Right Column: Payment Arrangement & Action Buttons */}
+            <div className="lg:col-span-7 min-w-0 space-y-3">
               {/* Payment Settings */}
               <div className="space-y-2">
                 <div className="flex items-center gap-1.5 text-slate-800 font-bold">
@@ -7559,11 +8999,13 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                       value={paymentMethod}
                     >
                       <optgroup label="Immediate Settlement">
-                        {IMMEDIATE_PAYMENT_METHODS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                        {availableImmediateMethods.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                       </optgroup>
-                      <optgroup label="Accounts Receivable">
-                        {RECEIVABLE_PROVIDERS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                      </optgroup>
+                      {paymentSettings.creditInstallment !== false ? (
+                        <optgroup label="Accounts Receivable">
+                          {availableReceivableProviders.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                        </optgroup>
+                      ) : null}
                     </select>
                   </label>
 
@@ -7612,12 +9054,12 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                     />
                   </label>
 
-                  {isReceivableCheckout ? (
+                  {isReceivableCheckout && paymentMethod !== "CHEQUE" ? (
                     <>
                       <label className="block">
                         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Downpayment Method</span>
                         <select className="mt-0.5 w-full rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold outline-none focus:border-[var(--color-maroon)]" onChange={(event) => setSettlementMethod(event.target.value)} value={settlementMethod}>
-                          {IMMEDIATE_PAYMENT_METHODS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                          {availableImmediateMethods.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
                         </select>
                       </label>
                       <label className="block">
@@ -7627,15 +9069,213 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                     </>
                   ) : null}
 
-                  <label className="block">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Reference No.</span>
-                    <input className="mt-0.5 w-full rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs outline-none focus:border-[var(--color-maroon)]" onChange={(event) => setPaymentReference(event.target.value)} placeholder="Traceability ref" value={paymentReference} />
-                  </label>
+                  {paymentMethod === "CHEQUE" ? (
+                    <>
+                      {Number(effectivePaymentAmount) > 0 ? (
+                        <label className="block sm:col-span-2">
+                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Downpayment Method</span>
+                          <select className="mt-0.5 w-full rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold outline-none focus:border-[var(--color-maroon)]" onChange={(event) => setSettlementMethod(event.target.value)} value={settlementMethod}>
+                            {availableImmediateMethods.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                          </select>
+                        </label>
+                      ) : null}
 
-                  <label className="block">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Payment Remarks</span>
-                    <input className="mt-0.5 w-full rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs outline-none focus:border-[var(--color-maroon)]" onChange={(event) => setPaymentRemarks(event.target.value)} placeholder="Optional note" value={paymentRemarks} />
-                  </label>
+                      <label className="block">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-900 block">
+                          Cheque No. {paymentSettings.requiredFields?.chequeNumber ? <span className="text-red-500 font-black">*</span> : null}
+                        </span>
+                        <input
+                          className="mt-0.5 w-full rounded-xl border border-amber-300 bg-amber-50/40 px-2.5 py-1.5 text-xs font-mono font-bold outline-none focus:border-amber-500"
+                          onChange={(event) => {
+                            setPaymentReference(event.target.value)
+                            setProviderReference(event.target.value)
+                          }}
+                          placeholder="e.g. CHK-0012948"
+                          value={paymentReference || providerReference}
+                        />
+                      </label>
+
+                      <label className="block">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-900 block">
+                          Issuing Bank {paymentSettings.requiredFields?.bankName ? <span className="text-red-500 font-black">*</span> : null}
+                        </span>
+                        <input
+                          className="mt-0.5 w-full rounded-xl border border-amber-300 bg-amber-50/40 px-2.5 py-1.5 text-xs outline-none focus:border-amber-500"
+                          onChange={(event) => setPaymentBankName(event.target.value)}
+                          placeholder="e.g. BDO, BPI, Metrobank"
+                          value={paymentBankName}
+                        />
+                      </label>
+
+                      <label className="block">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-900 block">
+                          Cheque Date
+                        </span>
+                        <input
+                          className="mt-0.5 w-full rounded-xl border border-amber-300 bg-white px-2.5 py-1.5 text-xs outline-none focus:border-amber-500"
+                          onChange={(event) => {
+                            setPaymentChequeDate(event.target.value)
+                            setCreditFirstDueDate(event.target.value)
+                          }}
+                          type="date"
+                          value={paymentChequeDate || creditFirstDueDate}
+                        />
+                      </label>
+
+                      <label className="block sm:col-span-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+                          Cheque Remarks {paymentSettings.requiredFields?.remarks ? <span className="text-red-500 font-black">*</span> : null}
+                        </span>
+                        <input
+                          className="mt-0.5 w-full rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs outline-none focus:border-[var(--color-maroon)]"
+                          onChange={(event) => {
+                            setPaymentRemarks(event.target.value)
+                            setCreditRemarks(event.target.value)
+                          }}
+                          placeholder="Optional clearing or account notes"
+                          value={paymentRemarks || creditRemarks}
+                        />
+                      </label>
+                    </>
+                  ) : null}
+
+                  {/* Contextual payment fields based on chosen payment method */}
+                  {(() => {
+                    const activeMethod = isReceivableCheckout ? settlementMethod : paymentMethod
+                    const req = paymentSettings.requiredFields || {}
+
+                    if (paymentMethod === "CHEQUE") {
+                      return null
+                    }
+
+                    if (activeMethod === "CARD") {
+                      return (
+                        <>
+                          <label className="block">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-blue-900 block">
+                              Approval Code {req.cardApprovalCode ? <span className="text-red-500 font-black">*</span> : null}
+                            </span>
+                            <input
+                              className="mt-0.5 w-full rounded-xl border border-blue-300 bg-blue-50/40 px-2.5 py-1.5 text-xs font-mono font-bold outline-none focus:border-blue-500"
+                              onChange={(event) => setPaymentReference(event.target.value)}
+                              placeholder="Terminal approval code"
+                              value={paymentReference}
+                            />
+                          </label>
+
+                          <label className="block">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-blue-900 block">
+                              Terminal / Bank {req.bankName ? <span className="text-red-500 font-black">*</span> : null}
+                            </span>
+                            <input
+                              className="mt-0.5 w-full rounded-xl border border-blue-300 bg-blue-50/40 px-2.5 py-1.5 text-xs outline-none focus:border-blue-500"
+                              onChange={(event) => setPaymentBankName(event.target.value)}
+                              placeholder="e.g. Maya POS, BDO, Visa"
+                              value={paymentBankName}
+                            />
+                          </label>
+
+                          <label className="block sm:col-span-2">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+                              Card Payment Remarks {req.remarks ? <span className="text-red-500 font-black">*</span> : null}
+                            </span>
+                            <input
+                              className="mt-0.5 w-full rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs outline-none focus:border-[var(--color-maroon)]"
+                              onChange={(event) => setPaymentRemarks(event.target.value)}
+                              placeholder="Optional note"
+                              value={paymentRemarks}
+                            />
+                          </label>
+                        </>
+                      )
+                    }
+
+                    if (activeMethod === "BANK_TRANSFER") {
+                      return (
+                        <>
+                          <label className="block">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-blue-900 block">
+                              Bank Name {req.bankName ? <span className="text-red-500 font-black">*</span> : null}
+                            </span>
+                            <input
+                              className="mt-0.5 w-full rounded-xl border border-blue-200 bg-white px-2.5 py-1.5 text-xs outline-none focus:border-blue-500"
+                              onChange={(event) => setPaymentBankName(event.target.value)}
+                              placeholder="e.g. BPI, BDO, UnionBank"
+                              value={paymentBankName}
+                            />
+                          </label>
+
+                          <label className="block">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-blue-900 block">
+                              Transfer Ref No. {req.referenceNumber ? <span className="text-red-500 font-black">*</span> : null}
+                            </span>
+                            <input
+                              className="mt-0.5 w-full rounded-xl border border-blue-200 bg-white px-2.5 py-1.5 text-xs outline-none focus:border-blue-500"
+                              onChange={(event) => setPaymentReference(event.target.value)}
+                              placeholder="Reference / Transaction ID"
+                              value={paymentReference}
+                            />
+                          </label>
+
+                          <label className="block sm:col-span-2">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+                              Payment Remarks {req.remarks ? <span className="text-red-500 font-black">*</span> : null}
+                            </span>
+                            <input
+                              className="mt-0.5 w-full rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs outline-none focus:border-[var(--color-maroon)]"
+                              onChange={(event) => setPaymentRemarks(event.target.value)}
+                              placeholder="Optional note"
+                              value={paymentRemarks}
+                            />
+                          </label>
+                        </>
+                      )
+                    }
+
+                    if (activeMethod === "GCASH" || activeMethod === "OTHER") {
+                      return (
+                        <>
+                          <label className="block">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-teal-900 block">
+                              Reference No. {req.referenceNumber ? <span className="text-red-500 font-black">*</span> : null}
+                            </span>
+                            <input
+                              className="mt-0.5 w-full rounded-xl border border-teal-200 bg-white px-2.5 py-1.5 text-xs outline-none focus:border-teal-500"
+                              onChange={(event) => setPaymentReference(event.target.value)}
+                              placeholder="Traceability ref / GCash Ref"
+                              value={paymentReference}
+                            />
+                          </label>
+
+                          <label className="block sm:col-span-2">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+                              Payment Remarks {req.remarks ? <span className="text-red-500 font-black">*</span> : null}
+                            </span>
+                            <input
+                              className="mt-0.5 w-full rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs outline-none focus:border-[var(--color-maroon)]"
+                              onChange={(event) => setPaymentRemarks(event.target.value)}
+                              placeholder="Optional note"
+                              value={paymentRemarks}
+                            />
+                          </label>
+                        </>
+                      )
+                    }
+
+                    return (
+                      <label className="block sm:col-span-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
+                          Payment Remarks {req.remarks ? <span className="text-red-500 font-black">*</span> : null}
+                        </span>
+                        <input
+                          className="mt-0.5 w-full rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs outline-none focus:border-[var(--color-maroon)]"
+                          onChange={(event) => setPaymentRemarks(event.target.value)}
+                          placeholder="Optional cash note"
+                          value={paymentRemarks}
+                        />
+                      </label>
+                    )
+                  })()}
                 </div>
 
                 {/* Accounts Receivable / Financing Summary */}
@@ -7830,8 +9470,9 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                 </button>
               </div>
             </div>
-          </section>
-        </div>
+          </div>
+        </section>
+      </div>
       ) : null}
 
       {/* Quick link bar when in Register mode */}
@@ -7901,7 +9542,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
               </div>
             </div>
 
-            {/* 3-Tier Filter Panel (CATEGORY -> PAYMENT METHOD -> TOTAL COMPUTATION) */}
+            {/* 3-Tier Filter Panel (SALES CATEGORY -> PAYMENT METHOD -> TOTAL COMPUTATION) */}
             <div className="flex flex-col gap-3.5 border-t border-slate-200/80 pt-3">
               {/* Section 1: SALES CATEGORY */}
               <div>
@@ -7958,7 +9599,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                   </label>
                 </div>
 
-                {/* Sub-tiers for Items (Lilitaw kapag naka-check ang Items, automatic naka-select all ang Tier 1-5) */}
+                {/* Sub-tiers for Items (Appears when Items is checked; Tiers 1-5 selected by default) */}
                 {salesCategory.items && (
                   <div className="mt-2.5 flex flex-wrap items-center gap-2 rounded-xl border border-blue-200 bg-blue-50/70 p-2 sm:p-2.5 text-xs">
                     <span className="text-[11px] font-black uppercase tracking-wider text-blue-900 flex items-center gap-1 shrink-0">
@@ -8000,7 +9641,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                       </button>
                       <span className="text-blue-300">|</span>
                       <span className="text-blue-800">
-                        {selectedPriceTiers.length === 5 ? "All Price Tiers Active" : `${selectedPriceTiers.length} of 5 active`}
+                        {selectedPriceTiers.length === 5 ? "All Tiers active" : `${selectedPriceTiers.length} of 5 active`}
                       </span>
                     </div>
                   </div>
@@ -8067,12 +9708,29 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                       </span>
                     </div>
                   </label>
+
+                  <label className="inline-flex items-start gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={paymentMethodFilter.cheque}
+                      onChange={() => handleTogglePaymentMethod("cheque")}
+                      className="size-4 rounded border-slate-300 text-amber-600 focus:ring-amber-500 accent-amber-600 cursor-pointer mt-0.5"
+                    />
+                    <div>
+                      <span className={paymentMethodFilter.cheque ? "text-amber-950 font-bold block leading-none" : "text-slate-600 block leading-none"}>
+                        Cheque
+                      </span>
+                      <span className="text-[10px] text-amber-700/80 font-semibold block mt-0.5">
+                        Bank Check
+                      </span>
+                    </div>
+                  </label>
                 </div>
               </div>
 
               <div className="h-px bg-slate-100" />
 
-              {/* Section 3: TOTAL REVENUE COMPUTATION */}
+              {/* Section 3: TOTAL COMPUTATION */}
               <div>
                 <p className="text-xs font-black uppercase tracking-wider text-slate-800 mb-2">
                   Total Computation
@@ -8090,11 +9748,11 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                     </span>
                     {totalComputation.markup ? (
                       <span className="rounded bg-teal-100 text-teal-800 px-1.5 py-0.2 text-[9px] font-bold">
-                        Kasama sa Total (+{formatMoney(detailedMetrics.totalMarkup)})
+                        Included in Total (+{formatMoney(detailedMetrics.totalMarkup)})
                       </span>
                     ) : (
                       <span className="rounded bg-rose-50 text-rose-700 border border-rose-200 px-1.5 py-0.2 text-[9px] font-bold">
-                        Matic Excluded sa Total
+                        Excluded from Total
                       </span>
                     )}
                   </label>
@@ -8111,11 +9769,11 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                     </span>
                     {totalComputation.interest ? (
                       <span className="rounded bg-purple-100 text-purple-800 px-1.5 py-0.2 text-[9px] font-bold">
-                        Kasama sa Total (+{formatMoney(detailedMetrics.totalInterest)})
+                        Included in Total (+{formatMoney(detailedMetrics.totalInterest)})
                       </span>
                     ) : (
                       <span className="rounded bg-rose-50 text-rose-700 border border-rose-200 px-1.5 py-0.2 text-[9px] font-bold">
-                        Matic Excluded sa Total
+                        Excluded from Total
                       </span>
                     )}
                   </label>
@@ -8219,7 +9877,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
             <div className="relative overflow-hidden rounded-2xl border border-emerald-500 bg-gradient-to-br from-emerald-100/90 via-white to-emerald-50/70 p-4 shadow-sm">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[10px] font-black uppercase tracking-wider text-emerald-900">
-                  Total Gross Sales (Kabuuang Benta)
+                  Total Gross Sales
                 </span>
                 <span className="grid size-8 place-items-center rounded-xl bg-emerald-600 text-white shadow-xs">
                   <ReceiptText size={16} />
@@ -8231,12 +9889,12 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
               <div className="mt-1 flex flex-wrap items-center justify-between gap-1 text-[11px] font-semibold text-emerald-800/90">
                 <span>
                   {totalComputation.markup && totalComputation.interest
-                    ? "Kasama ang Mark-up at Interest"
+                    ? "Includes Mark-up and Interest"
                     : !totalComputation.markup && !totalComputation.interest
-                      ? "Base benta (Excluded ang Mark-up at Interest)"
+                      ? "Base sales (Mark-up and Interest excluded)"
                       : totalComputation.markup
-                        ? "Kasama ang Mark-up (Excluded ang Interest)"
-                        : "Kasama ang Interest (Excluded ang Mark-up)"}
+                        ? "Includes Mark-up (Interest excluded)"
+                        : "Includes Interest (Mark-up excluded)"}
                 </span>
                 <span className="rounded bg-emerald-200/80 px-1.5 py-0.2 text-[9px] font-black text-emerald-950">
                   {salesCategory.allSales
@@ -8253,6 +9911,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                         paymentMethodFilter.ar ? "AR" : null,
                         paymentMethodFilter.cash ? "Cash" : null,
                         paymentMethodFilter.online ? "Online" : null,
+                        paymentMethodFilter.cheque ? "Cheque" : null,
                       ].filter(Boolean).join("+")}
                 </span>
               </div>
@@ -8274,7 +9933,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                 </p>
                 <div className="mt-1 flex items-center justify-between">
                   <p className="text-[11px] font-semibold text-blue-700/90">
-                    {totalComputation.markup ? "Item Retail Markup Included" : "Wholesale Cost Only (Markup Excluded)"}
+                    {totalComputation.markup ? "Includes Mark-up on Items" : "Base Price only (Mark-up excluded)"}
                   </p>
                   <span className="rounded bg-blue-100 px-1.5 py-0.2 text-[9px] font-bold text-blue-800">
                     📦 Items Only
@@ -8296,7 +9955,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                 </p>
                 <div className="mt-1 flex items-center justify-between">
                   <p className="text-[11px] font-semibold text-indigo-700/90">
-                    {totalComputation.markup ? "Service Parts Markup Included" : "Wholesale Cost Only (Markup Excluded)"}
+                    {totalComputation.markup ? "Includes Mark-up on Service Parts" : "Base Price only (Mark-up excluded)"}
                   </p>
                   <span className="rounded bg-indigo-100 px-1.5 py-0.2 text-[9px] font-bold text-indigo-800">
                     ⚙️ Service Parts (Catalog)
@@ -8318,7 +9977,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                 </p>
                 <div className="mt-1 flex items-center justify-between">
                   <p className="text-[11px] font-semibold text-blue-700/90">
-                    {totalComputation.markup ? "Item Retail Markup Included" : "Wholesale Cost Only (Markup Excluded)"}
+                    {totalComputation.markup ? "Includes Mark-up on Items" : "Base Price only (Mark-up excluded)"}
                   </p>
                   <span className={`rounded px-1.5 py-0.2 text-[9px] font-bold ${totalComputation.markup ? "bg-blue-100 text-blue-800" : "bg-rose-50 text-rose-700 border border-rose-200"}`}>
                     {totalComputation.markup ? "+Mark-up" : "Excl. Mark-up"}
@@ -8359,7 +10018,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                   {formatMoney(detailedMetrics.totalPhysicalCash)}
                 </p>
                 <p className="mt-1 text-[11px] font-semibold text-emerald-700/90">
-                  Actual cash tendered in drawer
+                  Actual cash on hand in register
                 </p>
               </div>
             ) : paymentMethodFilter.ar && !paymentMethodFilter.cash && !paymentMethodFilter.online ? (
@@ -8376,7 +10035,24 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                   {formatMoney(detailedMetrics.totalArBalance)}
                 </p>
                 <p className="mt-1 text-[11px] font-semibold text-purple-700/90">
-                  Natitirang balanse sa credit installment
+                  Remaining credit installment balance
+                </p>
+              </div>
+            ) : paymentMethodFilter.cheque && !paymentMethodFilter.cash && !paymentMethodFilter.online && !paymentMethodFilter.ar ? (
+              <div className="relative overflow-hidden rounded-2xl border border-amber-300 bg-gradient-to-br from-amber-50 via-white to-amber-50/40 p-4 shadow-2xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-900">
+                    Cheque Collections (Bank Checks)
+                  </span>
+                  <span className="grid size-8 place-items-center rounded-xl bg-amber-600 text-white shadow-xs">
+                    <ReceiptText size={16} />
+                  </span>
+                </div>
+                <p className="mt-2 font-mono text-2xl font-black text-amber-950">
+                  {formatMoney(detailedMetrics.totalCheque || 0)}
+                </p>
+                <p className="mt-1 text-[11px] font-semibold text-amber-700/90">
+                  Checks for clearing or bank deposit
                 </p>
               </div>
             ) : (
@@ -8393,16 +10069,16 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                   {formatMoney(detailedMetrics.serviceRevenue)}
                 </p>
                 <p className="mt-1 text-[11px] font-semibold text-amber-700/90">
-                  Revenue mula sa labor, repair, at service charges
+                  Revenue from labor, repair, and service charges
                 </p>
               </div>
             )}
 
-            {/* Card 4: Total Business Gross Profit */}
+            {/* Card 4: Total Business Profit */}
             <div className="relative overflow-hidden rounded-2xl border border-purple-300 bg-gradient-to-br from-purple-50 via-white to-purple-50/40 p-4 shadow-2xs">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[10px] font-black uppercase tracking-wider text-purple-900">
-                  Total Business Gross Profit
+                  Total Business Profit
                 </span>
                 <span className="grid size-8 place-items-center rounded-xl bg-purple-600 text-white shadow-xs">
                   <TrendingUp size={16} />
@@ -8413,7 +10089,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
               </p>
               <div className="mt-1 flex items-center justify-between">
                 <p className="text-[11px] font-semibold text-purple-700/90">
-                  Gross profit from items + services {subCategories.interest ? "+ financing interest" : ""}
+                  Profit from items + services {subCategories.interest ? "+ financing interest" : ""}
                 </p>
                 {detailedMetrics.computedGrandTotal > 0 ? (
                   <span className="rounded bg-purple-100 px-1.5 py-0.2 text-[9px] font-bold text-purple-800">
@@ -8426,16 +10102,16 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
 
           {/* Tier 2: 6 Breakdown Categories Strip (Aligned directly to Main & Sub Category Checkboxes) */}
           <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-            {/* Strip 1: Item & Parts Wholesale Cost */}
+            {/* Strip 1: Item & Parts Cost */}
             <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-2xs">
               <div className="flex items-center justify-between text-slate-500">
-                <span className="text-[10px] font-black uppercase tracking-wider">Item Wholesale Cost</span>
+                <span className="text-[10px] font-black uppercase tracking-wider">Item Cost</span>
                 <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-600">Cost Basis</span>
               </div>
               <p className="mt-1 font-mono text-base font-black text-slate-900">
                 {formatMoney(detailedMetrics.totalCost)}
               </p>
-              <p className="text-[10px] text-slate-500">Acquisition cost of sold items & parts</p>
+              <p className="text-[10px] text-slate-500">Cost of goods sold (items & parts)</p>
             </div>
 
             {/* Strip 2: Mark-up (Sub Category Checkbox) */}
@@ -8443,27 +10119,27 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
               <div className="flex items-center justify-between text-teal-700">
                 <span className="text-[10px] font-black uppercase tracking-wider">Item Mark-up</span>
                 <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold ${subCategories.markup ? "bg-teal-100 text-teal-800" : "bg-rose-100 text-rose-700"}`}>
-                  {subCategories.markup ? "Kasama sa Total" : "Matic Excluded"}
+                  {subCategories.markup ? "Included in Total" : "Auto Excluded"}
                 </span>
               </div>
               <p className="mt-1 font-mono text-base font-black text-teal-950">
                 {formatMoney(detailedMetrics.totalMarkup)}
               </p>
-              <p className="text-[10px] text-teal-700/80">Retail markup added above base price</p>
+              <p className="text-[10px] text-teal-700/80">Mark-up added above base price</p>
             </div>
 
-            {/* Strip 3: Interest sa AR Credit (Sub Category Checkbox) */}
+            {/* Strip 3: Financing Interest on AR Credit (Sub Category Checkbox) */}
             <div className={`rounded-xl border p-3 shadow-2xs transition ${subCategories.interest ? "border-purple-300 bg-purple-50/50" : "border-slate-200 bg-slate-50/60 opacity-80"}`}>
               <div className="flex items-center justify-between text-purple-700">
                 <span className="text-[10px] font-black uppercase tracking-wider">Financing Interest</span>
                 <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold ${subCategories.interest ? "bg-purple-100 text-purple-800" : "bg-rose-100 text-rose-700"}`}>
-                  {subCategories.interest ? "Kasama sa Total" : "Matic Excluded"}
+                  {subCategories.interest ? "Included in Total" : "Auto Excluded"}
                 </span>
               </div>
               <p className="mt-1 font-mono text-base font-black text-purple-950">
                 {formatMoney(detailedMetrics.totalInterest)}
               </p>
-              <p className="text-[10px] text-purple-700/80">Interest charges mula sa credit accounts</p>
+              <p className="text-[10px] text-purple-700/80">Interest charges from credit accounts</p>
             </div>
 
             {/* Strip 4: Online Real-Time Payments (Main Category Checkbox) */}
@@ -8499,7 +10175,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
               <p className="mt-1 font-mono text-base font-black text-emerald-950">
                 {formatMoney(detailedMetrics.totalPhysicalCash)}
               </p>
-              <p className="text-[10px] text-emerald-700/80">Actual physical cash and coins in drawer</p>
+              <p className="text-[10px] text-emerald-700/80">Actual cash on hand in register</p>
             </div>
           </div>
 
@@ -8888,7 +10564,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                           <th className="px-4 py-3">Category</th>
                           <th className="px-4 py-3 text-right">Qty</th>
                           <th className="px-4 py-3 text-right">Selling Price</th>
-                          <th className="px-4 py-3 text-right">Retail Markup</th>
+                          <th className="px-4 py-3 text-right">Mark-up</th>
                           <th className="px-4 py-3 text-right">Line Total</th>
                           <th className="px-4 py-3">Customer & Staff</th>
                         </tr>
@@ -8983,7 +10659,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                           <span className="text-[11px] text-slate-600">Cust: {row.customerName}</span>
                           {row.lineMarkup > 0 ? (
                             <span className="font-mono text-[10px] font-bold text-teal-800 bg-teal-50 border border-teal-200 rounded px-1.5 py-0.5">
-                              Markup: +{formatMoney(row.lineMarkup)}
+                              Mark-up: +{formatMoney(row.lineMarkup)}
                             </span>
                           ) : null}
                         </div>
@@ -9023,6 +10699,10 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                                   <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 border border-blue-200 px-2 py-0.5 text-[10px] font-bold text-blue-900">
                                     💳 {formatStatus(sale.creditAccount.provider)}
                                     {sale.creditAccount.term ? ` (${sale.creditAccount.term === "CASH_PROMO" ? "0% Interest" : formatStatus(sale.creditAccount.term)})` : ""}
+                                  </span>
+                                ) : isChequeSale(sale) ? (
+                                  <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-900">
+                                    📝 Cheque {(sale.payments || []).find((p) => p.paymentMethod === "CHEQUE")?.referenceNo ? `#${(sale.payments || []).find((p) => p.paymentMethod === "CHEQUE")?.referenceNo}` : ""}
                                   </span>
                                 ) : isOnlineSale(sale) ? (
                                   <span className="inline-flex items-center gap-1 rounded-md bg-teal-50 border border-teal-200 px-2 py-0.5 text-[10px] font-bold text-teal-800">
@@ -9105,7 +10785,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
 
                                 const saleInterest = cr ? Math.max(effectiveTotal - cashTotal, 0) : 0
 
-                                // Sub Category: "if di sila naka check matic di sila kasama sa total.."
+                                // Sub Category: If unchecked, automatically exclude from total
                                 let computedReceiptTotal = effectiveTotal
                                 if (!subCategories.markup && saleMarkupTotal > 0) {
                                   computedReceiptTotal = Math.max(computedReceiptTotal - saleMarkupTotal, 0)
@@ -9328,6 +11008,10 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                                 💳 {formatStatus(sale.creditAccount.provider)}
                                 {sale.creditAccount.term ? ` (${sale.creditAccount.term === "CASH_PROMO" ? "0% Interest" : formatStatus(sale.creditAccount.term)})` : ""}
                               </span>
+                            ) : isChequeSale(sale) ? (
+                              <span className="inline-flex items-center gap-1 rounded bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[10px] font-bold text-amber-900">
+                                📝 Cheque {(sale.payments || []).find((p) => p.paymentMethod === "CHEQUE")?.referenceNo ? `#${(sale.payments || []).find((p) => p.paymentMethod === "CHEQUE")?.referenceNo}` : ""}
+                              </span>
                             ) : isOnlineSale(sale) ? (
                               <span className="inline-flex items-center gap-1 rounded bg-teal-50 border border-teal-200 px-1.5 py-0.5 text-[10px] font-bold text-teal-800">
                                 🌐 {(sale.payments || []).length > 0 ? sale.payments.map((p) => formatStatus(p.paymentMethod)).join(", ") : formatStatus(sale.paymentMethod || "Online")}
@@ -9468,17 +11152,17 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
 
                               {canConvert ? (
                                 <button
-                                  className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white shadow-2xs hover:bg-emerald-700 transition"
+                                  className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white shadow-2xs hover:bg-emerald-700 transition cursor-pointer"
                                   onClick={async () => {
                                     try {
                                       const detailed = await getQuotationById(quote.id)
-                                      setQuotationToConvert(detailed?.data || detailed)
+                                      await handleSelectQuotation(detailed?.data || detailed || quote)
                                     } catch (err) {
                                       setNoticeMessage(getApiErrorMessage(err, "Failed to load quotation items for conversion."))
                                     }
                                   }}
                                   type="button"
-                                  title="Convert directly into a completed sale"
+                                  title="Convert quotation into POS sale"
                                 >
                                   <ReceiptText size={12} /> Convert
                                 </button>
@@ -9559,11 +11243,11 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                         </button>
                         {canConvert ? (
                           <button
-                            className="flex-1 inline-flex items-center justify-center gap-1 rounded-lg bg-emerald-600 px-2 py-1 text-[11px] font-bold text-white shadow-2xs hover:bg-emerald-700 transition"
+                            className="flex-1 inline-flex items-center justify-center gap-1 rounded-lg bg-emerald-600 px-2 py-1 text-[11px] font-bold text-white shadow-2xs hover:bg-emerald-700 transition cursor-pointer"
                             onClick={async () => {
                               try {
                                 const detailed = await getQuotationById(quote.id)
-                                setQuotationToConvert(detailed?.data || detailed)
+                                await handleSelectQuotation(detailed?.data || detailed || quote)
                               } catch (err) {
                                 setNoticeMessage(getApiErrorMessage(err, "Failed to load quotation items for conversion."))
                               }
@@ -9710,6 +11394,17 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
           }}
           onCancelSale={(sale) => setSaleToCancel(sale)}
           onClose={() => { setIsDetailOpen(false); setDetailSale(null); setDetailMessage("") }}
+          onRefreshSale={async () => {
+            if (detailSale?.id) {
+              try {
+                const res = await getSaleById(detailSale.id)
+                setDetailSale(res?.data || res)
+                loadSales()
+              } catch {
+                // ignore
+              }
+            }
+          }}
           onReturnItems={(sale) => setSaleToReturn(sale)}
           sale={detailSale}
         />
@@ -9750,9 +11445,14 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
       {quotationToView ? (
         <QuotationDetailDialog
           onClose={() => setQuotationToView(null)}
-          onConvertToSale={(quote) => {
+          onConvertToSale={async (quote) => {
             setQuotationToView(null)
-            setQuotationToConvert(quote)
+            try {
+              const detailed = await getQuotationById(quote.id)
+              await handleSelectQuotation(detailed?.data || detailed || quote)
+            } catch {
+              await handleSelectQuotation(quote)
+            }
           }}
           quotation={quotationToView}
         />
@@ -9788,7 +11488,11 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
       {/* PAYMONGO DIGITAL CHECKOUT MODAL */}
       <PayMongoCheckoutModal
         amount={totals.grandTotal}
-        cartItems={cart}
+        cartItems={cart.map((it) => ({
+          name: it.description || it.item?.itemName || "Item",
+          quantity: Math.max(1, Number(it.quantity) || 1),
+          amount: Number(getLineUnitPrice ? getLineUnitPrice(it, pricingTerm) : (it.unitPrice || 0)),
+        }))}
         customerEmail={customerEmail}
         customerName={customers.find((c) => c.id === selectedCustomerId)?.fullName || customerSearch || "Walk-in Customer"}
         customerPhone={customerPhone}

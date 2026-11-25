@@ -21,6 +21,7 @@ import {
   RotateCcw,
   Search,
   ShieldCheck,
+  Trash2,
   User,
   UserRoundCheck,
   Wrench,
@@ -81,7 +82,7 @@ const ASSIGNMENT_MANAGER_ROLES = new Set(["SUPER_OWNER", "BRANCH_OWNER", "ADMIN"
 const PAYMENT_ROLES = new Set(["SUPER_OWNER", "BRANCH_OWNER", "ADMIN", "CASHIER", "TECHNICIAN"])
 const PAYMENT_CANCELLER_ROLES = new Set(["SUPER_OWNER", "BRANCH_OWNER", "ADMIN"])
 const IMMEDIATE_PAYMENT_METHODS = ["CASH", "GCASH", "BANK_TRANSFER", "OTHER"]
-const RECEIVABLE_PROVIDERS = ["CREDIT_CARD", "DEBIT_CARD", "HOMECREDIT", "SALMON", "KYRO", "OTHER_FINANCING", "IN_HOUSE_INSTALLMENT"]
+const RECEIVABLE_PROVIDERS = ["CREDIT_CARD", "DEBIT_CARD", "CHEQUE", "HOMECREDIT", "SALMON", "KYRO", "OTHER_FINANCING", "IN_HOUSE_INSTALLMENT"]
 const RECEIVABLE_PROVIDER_VALUES = new Set(RECEIVABLE_PROVIDERS)
 const INSTALLMENT_TERMS = ["STRAIGHT", "MONTH_3", "MONTH_6", "MONTH_9", "MONTH_12", "MONTH_18", "MONTH_24"]
 const ACTIVE_STATUSES = new Set(["PENDING", "IN_PROGRESS", "READY_FOR_RELEASE"])
@@ -94,6 +95,7 @@ const FIELD_CLASS =
   "mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 outline-none transition focus:border-[var(--color-maroon)] focus:ring-1 focus:ring-[var(--color-maroon)] hover:border-slate-300 placeholder:text-slate-400 placeholder:font-normal"
 
 const EMPTY_CREATE = {
+  receivedAt: new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }),
   customerId: "",
   customerNameSnapshot: "",
   customerContactSnapshot: "",
@@ -109,6 +111,7 @@ const EMPTY_CREATE = {
   serviceNotes: "",
   repairType: "ORDINARY_REPAIR",
   serviceCatalogId: "",
+  serviceLines: [{ id: "svc-line-1", serviceCatalogId: "", title: "", rate: "" }],
   partsList: [],
   baseServiceCharge: "",
   markupPercent: "",
@@ -127,7 +130,7 @@ const EMPTY_CREATE = {
 
   // Intake Form Specific Fields
   intakeType: "DIAGNOSTIC", // "DIAGNOSTIC" | "MAINTENANCE"
-  unitType: "General Equipment / Unit",
+  unitType: "Laptop",
   brandModel: "",
   whenProblemStarted: "",
   checkedByOtherShop: "No",
@@ -227,15 +230,15 @@ function friendly(value) {
 function splitDeviceLabel(value) {
   const text = String(value || "").trim()
   if (!text) {
-    return { unitType: "General Equipment / Unit", brandModel: "" }
+    return { unitType: "Laptop", brandModel: "" }
   }
 
   const separatorIndex = text.indexOf(":")
   if (separatorIndex === -1) {
-    return { unitType: "General Equipment / Unit", brandModel: text }
+    return { unitType: "Laptop", brandModel: text }
   }
 
-  const unitType = text.slice(0, separatorIndex).trim() || "General Equipment / Unit"
+  const unitType = text.slice(0, separatorIndex).trim() || "Laptop"
   const brandModel = text.slice(separatorIndex + 1).trim()
   return { unitType, brandModel }
 }
@@ -713,6 +716,446 @@ function getTechnicianRatePercent(technician, repairType) {
   return 0
 }
 
+function SearchableServiceCombobox({
+  value,
+  onChange,
+  onTitleChange,
+  customTitle = "",
+  catalog = [],
+  repairType = "ORDINARY_REPAIR",
+  placeholder = "Search service name (e.g. bios, cleaning, gpu, format)...",
+  label = "Service / Repair Catalog Item",
+}) {
+  const [typedQuery, setTypedQuery] = useState(null)
+  const [isOpen, setIsOpen] = useState(false)
+  const [highlightedIndex, setHighlightedIndex] = useState(-1)
+  const containerRef = useRef(null)
+
+  const isBoardCategory = repairType === "BOARD_LEVEL_REPAIR"
+
+  // 1. Strictly filter catalog by repair category
+  const filteredCategoryCatalog = useMemo(() => {
+    if (!catalog || !Array.isArray(catalog)) return []
+    return catalog.filter((svc) => {
+      if (!svc || svc.isActive === false) return false
+      if (isBoardCategory) {
+        return svc.repairType === "BOARD_LEVEL_REPAIR"
+      }
+      return svc.repairType !== "BOARD_LEVEL_REPAIR"
+    })
+  }, [catalog, isBoardCategory])
+
+  const selectedService = useMemo(
+    () => (catalog || []).find((opt) => opt.id === value),
+    [catalog, value],
+  )
+
+  const displayValue =
+    typedQuery !== null
+      ? typedQuery
+      : selectedService
+      ? selectedService.name
+      : customTitle || ""
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setIsOpen(false)
+        setTypedQuery(null)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
+  // 2. Live search query within category
+  const searchResults = useMemo(() => {
+    const q = (typedQuery ?? "").trim().toLowerCase()
+    if (!q) return filteredCategoryCatalog
+    return filteredCategoryCatalog.filter((svc) => {
+      const name = (svc.name || "").toLowerCase()
+      const desc = (svc.description || "").toLowerCase()
+      const dev = (svc.deviceType || "").toLowerCase()
+      return name.includes(q) || desc.includes(q) || dev.includes(q)
+    })
+  }, [filteredCategoryCatalog, typedQuery])
+
+  const handleSelectService = (svc) => {
+    if (!svc) {
+      onChange("", null)
+      if (onTitleChange) onTitleChange("")
+    } else {
+      onChange(svc.id, svc)
+      if (onTitleChange) onTitleChange(svc.name)
+    }
+    setTypedQuery(null)
+    setIsOpen(false)
+    setHighlightedIndex(-1)
+  }
+
+  return (
+    <div className="relative" ref={containerRef}>
+      {label && (
+        <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">
+          {label}
+        </span>
+      )}
+      <div className="relative">
+        <input
+          autoComplete="off"
+          className={`${FIELD_CLASS} pr-8 mt-0`}
+          onChange={(e) => {
+            const val = e.target.value
+            setTypedQuery(val)
+            setIsOpen(true)
+            setHighlightedIndex(-1)
+            if (onTitleChange) {
+              onTitleChange(val)
+            }
+            if (value && val !== (selectedService?.name || "")) {
+              onChange("", null)
+            }
+          }}
+          onFocus={() => {
+            setIsOpen(true)
+            setTypedQuery("")
+          }}
+          onKeyDown={(e) => {
+            if (!isOpen || searchResults.length === 0) return
+            if (e.key === "ArrowDown") {
+              e.preventDefault()
+              setHighlightedIndex((prev) =>
+                prev < searchResults.length - 1 ? prev + 1 : 0
+              )
+            } else if (e.key === "ArrowUp") {
+              e.preventDefault()
+              setHighlightedIndex((prev) =>
+                prev > 0 ? prev - 1 : searchResults.length - 1
+              )
+            } else if (e.key === "Enter" && highlightedIndex >= 0) {
+              e.preventDefault()
+              handleSelectService(searchResults[highlightedIndex])
+            } else if (e.key === "Escape") {
+              setIsOpen(false)
+            }
+          }}
+          placeholder={placeholder}
+          value={displayValue}
+        />
+        {value || customTitle ? (
+          <button
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition cursor-pointer"
+            onClick={() => {
+              handleSelectService(null)
+            }}
+            title="Clear service selection"
+            type="button"
+          >
+            <X size={13} />
+          </button>
+        ) : null}
+      </div>
+
+      {isOpen && (
+        <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl">
+          <div className="px-3 py-1.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-[10px] font-bold text-slate-500 uppercase tracking-wider sticky top-0 z-10">
+            <span>
+              {isBoardCategory ? "⚡ Specialized / Board-Level Services" : "🛠️ Standard Repair Services"} ({filteredCategoryCatalog.length})
+            </span>
+            <span className="text-[9.5px] font-normal lowercase text-slate-400">
+              {searchResults.length} matching
+            </span>
+          </div>
+
+          <button
+            className={`block w-full border-b border-slate-100 px-3.5 py-2 text-left text-xs font-semibold transition hover:bg-slate-50 ${
+              !value && !customTitle ? "bg-[var(--color-maroon)]/10 text-[var(--color-maroon)] font-black" : "text-slate-500"
+            }`}
+            onClick={() => handleSelectService(null)}
+            type="button"
+          >
+            — Custom / Manual Service Rate —
+          </button>
+
+          {searchResults.length === 0 ? (
+            <div className="px-3.5 py-3 text-center text-xs text-slate-400">
+              No services found matching &quot;{typedQuery}&quot; under {isBoardCategory ? "Specialized / Board-Level" : "Standard"} repairs.
+            </div>
+          ) : (
+            searchResults.map((svc, idx) => {
+              const isSelected = svc.id === value
+              const isHighlighted = highlightedIndex === idx
+              return (
+                <button
+                  key={svc.id}
+                  className={`flex w-full items-center justify-between px-3.5 py-2.5 text-left text-xs transition border-b border-slate-50 last:border-b-0 cursor-pointer ${
+                    isSelected
+                      ? "bg-[var(--color-maroon)]/10 text-[var(--color-maroon)] font-bold"
+                      : isHighlighted
+                      ? "bg-slate-100 text-slate-900"
+                      : "hover:bg-slate-50 text-slate-800"
+                  }`}
+                  onClick={() => handleSelectService(svc)}
+                  type="button"
+                >
+                  <div className="flex flex-col pr-2 min-w-0">
+                    <span className="font-semibold text-slate-900 truncate">
+                      {svc.name}
+                    </span>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      {svc.deviceType && (
+                        <span className="text-[9.5px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded uppercase tracking-wider">
+                          {svc.deviceType}
+                        </span>
+                      )}
+                      {svc.description && (
+                        <span className="text-[10px] text-slate-400 truncate max-w-xs">
+                          {svc.description}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <span className="font-mono font-bold text-emerald-700 whitespace-nowrap ml-2 text-xs">
+                    {money(svc.basePrice)}
+                  </span>
+                </button>
+              )
+            })
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ServicePartsCatalogLookup({
+  catalog = [],
+  value = "",
+  currentPartName = "",
+  onChange,
+  disabled = false,
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [typedQuery, setTypedQuery] = useState(null)
+  const [highlightedIndex, setHighlightedIndex] = useState(-1)
+  const containerRef = useRef(null)
+
+  const selectedPart = useMemo(
+    () => (catalog || []).find((p) => p.id === value),
+    [catalog, value]
+  )
+
+  const formatOptionLabel = (p) => {
+    if (!p) return ""
+    const cat = p.category ? `[${p.category}] ` : ""
+    const cost = money(p.costPrice)
+    const markup = money(p.markupAmount)
+    const type = p.repairType === "BOARD_LEVEL_REPAIR" ? "Board-Level" : "Standard"
+    return `${cat}${p.name} (Cost: ${cost} | Markup: ${markup} | Type: ${type})`
+  }
+
+  const displayValue =
+    typedQuery !== null
+      ? typedQuery
+      : selectedPart
+      ? formatOptionLabel(selectedPart)
+      : currentPartName || ""
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setIsOpen(false)
+        setTypedQuery(null)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
+  const searchResults = useMemo(() => {
+    const q = (typedQuery ?? "").trim().toLowerCase()
+    if (!q) return (catalog || []).slice(0, 30)
+    return (catalog || [])
+      .filter((p) => {
+        const name = (p.name || "").toLowerCase()
+        const cat = (p.category || "").toLowerCase()
+        const desc = (p.description || "").toLowerCase()
+        const partNum = (p.partNumber || "").toLowerCase()
+        return (
+          name.includes(q) ||
+          cat.includes(q) ||
+          desc.includes(q) ||
+          partNum.includes(q)
+        )
+      })
+      .slice(0, 30)
+  }, [catalog, typedQuery])
+
+  const handleSelectPart = (p) => {
+    if (!p) {
+      onChange("", null)
+    } else {
+      onChange(p.id, p)
+    }
+    setTypedQuery(null)
+    setIsOpen(false)
+    setHighlightedIndex(-1)
+  }
+
+  const handleClear = () => {
+    onChange("", null)
+    setTypedQuery("")
+    setIsOpen(false)
+    setHighlightedIndex(-1)
+  }
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+        Quick Pick from Service Parts Catalog (Optional auto-fill)
+      </label>
+
+      <div className="relative flex items-center">
+        <Search className="absolute left-3 text-slate-400 pointer-events-none" size={13} />
+        <input
+          autoComplete="off"
+          className="w-full rounded-xl border border-slate-200 bg-white pl-8 pr-8 py-2 text-xs font-semibold text-slate-800 outline-none transition focus:border-[var(--color-maroon)] focus:ring-1 focus:ring-[var(--color-maroon)] placeholder:text-slate-400 placeholder:font-normal"
+          disabled={disabled}
+          onChange={(e) => {
+            setTypedQuery(e.target.value)
+            setIsOpen(true)
+            setHighlightedIndex(-1)
+          }}
+          onFocus={() => {
+            setIsOpen(true)
+            if (typedQuery === null && !value) {
+              setTypedQuery("")
+            }
+          }}
+          onKeyDown={(e) => {
+            if (!isOpen) {
+              if (e.key === "ArrowDown" || e.key === "Enter") {
+                setIsOpen(true)
+                e.preventDefault()
+              }
+              return
+            }
+
+            if (e.key === "ArrowDown") {
+              e.preventDefault()
+              setHighlightedIndex((prev) =>
+                prev < searchResults.length - 1 ? prev + 1 : 0
+              )
+            } else if (e.key === "ArrowUp") {
+              e.preventDefault()
+              setHighlightedIndex((prev) =>
+                prev > 0 ? prev - 1 : searchResults.length - 1
+              )
+            } else if (e.key === "Enter") {
+              e.preventDefault()
+              if (highlightedIndex >= 0 && searchResults[highlightedIndex]) {
+                handleSelectPart(searchResults[highlightedIndex])
+              } else if (searchResults.length > 0) {
+                handleSelectPart(searchResults[0])
+              }
+            } else if (e.key === "Escape") {
+              setIsOpen(false)
+              setTypedQuery(null)
+            }
+          }}
+          placeholder="Type part name or category to search (e.g. Battery, Screen, Acer)..."
+          type="text"
+          value={displayValue}
+        />
+
+        {displayValue ? (
+          <button
+            className="absolute right-2.5 text-slate-400 hover:text-slate-600 transition cursor-pointer p-0.5"
+            onClick={handleClear}
+            title="Clear part selection"
+            type="button"
+          >
+            <X size={13} />
+          </button>
+        ) : null}
+      </div>
+
+      {isOpen && (
+        <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-64 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl">
+          <div className="px-3 py-1.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-[10px] font-bold text-slate-500 uppercase tracking-wider sticky top-0 z-10">
+            <span>🔧 Service Parts Catalog ({catalog.length})</span>
+            <span className="text-[9.5px] font-normal lowercase text-slate-400">
+              {searchResults.length} matching
+            </span>
+          </div>
+
+          <button
+            className={`block w-full border-b border-slate-100 px-3.5 py-2 text-left text-xs font-semibold transition hover:bg-slate-50 ${
+              !value ? "bg-[var(--color-maroon)]/10 text-[var(--color-maroon)] font-black" : "text-slate-500"
+            }`}
+            onClick={() => handleSelectPart(null)}
+            type="button"
+          >
+            — Custom / Manual Part Entry —
+          </button>
+
+          {searchResults.length === 0 ? (
+            <div className="px-3.5 py-4 text-center text-xs text-slate-400">
+              No catalog parts matching &quot;{typedQuery}&quot;.
+            </div>
+          ) : (
+            searchResults.map((p, idx) => {
+              const isSelected = p.id === value
+              const isHighlighted = highlightedIndex === idx
+              const cost = Number(p.costPrice || 0)
+              const markup = Number(p.markupAmount || 0)
+              const srp = cost + markup
+
+              return (
+                <button
+                  key={p.id}
+                  className={`flex w-full items-center justify-between px-3.5 py-2.5 text-left text-xs transition border-b border-slate-50 last:border-b-0 cursor-pointer ${
+                    isSelected
+                      ? "bg-[var(--color-maroon)]/10 text-[var(--color-maroon)] font-bold"
+                      : isHighlighted
+                      ? "bg-slate-100 text-slate-900"
+                      : "hover:bg-slate-50 text-slate-800"
+                  }`}
+                  onClick={() => handleSelectPart(p)}
+                  type="button"
+                >
+                  <div className="flex flex-col pr-2 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      {p.category && (
+                        <span className="text-[9.5px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.2 rounded font-mono uppercase tracking-wider shrink-0">
+                          {p.category}
+                        </span>
+                      )}
+                      <span className="font-semibold text-slate-900 truncate">
+                        {p.name}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 mt-0.5">
+                      Cost: {money(cost)} · Markup: +{money(markup)} · Type:{" "}
+                      {p.repairType === "BOARD_LEVEL_REPAIR" ? "Board-Level" : "Standard"}
+                    </span>
+                  </div>
+                  <div className="text-right shrink-0 ml-2">
+                    <span className="font-mono font-black text-xs text-slate-900 block">
+                      {money(srp)}
+                    </span>
+                    <span className="text-[9.5px] text-slate-400">Customer SRP</span>
+                  </div>
+                </button>
+              )
+            })
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ServicePricingFields({
   serviceRate = "",
   technicianFee = "",
@@ -721,6 +1164,8 @@ function ServicePricingFields({
   serviceCatalog = [],
   serviceCatalogId = "",
   onServiceCatalogChange,
+  serviceLines = [],
+  onServiceLinesChange,
   servicePartsCatalog = [],
   partsList = [],
   onPartsListChange,
@@ -749,6 +1194,79 @@ function ServicePricingFields({
   )
 
   const activeLaborRatePercent = isBoardCategory ? boardLaborRate : ordinaryLaborRate
+
+  // Multi-service lines state management
+  const lines = useMemo(() => {
+    if (serviceLines && serviceLines.length > 0) return serviceLines
+    return [
+      {
+        id: "svc-line-1",
+        serviceCatalogId: serviceCatalogId || "",
+        title: "",
+        rate: serviceRate || "",
+      },
+    ]
+  }, [serviceLines, serviceCatalogId, serviceRate])
+
+  const handleCatalogSelect = (idx, id, selectedItem) => {
+    const updated = [...lines]
+    if (selectedItem) {
+      updated[idx] = {
+        ...updated[idx],
+        serviceCatalogId: id,
+        title: selectedItem.name,
+        rate: String(selectedItem.basePrice ?? ""),
+      }
+    } else {
+      updated[idx] = {
+        ...updated[idx],
+        serviceCatalogId: "",
+      }
+    }
+    if (onServiceLinesChange) {
+      onServiceLinesChange(updated)
+    } else if (onServiceCatalogChange) {
+      onServiceCatalogChange(id, selectedItem)
+    }
+  }
+
+  const handleTitleChange = (idx, title) => {
+    const updated = [...lines]
+    updated[idx] = { ...updated[idx], title }
+    if (onServiceLinesChange) {
+      onServiceLinesChange(updated)
+    }
+  }
+
+  const handleRateChange = (idx, rate) => {
+    const updated = [...lines]
+    updated[idx] = { ...updated[idx], rate }
+    if (onServiceLinesChange) {
+      onServiceLinesChange(updated)
+    } else if (onServiceRateChange) {
+      onServiceRateChange(rate)
+    }
+  }
+
+  const handleAddLine = () => {
+    const newLine = {
+      id: `svc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      serviceCatalogId: "",
+      title: "",
+      rate: "",
+    }
+    if (onServiceLinesChange) {
+      onServiceLinesChange([...lines, newLine])
+    }
+  }
+
+  const handleRemoveLine = (idx) => {
+    if (lines.length <= 1) return
+    const updated = lines.filter((_, i) => i !== idx)
+    if (onServiceLinesChange) {
+      onServiceLinesChange(updated)
+    }
+  }
 
   // Labor math
   const serviceRateNum = Number(serviceRate || 0)
@@ -922,47 +1440,95 @@ function ServicePricingFields({
             🛠️ Labor &amp; Service Charge
           </span>
           <span className="text-[10px] font-bold text-slate-500">
-            Standard diagnosis &amp; work charge
+            {isBoardCategory ? "Specialized / Board-Level Services" : "Standard Diagnosis & Work Charge"}
           </span>
         </div>
 
-        {/* Pre-configured Service Catalog Picker */}
-        {serviceCatalog.length > 0 && onServiceCatalogChange && (
-          <Field label="Select from Labor & Service Rates Catalog (Auto-fills title & rate)">
-            <select
-              className={FIELD_CLASS}
-              onChange={(e) => {
-                const selectedId = e.target.value
-                const selected = serviceCatalog.find((s) => s.id === selectedId) || null
-                onServiceCatalogChange(selectedId, selected)
-              }}
-              value={serviceCatalogId || ""}
+        {/* Dynamic Multi-Service Lines */}
+        <div className="space-y-3">
+          {lines.map((line, idx) => (
+            <div
+              key={line.id || idx}
+              className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3 text-xs space-y-2.5 shadow-2xs relative"
             >
-              <option value="">-- Custom / Manual Service Rate --</option>
-              {serviceCatalog.map((svc) => (
-                <option key={svc.id} value={svc.id}>
-                  [{svc.repairType === "BOARD_LEVEL_REPAIR" ? "Board-Level" : "Standard"}] {svc.name} — {money(svc.basePrice)}
-                </option>
-              ))}
-            </select>
-          </Field>
-        )}
+              <div className="flex items-center justify-between border-b border-slate-200/60 pb-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono font-black text-xs text-slate-700 bg-white px-2 py-0.5 rounded border border-slate-200">
+                    Service #{idx + 1}
+                  </span>
+                  {line.title && (
+                    <span className="font-bold text-slate-900 truncate max-w-[200px] sm:max-w-xs">
+                      {line.title}
+                    </span>
+                  )}
+                </div>
+                {lines.length > 1 && (
+                  <button
+                    className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-2 py-0.5 rounded transition cursor-pointer"
+                    onClick={() => handleRemoveLine(idx)}
+                    type="button"
+                    title="Remove service line"
+                  >
+                    <Trash2 size={13} /> Remove
+                  </button>
+                )}
+              </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Service / Labor Rate (₱)">
-            <input
-              className={`${FIELD_CLASS} font-mono font-bold text-slate-900 text-sm`}
-              min="0"
-              onChange={(e) => {
-                if (onServiceRateChange) onServiceRateChange(e.target.value)
-              }}
-              placeholder="0.00 (Diagnosis / Checking)"
-              step="0.01"
-              type="number"
-              value={serviceRate}
-            />
+              <div className="grid gap-2.5 sm:grid-cols-3">
+                <div className="sm:col-span-2">
+                  <SearchableServiceCombobox
+                    catalog={serviceCatalog}
+                    customTitle={line.title}
+                    label="Select or Search Service Rate (Auto-fills title & rate)"
+                    onChange={(id, selectedItem) => handleCatalogSelect(idx, id, selectedItem)}
+                    onTitleChange={(title) => handleTitleChange(idx, title)}
+                    placeholder="Search service name (e.g. bios, cleaning, gpu, format)..."
+                    repairType={repairType}
+                    value={line.serviceCatalogId}
+                  />
+                </div>
+                <div>
+                  <Field label="Labor Rate (₱)">
+                    <input
+                      className={`${FIELD_CLASS} font-mono font-bold text-slate-900 text-sm`}
+                      min="0"
+                      onChange={(e) => handleRateChange(idx, e.target.value)}
+                      placeholder="0.00 (Diagnosis)"
+                      step="0.01"
+                      type="number"
+                      value={line.rate}
+                    />
+                    <span className="text-[10px] text-slate-400 mt-0.5 block">
+                      Line labor fee (₱0 if free)
+                    </span>
+                  </Field>
+                </div>
+              </div>
+            </div>
+          ))}
+
+          <button
+            className="inline-flex items-center gap-1.5 rounded-xl border border-dashed border-[var(--color-maroon)]/50 bg-[var(--color-maroon)]/5 px-3.5 py-2 text-xs font-bold text-[var(--color-maroon)] hover:bg-[var(--color-maroon)]/10 transition cursor-pointer w-full justify-center"
+            onClick={handleAddLine}
+            type="button"
+          >
+            <Plus size={14} /> Add Another Service
+          </button>
+        </div>
+
+        {/* Labor Summary Box */}
+        <div className="grid gap-3 sm:grid-cols-2 pt-1 border-t border-slate-100">
+          <Field label="Total Customer Labor (₱)">
+            <div className="flex h-[42px] items-center justify-between rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 font-mono font-bold text-slate-900 select-none shadow-2xs">
+              <span className="text-sm font-black text-slate-900">
+                {money(serviceRateNum)}
+              </span>
+              <span className="rounded bg-slate-200/90 px-1.5 py-0.5 text-[9.5px] font-black tracking-wider uppercase text-slate-700 font-sans">
+                {lines.length} {lines.length === 1 ? "Service" : "Services"}
+              </span>
+            </div>
             <span className="text-[10px] text-slate-400 mt-0.5 block">
-              Customer labor fee (₱0 if for free diagnostic / checking)
+              Sum of all labor charges for this job order
             </span>
           </Field>
 
@@ -1061,25 +1627,14 @@ function ServicePricingFields({
                   </button>
                 </div>
 
-                {/* Catalog dropdown selection */}
+                {/* Searchable Service Parts Catalog Lookup */}
                 {servicePartsCatalog.length > 0 && (
-                  <div>
-                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
-                      Quick Pick from Service Parts Catalog (Optional auto-fill)
-                    </label>
-                    <select
-                      className={FIELD_CLASS}
-                      onChange={(e) => handleSelectCatalogPart(idx, e.target.value)}
-                      value={part.partCatalogId || ""}
-                    >
-                      <option value="">-- Custom / Manual Part Entry --</option>
-                      {servicePartsCatalog.map((sp) => (
-                        <option key={sp.id} value={sp.id}>
-                          [{sp.category || "PART"}] {sp.name} (Cost: {money(sp.costPrice)} | Markup: {money(sp.markupAmount)} | Type: {sp.repairType === "BOARD_LEVEL_REPAIR" ? "Board-Level" : "Standard"})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  <ServicePartsCatalogLookup
+                    catalog={servicePartsCatalog}
+                    currentPartName={part.partName || ""}
+                    onChange={(catalogPartId) => handleSelectCatalogPart(idx, catalogPartId)}
+                    value={part.partCatalogId || ""}
+                  />
                 )}
 
                 <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-5">
@@ -1349,6 +1904,7 @@ function TaskTitleAutocomplete({
   onChange,
   onSelectService,
   serviceCatalog = [],
+  repairType = "",
   disabled = false,
   placeholder = "e.g. Board Level Repair - Power IC, Deep Cleaning & Repaste",
 }) {
@@ -1356,19 +1912,25 @@ function TaskTitleAutocomplete({
   const [highlightedIndex, setHighlightedIndex] = useState(-1)
   const containerRef = useRef(null)
 
+  const isBoardCategory = repairType === "BOARD_LEVEL_REPAIR"
+
   const query = (value || "").trim().toLowerCase()
   const matchingServices = useMemo(() => {
     if (!query) return []
     return (Array.isArray(serviceCatalog) ? serviceCatalog : [])
       .filter((service) => {
         if (!service || typeof service !== "object" || service.isActive === false) return false
+        if (repairType) {
+          if (isBoardCategory && service.repairType !== "BOARD_LEVEL_REPAIR") return false
+          if (!isBoardCategory && service.repairType === "BOARD_LEVEL_REPAIR") return false
+        }
         const nameMatch = service.name?.toLowerCase().includes(query)
         const deviceMatch = service.deviceType?.toLowerCase().includes(query)
         const descMatch = service.description?.toLowerCase().includes(query)
         return Boolean(nameMatch || deviceMatch || descMatch)
       })
       .slice(0, 10)
-  }, [serviceCatalog, query])
+  }, [serviceCatalog, query, repairType, isBoardCategory])
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -1591,7 +2153,7 @@ function WorkshopTasksManager({
       {
         id: `part-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         partName: "",
-        deviceType: job.deviceType || "GENERAL EQUIPMENT",
+        deviceType: job.deviceType || "LAPTOP",
         category: "OTHER",
         costPrice: 0,
         markupAmount: 0,
@@ -1815,6 +2377,7 @@ function WorkshopTasksManager({
                       amount: selected.amount,
                     })
                   }}
+                  repairType={job?.repairType}
                   serviceCatalog={serviceCatalog}
                   value={task.title}
                 />
@@ -1975,7 +2538,7 @@ function WorkshopTasksManager({
                     className={FIELD_CLASS}
                     disabled={!canManage}
                     onChange={(e) => handleUpdatePart(idx, { partName: e.target.value })}
-                    placeholder="Part / material description (e.g. Replacement Part, Consumable)"
+                    placeholder="Part description / name (e.g. Thermal Grizzly Paste, 512GB NVMe SSD)"
                     value={part.partName}
                   />
                 </div>
@@ -2772,18 +3335,36 @@ export default function ServicesPage({ onNavigate, selectedBranch, user }) {
     const pureLaborTechFee = Number(((serviceRate * laborTechRate) / 100).toFixed(2))
     const totalTechFee = Number((pureLaborTechFee + techPartsFee).toFixed(2))
 
-    const taskItems = [
-      {
-        id: `task-${Date.now()}`,
-        title: createForm.jobTitle.trim() || "Service Labor",
-        amount: serviceRate,
-        technicianId: createForm.assignedTechnicianId,
-        technicianName: selectedAssignee?.fullName,
-        techFee: pureLaborTechFee,
-        warrantyDays: configuredWarrantyDays,
-        warrantyDuration: configuredWarrantyDuration,
-      },
-    ]
+    const activeLines = (createForm.serviceLines || []).filter(
+      (l) => l.title?.trim() || Number(l.rate || 0) > 0 || l.serviceCatalogId
+    )
+    const taskItems = activeLines.length > 0
+      ? activeLines.map((line, idx) => {
+          const lineRate = Number(line.rate || 0)
+          const lineTechFee = Number(((lineRate * laborTechRate) / 100).toFixed(2))
+          return {
+            id: `task-${Date.now()}-${idx}`,
+            title: line.title?.trim() || createForm.jobTitle.trim() || `Service Labor #${idx + 1}`,
+            amount: lineRate,
+            technicianId: createForm.assignedTechnicianId,
+            technicianName: selectedAssignee?.fullName,
+            techFee: lineTechFee,
+            warrantyDays: configuredWarrantyDays,
+            warrantyDuration: configuredWarrantyDuration,
+          }
+        })
+      : [
+          {
+            id: `task-${Date.now()}`,
+            title: createForm.jobTitle.trim() || "Service Labor",
+            amount: serviceRate,
+            technicianId: createForm.assignedTechnicianId,
+            technicianName: selectedAssignee?.fullName,
+            techFee: pureLaborTechFee,
+            warrantyDays: configuredWarrantyDays,
+            warrantyDuration: configuredWarrantyDuration,
+          },
+        ]
 
     // Serialize intake record into serviceNotes with structured header
     const structuredNotes = serializeStructuredNotes({
@@ -2799,6 +3380,7 @@ export default function ServicesPage({ onNavigate, selectedBranch, user }) {
     try {
       const response = await createServiceJob({
         ...(branchId ? { branchId } : {}),
+        receivedAt: createForm.receivedAt || undefined,
         jobTitle: createForm.jobTitle.trim(),
         customerId: createForm.customerId || undefined,
         customerNameSnapshot: !createForm.customerId ? createForm.customerNameSnapshot.trim() || undefined : undefined,
@@ -3186,6 +3768,7 @@ export default function ServicesPage({ onNavigate, selectedBranch, user }) {
       arrangement: "CASH",
       settlementMethod: "CASH",
       amount: String(selectedJob?.remainingBalance || ""),
+      paidAt: new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }),
       referenceNo: "",
       remarks: "",
       providerReferenceNo: "",
@@ -3215,6 +3798,7 @@ export default function ServicesPage({ onNavigate, selectedBranch, user }) {
               : paymentForm.arrangement
             : undefined,
         amount,
+        paidAt: paymentForm.paidAt || undefined,
         referenceNo: paymentForm.referenceNo.trim() || undefined,
         remarks: paymentForm.remarks.trim() || undefined,
         receivable: isReceivable
@@ -3372,7 +3956,7 @@ export default function ServicesPage({ onNavigate, selectedBranch, user }) {
             </button>
             {canCreate ? (
               <button
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[var(--color-maroon)] px-3.5 text-xs font-bold text-white shadow-2xs hover:bg-[var(--color-maroon-hover)] transition cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[var(--color-maroon)] px-3.5 text-xs font-bold text-white shadow-2xs hover:bg-[#6b0810] transition cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={user?.role === "SUPER_OWNER" && !branchId}
                 onClick={() => setShowCreate(true)}
                 type="button"
@@ -3679,8 +4263,22 @@ export default function ServicesPage({ onNavigate, selectedBranch, user }) {
                 <span><strong className="block text-sm text-amber-900 dark:text-amber-200">Quick / same-day service</strong><span className="text-xs text-amber-800 dark:text-amber-300">Skips IN PROGRESS and may move directly from received to service performed.</span></span>
               </label>
 
-              {/* Top Meta: Repair Category & Assigned Staff/Technician */}
-              <div className="grid gap-4 sm:grid-cols-2">
+              {/* Top Meta: Date Received, Repair Category & Assigned Staff/Technician */}
+              <div className="grid gap-4 sm:grid-cols-3">
+                <Field label="Date Received *">
+                  <input
+                    className={FIELD_CLASS}
+                    onChange={(event) =>
+                      setCreateForm((form) => ({
+                        ...form,
+                        receivedAt: event.target.value,
+                      }))
+                    }
+                    required
+                    type="date"
+                    value={createForm.receivedAt || new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })}
+                  />
+                </Field>
                 <Field label="Repair category *">
                   <select
                     className={FIELD_CLASS}
@@ -3689,13 +4287,33 @@ export default function ServicesPage({ onNavigate, selectedBranch, user }) {
                       setCreateForm((form) => {
                         const selectedTech = technicians.find((t) => t.id === form.assignedTechnicianId)
                         const techRate = getTechnicianRatePercent(selectedTech, repairType)
-                        const sRate = Number(form.serviceRate || 0)
-                        const newTechFee = techRate > 0 && sRate > 0
-                          ? String(Number(((sRate * techRate) / 100).toFixed(2)))
+
+                        // Clean up any service lines that don't belong to this newly selected repair category
+                        const updatedLines = (form.serviceLines || []).map((line) => {
+                          if (!line.serviceCatalogId) return line
+                          const svc = serviceCatalog.find((s) => s.id === line.serviceCatalogId)
+                          if (!svc) return line
+                          const isSvcBoard = svc.repairType === "BOARD_LEVEL_REPAIR"
+                          const isCategoryBoard = repairType === "BOARD_LEVEL_REPAIR"
+                          if (isSvcBoard !== isCategoryBoard) {
+                            return { ...line, serviceCatalogId: "", title: "", rate: "" }
+                          }
+                          return line
+                        })
+
+                        const newTotalRate = updatedLines.reduce((acc, l) => acc + Number(l.rate || 0), 0)
+                        const newTechFee = techRate > 0 && newTotalRate > 0
+                          ? String(Number(((newTotalRate * techRate) / 100).toFixed(2)))
                           : "0"
+                        const partsCost = (form.partsList || []).reduce((acc, p) => acc + Number(p.costPrice || 0) * Number(p.quantity || 1), 0)
+                        const totalBase = newTotalRate + partsCost
+
                         return {
                           ...form,
                           repairType,
+                          serviceLines: updatedLines,
+                          serviceRate: newTotalRate > 0 ? String(newTotalRate) : "",
+                          baseServiceCharge: totalBase > 0 ? String(totalBase) : "",
                           technicianFee: newTechFee,
                         }
                       })
@@ -3862,9 +4480,9 @@ export default function ServicesPage({ onNavigate, selectedBranch, user }) {
                           ref={customerInputRef}
                           autoComplete="off"
                           className={FIELD_CLASS}
-                          maxLength={30}
+                          maxLength={300}
                           onChange={(e) => {
-                            const val = e.target.value.slice(0, 30)
+                            const val = e.target.value.slice(0, 300)
                             setCustomerSearch(val)
                             setIsCustomerDropdownOpen(true)
                             setCreateForm((form) => ({
@@ -3960,14 +4578,14 @@ export default function ServicesPage({ onNavigate, selectedBranch, user }) {
                   <Field label="Customer Address">
                     <input
                       className={FIELD_CLASS}
-                      maxLength={50}
+                      maxLength={300}
                       onChange={(event) =>
                         setCreateForm((form) => ({
                           ...form,
-                          customerAddressSnapshot: event.target.value.slice(0, 50),
+                          customerAddressSnapshot: event.target.value.slice(0, 300),
                         }))
                       }
-                      placeholder="House No., Street Name, Barangay, City/Municipality, Province"
+                      placeholder="Barangay, City, Province"
                       value={createForm.customerAddressSnapshot}
                     />
                   </Field>
@@ -4019,7 +4637,7 @@ export default function ServicesPage({ onNavigate, selectedBranch, user }) {
                       className={FIELD_CLASS}
                       maxLength="180"
                       onChange={(event) => setCreateForm((form) => ({ ...form, jobTitle: event.target.value }))}
-                      placeholder={createForm.intakeType === "DIAGNOSTIC" ? "e.g. Unit Inspection & Fault Diagnosis" : "e.g. Preventive Maintenance & Calibration"}
+                      placeholder={createForm.intakeType === "DIAGNOSTIC" ? "e.g. No Power / Motherboard Diagnosis" : "e.g. Preventive Maintenance & Thermal Repaste"}
                       required
                       value={createForm.jobTitle}
                     />
@@ -4165,7 +4783,7 @@ export default function ServicesPage({ onNavigate, selectedBranch, user }) {
                       className={FIELD_CLASS}
                       maxLength="1000"
                       onChange={(e) => setCreateForm((f) => ({ ...f, problemDescription: e.target.value }))}
-                      placeholder="e.g. Full inspection, deep cleaning, calibration..."
+                      placeholder="e.g. Deep clean fans, repaste thermal grizzly Kryonaut..."
                       rows="2"
                       value={createForm.problemDescription}
                     />
@@ -4375,14 +4993,41 @@ export default function ServicesPage({ onNavigate, selectedBranch, user }) {
                     })
                   }}
                   onRepairTypeChange={(type) => setCreateForm((f) => ({ ...f, repairType: type }))}
+                  serviceLines={createForm.serviceLines || []}
+                  onServiceLinesChange={(newLines) => {
+                    setCreateForm((f) => {
+                      const totalServiceRate = newLines.reduce((acc, l) => acc + Number(l.rate || 0), 0)
+                      const combinedTitles = newLines
+                        .map((l) => l.title?.trim())
+                        .filter(Boolean)
+                        .join(" + ")
+                      const partsCost = (f.partsList || []).reduce((acc, p) => acc + Number(p.costPrice || 0) * Number(p.quantity || 1), 0)
+                      const totalBase = totalServiceRate + partsCost
+                      const selectedTech = technicians.find((t) => t.id === f.assignedTechnicianId)
+                      const techRate = getTechnicianRatePercent(selectedTech, f.repairType)
+                      const techLaborFee = techRate > 0 && totalServiceRate > 0
+                        ? String(Number(((totalServiceRate * techRate) / 100).toFixed(2)))
+                        : "0"
+
+                      const prevAutoTitles = (f.serviceLines || []).map((l) => l.title?.trim()).filter(Boolean).join(" + ")
+                      const shouldUpdateTitle = !f.jobTitle || f.jobTitle === prevAutoTitles || serviceCatalog.some((s) => s.name === f.jobTitle)
+
+                      return {
+                        ...f,
+                        serviceLines: newLines,
+                        serviceCatalogId: newLines[0]?.serviceCatalogId || "",
+                        serviceRate: totalServiceRate > 0 ? String(totalServiceRate) : (newLines.length > 0 && newLines.some(l => l.rate === "0" || l.rate === 0) ? "0" : ""),
+                        jobTitle: shouldUpdateTitle && combinedTitles ? combinedTitles : f.jobTitle,
+                        baseServiceCharge: totalBase > 0 ? String(totalBase) : "",
+                        technicianFee: techLaborFee,
+                      }
+                    })
+                  }}
                   onServiceCatalogChange={(id, selectedItem) => {
                     setCreateForm((f) => {
                       const next = { ...f, serviceCatalogId: id }
                       if (selectedItem) {
                         next.serviceRate = String(selectedItem.basePrice ?? "")
-                        if (selectedItem.repairType) {
-                          next.repairType = selectedItem.repairType
-                        }
                         if (!f.jobTitle || serviceCatalog.some((s) => s.name === f.jobTitle)) {
                           next.jobTitle = selectedItem.name
                         }
@@ -4996,7 +5641,15 @@ export default function ServicesPage({ onNavigate, selectedBranch, user }) {
           <form onSubmit={submitPayment}>
             <div className="space-y-4 p-5 sm:p-6">
               <div className="rounded-2xl bg-slate-50 p-4"><p className="text-sm font-bold text-[var(--color-muted)]">Outstanding service amount</p><p className="mt-1 text-2xl font-black">{money(selectedJob?.remainingBalance)}</p></div>
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-4 sm:grid-cols-3">
+                <Field label="Payment Date">
+                  <input
+                    className={FIELD_CLASS}
+                    onChange={(event) => setPaymentForm((form) => ({ ...form, paidAt: event.target.value }))}
+                    type="date"
+                    value={paymentForm.paidAt || ""}
+                  />
+                </Field>
                 <Field label="Settlement arrangement *"><select className={FIELD_CLASS} onChange={(event) => { const arrangement = event.target.value; setPaymentForm((form) => ({ ...form, arrangement, amount: RECEIVABLE_PROVIDER_VALUES.has(arrangement) ? "0" : String(selectedJob?.remainingBalance || "") })) }} value={paymentForm.arrangement}><optgroup label="Immediate settlement">{IMMEDIATE_PAYMENT_METHODS.map((method) => <option key={method} value={method}>{friendly(method)}</option>)}</optgroup><optgroup label="Accounts receivable">{RECEIVABLE_PROVIDERS.map((provider) => <option key={provider} value={provider}>{friendly(provider)}</option>)}</optgroup></select></Field>
                 <Field label={RECEIVABLE_PROVIDER_VALUES.has(paymentForm.arrangement) ? "Immediate settlement / downpayment" : "Payment amount *"}><input className={FIELD_CLASS} max={Number(selectedJob?.remainingBalance || 0)} min="0" onChange={(event) => setPaymentForm((form) => ({ ...form, amount: event.target.value }))} required step="0.01" type="number" value={paymentForm.amount} /></Field>
               </div>

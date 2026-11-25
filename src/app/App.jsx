@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from "react"
 
 import MainLayout from "../layouts/MainLayout"
 import LoginPage from "../pages/auth/LoginPage"
+import LandingPage from "../pages/landing/LandingPage"
 import BranchChooserPage from "../pages/branches/BranchChooserPage"
 import PagePlaceholder from "../pages/PagePlaceholder"
 import {
@@ -28,8 +29,6 @@ import CommandPaletteModal from "../components/common/CommandPaletteModal"
 import QuotationDetailDialog from "../components/quotations/QuotationDetailDialog"
 import SaleReceiptModal from "../components/sales/SaleReceiptModal"
 import { getQuotationById } from "../features/quotations/quotations.api"
-import { getSettings } from "../features/settings/settings.api"
-import { setReceiptBusinessName } from "../utils/businessProfile"
 
 const StaffDashboardPage = lazy(() => import("../pages/dashboard/StaffDashboardPage"))
 const SettingsPage = lazy(() => import("../pages/settings/SettingsPage"))
@@ -50,6 +49,7 @@ const CreditsPage = lazy(() => import("../pages/credits/CreditsPage"))
 const SuppliersPage = lazy(() => import("../pages/suppliers/SuppliersPage"))
 const PurchaseOrdersPage = lazy(() => import("../pages/purchase-orders/PurchaseOrdersPage"))
 const PurchaseReceivingsPage = lazy(() => import("../pages/purchase-receivings/PurchaseReceivingsPage"))
+const SupplierReturnsPage = lazy(() => import("../pages/supplier-returns/SupplierReturnsPage"))
 const PosSalesPage = lazy(() => import("../pages/sales/PosSalesPage"))
 const SerialMonitoringPage = lazy(() => import("../pages/serials/SerialMonitoringPage"))
 const ServicesPage = lazy(() => import("../pages/services/ServicesPage"))
@@ -92,6 +92,7 @@ function App() {
   const [omniPreviewQuotation, setOmniPreviewQuotation] = useState(null)
   const [omniPreviewSale, setOmniPreviewSale] = useState(null)
   const [pageContext, setPageContext] = useState(null)
+  const [showLogin, setShowLogin] = useState(false)
 
   // Global Ctrl + K / Cmd + K shortcut listener
   useEffect(() => {
@@ -109,59 +110,45 @@ function App() {
   const isCashBoxStaff = [
     USER_ROLES.CASHIER,
     USER_ROLES.TECHNICIAN,
-    USER_ROLES.CASH_CUSTODIAN,
   ].includes(user?.role)
 
   const isCashBoxManager = [
     USER_ROLES.SUPER_OWNER,
-    USER_ROLES.BRANCH_OWNER,
     USER_ROLES.ADMIN,
   ].includes(user?.role)
 
   const canAccessCashBox =
     isCashBoxManager ||
-    user?.role === USER_ROLES.CASH_CUSTODIAN ||
-    hasAssignedCashBoxAccess
+    (isCashBoxStaff && hasAssignedCashBoxAccess)
 
   const allowedModules = user
     ? APP_MODULES.filter(
       (item) =>
-        canRoleAccessModule(user, item.key) ||
+        canRoleAccessModule(user.role, item.key) ||
         (item.key === "cash-box" && canAccessCashBox),
     )
     : []
 
   const page = APP_MODULES.find((item) => item.key === activePage)
 
-  const setSafeActivePage = (pageKey, arg2 = user, arg3 = null) => {
-    let effectiveUser = user
-    let effectiveContext = null
-
-    if (arg2 && typeof arg2 === "object" && (arg2.role || arg2.id) && !arg2.loadOcr && !arg2.viewMode && !arg2.saleId) {
-      effectiveUser = arg2
-      effectiveContext = arg3
-    } else {
-      effectiveUser = user
-      effectiveContext = arg2 !== undefined && arg2 !== null ? arg2 : arg3
-    }
-
-    if (!effectiveUser) return
+  const setSafeActivePage = (pageKey, currentUser = user, context = null) => {
+    if (!currentUser) return
 
     const canAccessRequestedPage =
-      canRoleAccessModule(effectiveUser, pageKey) ||
+      canRoleAccessModule(currentUser.role, pageKey) ||
       (pageKey === "cash-box" && canAccessCashBox)
 
     if (canAccessRequestedPage) {
       setActivePage(pageKey)
-      setPageContext(effectiveContext)
-      saveActivePage(effectiveUser.id, pageKey)
+      setPageContext(context)
+      saveActivePage(currentUser.id, pageKey)
       return
     }
 
-    const defaultPage = getDefaultModuleForRole(effectiveUser.role)
+    const defaultPage = getDefaultModuleForRole(currentUser.role)
     setActivePage(defaultPage)
     setPageContext(null)
-    saveActivePage(effectiveUser.id, defaultPage)
+    saveActivePage(currentUser.id, defaultPage)
   }
 
   useEffect(() => {
@@ -183,21 +170,9 @@ function App() {
 
         saveUser(authenticatedUser)
         setUser(authenticatedUser)
-        getSettings()
-          .then((res) => {
-            if (res?.data && Array.isArray(res.data)) {
-              const bName = res.data.find(
-                (s) => s.key === "receipt.business_name" || s.scopeKey === "GLOBAL:receipt.business_name"
-              )
-              if (bName?.value) {
-                setReceiptBusinessName(bName.value)
-              }
-            }
-          })
-          .catch(() => {})
 
         const savedPage = getActivePage(authenticatedUser.id)
-        if (savedPage && canRoleAccessModule(authenticatedUser, savedPage)) {
+        if (savedPage && canRoleAccessModule(authenticatedUser.role, savedPage)) {
           setActivePage(savedPage)
         } else {
           setActivePage(getDefaultModuleForRole(authenticatedUser.role))
@@ -291,7 +266,7 @@ function App() {
 
     const savedPage = getActivePage(currentUser.id)
     const targetPage =
-      savedPage && canRoleAccessModule(currentUser, savedPage)
+      savedPage && canRoleAccessModule(currentUser.role, savedPage)
         ? savedPage
         : getDefaultModuleForRole(currentUser.role)
 
@@ -330,6 +305,7 @@ function App() {
     setUser(null)
     setSelectedBranch(null)
     setActivePage("pos")
+    setShowLogin(false)
   }
 
   const renderPage = () => {
@@ -395,6 +371,7 @@ function App() {
       return (
         <WarrantyPage
           initialContext={pageContext}
+          onNavigate={setSafeActivePage}
           selectedBranch={selectedBranch}
           user={user}
         />
@@ -412,7 +389,13 @@ function App() {
     }
 
     if (activePage === "quotations") {
-      return <QuotationsPage onNavigate={(pageKey, ctx) => setSafeActivePage(pageKey, user, ctx)} selectedBranch={selectedBranch} user={user} />
+      return (
+        <QuotationsPage
+          onNavigate={(pageKey, ctx) => setSafeActivePage(pageKey, user, ctx)}
+          selectedBranch={selectedBranch}
+          user={user}
+        />
+      )
     }
 
     if (activePage === "pc-builds") {
@@ -505,6 +488,16 @@ function App() {
       )
     }
 
+    if (activePage === "supplier-returns") {
+      return (
+        <SupplierReturnsPage
+          initialContext={pageContext}
+          selectedBranch={selectedBranch}
+          user={user}
+        />
+      )
+    }
+
     if (activePage === "settings") return <SettingsPage user={user} />
 
     return (
@@ -520,7 +513,7 @@ function App() {
       <main className="grid min-h-svh place-items-center bg-[var(--color-page)] px-4">
         <section className="rounded-3xl border border-[var(--color-border)] bg-white p-6 text-center shadow-card">
           <p className="brand-text text-xl font-bold text-[var(--color-text-strong)]">
-            Pointify
+            POSynctify
           </p>
           <p className="mt-2 text-sm text-[var(--color-muted)]">Checking session...</p>
         </section>
@@ -529,7 +522,10 @@ function App() {
   }
 
   if (!user) {
-    return <LoginPage onLogin={handleLogin} />
+    if (!showLogin) {
+      return <LandingPage onOpenLogin={() => setShowLogin(true)} />
+    }
+    return <LoginPage onBack={() => setShowLogin(false)} onLogin={handleLogin} />
   }
 
   if (needsBranchChooser(user, selectedBranch)) {

@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
+  AlertCircle,
   Barcode,
   Calendar,
+  Check,
+  CheckCircle2,
   CircleAlert,
+  Edit3,
   Eye,
   FileCheck2,
   FileSpreadsheet,
@@ -13,6 +17,7 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
+  ShoppingCart,
   Sparkles,
   Trash2,
   User,
@@ -26,13 +31,14 @@ import {
   getQuotationById,
   getQuotations,
   getQuotationServiceStaff,
+  updateQuotation,
   updateQuotationStatus,
 } from "../../features/quotations/quotations.api"
 import { getServiceCatalog } from "../../features/service-jobs/serviceJobs.api"
 import { getItems } from "../../features/items/items.api"
 import { createCustomer, getCustomers } from "../../features/customers/customers.api"
 import { getInstallmentBasisSettings } from "../../features/settings/settings.api"
-import { serializeQuotationNotes } from "../../utils/quotationSettlement"
+import { cleanUserRemarks, parseQuotationSettlement, serializeQuotationNotes, stripSettlementTag } from "../../utils/quotationSettlement"
 import { exportReportExcel } from "../../utils/businessDocumentExport"
 import ExportExcelButton from "../../components/common/ExportExcelButton"
 import { parseItemWarranty } from "../items/ItemsPage"
@@ -126,7 +132,6 @@ function getCatalogRows(response) {
 }
 
 function getItemCount(quotation) {
-  if (Number.isFinite(quotation?._count?.items)) return quotation._count.items
   if (Number.isFinite(quotation?.itemCount)) return quotation.itemCount
   if (Number.isFinite(quotation?.totalItems)) return quotation.totalItems
   if (Array.isArray(quotation?.items)) return quotation.items.length
@@ -217,11 +222,370 @@ function getRoleLabel(role) {
   return role.replace(/_/g, " ")
 }
 
-export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
+function SalesPersonCombobox({
+  value,
+  onChange,
+  staffList = [],
+  currentUser = null,
+  placeholder = "Search sales person / staff...",
+  inputRef = null,
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [search, setSearch] = useState("")
+  const containerRef = useRef(null)
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setIsOpen(false)
+        setSearch("")
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
+  // Combine staff list and current user, ensuring uniqueness by id
+  const combinedStaff = useMemo(() => {
+    const list = [...(Array.isArray(staffList) ? staffList : [])]
+    if (currentUser?.id && !list.some((s) => s.id === currentUser.id)) {
+      list.unshift(currentUser)
+    }
+    return list
+  }, [staffList, currentUser])
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return combinedStaff
+    return combinedStaff.filter((s) => {
+      const name = (s.fullName || s.username || "").toLowerCase()
+      const role = (s.role || "").toLowerCase()
+      return name.includes(q) || role.includes(q)
+    })
+  }, [combinedStaff, search])
+
+  const selectedStaff = combinedStaff.find((s) => s.id === value)
+  const displayName = selectedStaff ? (selectedStaff.fullName || selectedStaff.username || "") : ""
+
+  return (
+    <div className="relative text-xs w-full" ref={containerRef}>
+      <div className="relative">
+        <input
+          ref={inputRef}
+          type="text"
+          className={`w-full rounded-xl border px-2.5 py-1.5 text-xs font-semibold outline-none transition pr-7 ${
+            !value
+              ? "border-amber-300 bg-amber-50/25 text-slate-800 placeholder:text-amber-800/60 focus:bg-white focus:border-[var(--color-maroon)]"
+              : "border-slate-200 bg-slate-50/50 text-slate-800 focus:bg-white focus:border-[var(--color-maroon)]"
+          }`}
+          placeholder={displayName || placeholder}
+          value={isOpen ? search : displayName}
+          onChange={(e) => {
+            setSearch(e.target.value)
+            setIsOpen(true)
+          }}
+          onFocus={() => {
+            setIsOpen(true)
+            setSearch("")
+          }}
+        />
+        {value ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              onChange("")
+              setSearch("")
+              setIsOpen(false)
+            }}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-red-600 p-0.5 transition cursor-pointer"
+            title="Clear sales person"
+          >
+            <X size={13} />
+          </button>
+        ) : (
+          <div className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+            <Search size={12} />
+          </div>
+        )}
+      </div>
+
+      {isOpen && (
+        <div className="absolute left-0 right-0 top-full z-40 mt-1 max-h-52 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl">
+          {filtered.length === 0 ? (
+            <div className="p-3 text-center text-xs text-slate-400">
+              No matching staff found
+            </div>
+          ) : (
+            filtered.map((staff) => {
+              const name = staff.fullName || staff.username || "Staff"
+              const isSelected = staff.id === value
+              return (
+                <button
+                  key={staff.id}
+                  type="button"
+                  onClick={() => {
+                    onChange(staff.id)
+                    setSearch("")
+                    setIsOpen(false)
+                  }}
+                  className={`flex w-full items-center justify-between px-3 py-2 text-left text-xs transition border-b border-slate-100 last:border-b-0 cursor-pointer ${
+                    isSelected ? "bg-rose-50 text-[var(--color-maroon)] font-bold" : "hover:bg-slate-50 text-slate-700"
+                  }`}
+                >
+                  <div>
+                    <p className="font-bold">{name}</p>
+                    {staff.role && (
+                      <p className="text-[10px] text-slate-400 font-normal capitalize">
+                        {staff.role.replace(/_/g, " ").toLowerCase()}
+                      </p>
+                    )}
+                  </div>
+                  {isSelected && (
+                    <span className="text-[10px] font-bold text-[var(--color-maroon)]">Selected</span>
+                  )}
+                </button>
+              )
+            })
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ServiceCatalogLookup({
+  catalog = [],
+  value = "",
+  onChange,
+  onClear,
+  placeholder = "-- Type to search service catalog or pick below --",
+}) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [typedQuery, setTypedQuery] = useState(null)
+  const [highlightedIndex, setHighlightedIndex] = useState(-1)
+  const containerRef = useRef(null)
+
+  const selectedItem = useMemo(
+    () => (catalog || []).find((s) => s.id === value),
+    [catalog, value]
+  )
+
+  const formatItemLabel = (s) => {
+    if (!s) return ""
+    const priceStr = `₱${Number(s.basePrice || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })}`
+    const deviceStr = s.deviceType ? ` (${s.deviceType})` : ""
+    return `${s.name} — ${priceStr}${deviceStr}`
+  }
+
+  const displayValue =
+    typedQuery !== null
+      ? typedQuery
+      : selectedItem
+      ? formatItemLabel(selectedItem)
+      : ""
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setIsOpen(false)
+        setTypedQuery(null)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
+  const searchResults = useMemo(() => {
+    const q = (typedQuery ?? "").trim().toLowerCase()
+    if (!q) return (catalog || []).slice(0, 50)
+    return (catalog || [])
+      .filter((s) => {
+        const name = (s.name || "").toLowerCase()
+        const desc = (s.description || "").toLowerCase()
+        const dev = (s.deviceType || "").toLowerCase()
+        const code = (s.code || "").toLowerCase()
+        return (
+          name.includes(q) ||
+          desc.includes(q) ||
+          dev.includes(q) ||
+          code.includes(q)
+        )
+      })
+      .slice(0, 50)
+  }, [catalog, typedQuery])
+
+  const handleSelectItem = (s) => {
+    if (!s) {
+      onChange("")
+      if (onClear) onClear()
+    } else {
+      onChange(s.id)
+    }
+    setTypedQuery(null)
+    setIsOpen(false)
+    setHighlightedIndex(-1)
+  }
+
+  const handleClear = () => {
+    onChange("")
+    if (onClear) onClear()
+    setTypedQuery("")
+    setIsOpen(false)
+    setHighlightedIndex(-1)
+  }
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <div className="relative flex items-center">
+        <Search className="absolute left-2.5 text-violet-400 pointer-events-none" size={13} />
+        <input
+          type="text"
+          autoComplete="off"
+          className="w-full rounded-lg border border-violet-200 bg-white pl-7 pr-7 py-1.5 text-xs font-semibold text-slate-800 outline-none transition focus:border-violet-500 focus:ring-1 focus:ring-violet-400 placeholder:text-slate-400 placeholder:font-normal"
+          placeholder={placeholder}
+          value={displayValue}
+          onChange={(e) => {
+            setTypedQuery(e.target.value)
+            setIsOpen(true)
+            setHighlightedIndex(-1)
+          }}
+          onFocus={() => {
+            setIsOpen(true)
+            if (typedQuery === null && !value) {
+              setTypedQuery("")
+            }
+          }}
+          onKeyDown={(e) => {
+            if (!isOpen) {
+              if (e.key === "ArrowDown" || e.key === "Enter") {
+                setIsOpen(true)
+                e.preventDefault()
+              }
+              return
+            }
+
+            if (e.key === "ArrowDown") {
+              e.preventDefault()
+              setHighlightedIndex((prev) =>
+                prev < searchResults.length - 1 ? prev + 1 : 0
+              )
+            } else if (e.key === "ArrowUp") {
+              e.preventDefault()
+              setHighlightedIndex((prev) =>
+                prev > 0 ? prev - 1 : searchResults.length - 1
+              )
+            } else if (e.key === "Enter") {
+              e.preventDefault()
+              if (highlightedIndex >= 0 && searchResults[highlightedIndex]) {
+                handleSelectItem(searchResults[highlightedIndex])
+              } else if (searchResults.length > 0) {
+                handleSelectItem(searchResults[0])
+              }
+            } else if (e.key === "Escape") {
+              setIsOpen(false)
+              setTypedQuery(null)
+            }
+          }}
+        />
+        {(displayValue || value) && (
+          <button
+            type="button"
+            onClick={handleClear}
+            className="absolute right-2 text-slate-400 hover:text-red-500 transition p-0.5 rounded cursor-pointer"
+            title="Clear selection"
+          >
+            <X size={13} />
+          </button>
+        )}
+      </div>
+
+      {isOpen && (
+        <div className="absolute z-50 left-0 right-0 mt-1 max-h-56 overflow-y-auto rounded-xl border border-violet-200 bg-white shadow-2xl">
+          <div className="sticky top-0 bg-violet-50/95 backdrop-blur-sm px-3 py-1.5 border-b border-violet-100 flex items-center justify-between text-[10px] text-violet-800 font-bold">
+            <span>
+              {typedQuery
+                ? `Filter: "${typedQuery}"`
+                : "Type to filter saved services..."}
+            </span>
+            <span className="font-semibold text-violet-500">
+              {searchResults.length} {searchResults.length === 1 ? "match" : "matches"}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => handleSelectItem(null)}
+            className={`block w-full border-b border-slate-100 px-3 py-1.5 text-left text-xs font-semibold transition hover:bg-slate-50 ${
+              !value ? "bg-violet-50 text-violet-700 font-bold" : "text-slate-500"
+            }`}
+          >
+            — None / Custom Manual Service —
+          </button>
+
+          {searchResults.length === 0 ? (
+            <div className="px-3 py-3 text-center text-xs text-slate-400">
+              No services matching "{typedQuery}".
+            </div>
+          ) : (
+            searchResults.map((s, idx) => {
+              const isSelected = s.id === value
+              const isHighlighted = highlightedIndex === idx
+              const price = Number(s.basePrice || 0)
+
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => handleSelectItem(s)}
+                  className={`flex w-full items-center justify-between px-3 py-2 text-left text-xs transition border-b border-slate-50 last:border-b-0 cursor-pointer ${
+                    isSelected
+                      ? "bg-violet-100/70 text-violet-900 font-bold"
+                      : isHighlighted
+                      ? "bg-violet-50 text-slate-900"
+                      : "hover:bg-slate-50 text-slate-800"
+                  }`}
+                >
+                  <div className="flex flex-col pr-2 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      {s.deviceType && (
+                        <span className="text-[9px] font-bold text-violet-700 bg-violet-100 border border-violet-200 px-1.5 py-0.2 rounded font-mono uppercase tracking-wider shrink-0">
+                          {s.deviceType}
+                        </span>
+                      )}
+                      <span className="font-semibold text-slate-900 truncate">
+                        {s.name}
+                      </span>
+                    </div>
+                    {s.description && s.description !== s.name && (
+                      <span className="text-[10px] text-slate-500 truncate mt-0.5">
+                        {s.description}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-right shrink-0 ml-2">
+                    <span className="font-mono font-bold text-xs text-slate-900 block">
+                      ₱{price.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                    </span>
+                    {s.markupPercent ? (
+                      <span className="text-[9px] text-emerald-600 font-semibold">
+                        +{s.markupPercent}% markup
+                      </span>
+                    ) : null}
+                  </div>
+                </button>
+              )
+            })
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function QuotationsPage({ onNavigate, selectedBranch, user }) {
   const branchName = selectedBranch?.name || user?.branch?.name || "Selected Branch"
   const branchId = selectedBranch?.id || user?.branch?.id || user?.branchId || ""
-  const CAN_CHANGE_PRICE_ROLES = new Set(["SUPER_OWNER", "BRANCH_OWNER", "ADMIN"])
-  const canChangePrice = CAN_CHANGE_PRICE_ROLES.has(user?.role)
 
   // Main Page View Mode: "HISTORY" or "BUILDER"
   const [viewMode, setViewMode] = useState("HISTORY") // "HISTORY" | "BUILDER"
@@ -250,6 +614,7 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
   const [pricingTerm, setPricingTerm] = useState("CASH") // "CASH" | "SRP" | "REGULAR"
   const [isPcBuild, setIsPcBuild] = useState(false)
   const [remarks, setRemarks] = useState("")
+  const [editingQuotation, setEditingQuotation] = useState(null)
 
   const systemUnitCompleteness = useMemo(() => {
     if (!isPcBuild) return null
@@ -270,6 +635,9 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
   // Service Performer / Staff
   const [serviceStaffList, setServiceStaffList] = useState([])
   const [selectedSalesPersonId, setSelectedSalesPersonId] = useState("")
+  const [quotationDate, setQuotationDate] = useState(() =>
+    new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
+  )
   const [selectedServiceStaffId, setSelectedServiceStaffId] = useState("")
   const [showServiceForm, setShowServiceForm] = useState(false)
   const [serviceDescription, setServiceDescription] = useState("")
@@ -645,7 +1013,7 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
       ["Customer Name", (row) => row.customer?.fullName || row.customerName || "Walk-in Customer"],
       ["Contact No", (row) => row.customer?.mobileNumber || row.customerPhone || "—"],
       ["Status", (row) => row.status || "QUOTED"],
-      ["Type", (row) => row.isPcBuild ? "Bundle Item" : "Standard"],
+      ["Type", (row) => row.isPcBuild ? "PC Build" : "Standard"],
       ["Items Count", (row) => (row.items || []).length],
       ["Subtotal", (row) => Number(row.subtotal || 0)],
       ["Total Discount", (row) => Number(row.totalDiscount || 0)],
@@ -749,6 +1117,21 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
   // Builder Methods
   const addProductToCart = (item) => {
     if (!item) return
+
+    // If item is non-serialized and already in cart, increment quantity
+    if (!item.isSerialized) {
+      const existingLine = cart.find(
+        (line) => line.type === "PRODUCT" && line.itemId === item.id
+      )
+      if (existingLine) {
+        const currentQty = Math.max(1, Math.floor(Number(existingLine.quantity || 1)))
+        updateCartLine(existingLine.localId, { quantity: String(currentQty + 1) })
+        setItemSearch("")
+        setBuilderMessage("")
+        return
+      }
+    }
+
     const activeCustomer = customers.find((c) => c.id === selectedCustomerId)
     const itemTiers = availablePriceTiers(item)
     const targetTier = (activeCustomer?.priceTier ? Number(activeCustomer.priceTier) : null) || selectedPriceTier
@@ -797,19 +1180,6 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
   }
 
   const updateCartLine = (localId, patch) => {
-    if (
-      !canChangePrice &&
-      (Object.hasOwn(patch, "baseUnitPrice") ||
-        Object.hasOwn(patch, "unitPrice") ||
-        Object.hasOwn(patch, "markupPercent"))
-    ) {
-      const targetLine = cart.find((l) => l.localId === localId)
-      if (targetLine && targetLine.type !== "SERVICE") {
-        setBuilderMessage("Account restricted: Only owner or admin accounts can change product prices.")
-        return
-      }
-    }
-
     setCart((current) =>
       current.map((line) => {
         if (line.localId !== localId) return line
@@ -904,18 +1274,37 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
 
   const handleOpenConvert = async (quotation) => {
     if (!quotation?.id) return
-    if (quotation.items && quotation.items.length > 0) {
-      setQuotationToConvert(quotation)
-      return
-    }
     setIsLoadingDetails(true)
     try {
-      const response = await getQuotationById(quotation.id)
-      const detailed = response?.data || response || quotation
-      setQuotationToConvert(detailed)
+      let detailed = quotation
+      if (!quotation.items || quotation.items.length === 0) {
+        const response = await getQuotationById(quotation.id)
+        detailed = response?.data || response || quotation
+      }
+
+      try {
+        sessionStorage.setItem("pos_load_quotation_id", quotation.id)
+        sessionStorage.setItem("pos_load_quotation_data", JSON.stringify(detailed))
+      } catch {
+        // ignore
+      }
+
+      if (onNavigate) {
+        onNavigate("pos", { loadQuotation: detailed })
+      } else {
+        window.location.hash = "#pos"
+      }
     } catch (err) {
       console.error("Failed to load quotation details for conversion:", err)
-      setQuotationToConvert(quotation)
+      try {
+        sessionStorage.setItem("pos_load_quotation_id", quotation.id)
+        sessionStorage.setItem("pos_load_quotation_data", JSON.stringify(quotation))
+      } catch {
+        // ignore
+      }
+      if (onNavigate) {
+        onNavigate("pos", { loadQuotation: quotation })
+      }
     } finally {
       setIsLoadingDetails(false)
     }
@@ -936,6 +1325,127 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
       await loadQuotations()
     } catch (err) {
       alert(err?.response?.data?.message || err?.response?.data?.error?.message || "Failed to delete quotation.")
+    }
+  }
+
+  const handleCancelEdit = () => {
+    setEditingQuotation(null)
+    setCart([])
+    setSelectedCustomerId("")
+    setCustomerSearch("")
+    setCustomerPhone("")
+    setCustomerAddress("")
+    setCustomerEmail("")
+    setRemarks("")
+    setIsPcBuild(false)
+    setNoticeMessage("Editing cancelled. Ready for new quotation.")
+  }
+
+  const handleEditQuotation = async (quotation) => {
+    if (!quotation?.id) return
+    setIsLoadingDetails(true)
+    try {
+      let detailed = quotation
+      if (!quotation.items || quotation.items.length === 0) {
+        const response = await getQuotationById(quotation.id)
+        detailed = response?.data || response || quotation
+      }
+
+      setEditingQuotation(detailed)
+
+      // Customer
+      if (detailed.customerId) {
+        setSelectedCustomerId(detailed.customerId)
+      } else {
+        setSelectedCustomerId("")
+      }
+      setCustomerSearch(detailed.customer?.fullName || detailed.customerName || "")
+      setCustomerPhone(detailed.customer?.mobileNumber || "")
+      setCustomerAddress(detailed.customer?.address || "")
+      setCustomerEmail(detailed.customer?.email || "")
+
+      // Sales person
+      const settlement = parseQuotationSettlement(detailed.notes) || {}
+      if (settlement?.salesmanId) {
+        setSelectedSalesPersonId(settlement.salesmanId)
+      } else if (detailed.serviceDoneById) {
+        setSelectedSalesPersonId(detailed.serviceDoneById)
+      } else if (detailed.salesman) {
+        const matchedStaff = serviceStaffList.find(
+          (s) => (s.fullName || s.username || "").toLowerCase() === String(detailed.salesman).toLowerCase()
+        )
+        if (matchedStaff) setSelectedSalesPersonId(matchedStaff.id)
+      }
+
+      // Date
+      if (detailed.createdAt) {
+        setQuotationDate(new Date(detailed.createdAt).toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }))
+      }
+
+      // Remarks / Pricing Term / PC Build
+      const userRemarks = cleanUserRemarks(detailed.notes || detailed.remarks || "")
+      setRemarks(userRemarks)
+      if (settlement?.pricingTerm) {
+        setPricingTerm(settlement.pricingTerm)
+      }
+      setIsPcBuild(Boolean(detailed.isPcBuild))
+
+      // Cart Items
+      const loadedCart = (detailed.items || []).map((item, idx) => {
+        const isService = item.type === "SERVICE" || (!item.itemId && item.description)
+        if (isService) {
+          const rawDesc = String(item.description || "Service")
+          const cleanDesc = rawDesc.replace(/\s*\[Done by:[^\]]*\]/i, "").trim()
+          return {
+            localId: `service-${Date.now()}-${idx}-${Math.random().toString(36).slice(2)}`,
+            type: "SERVICE",
+            description: cleanDesc,
+            quantity: String(item.quantity || 1),
+            baseUnitPrice: String(item.unitPrice || 0),
+            markupPercent: item.markupPercent !== undefined && item.markupPercent !== null && item.markupPercent !== 0 ? String(item.markupPercent) : "",
+            unitPrice: String(item.unitPrice || 0),
+            discountAmount: String(item.discountAmount || 0),
+            serviceStaffId: item.serviceDoneById || detailed.serviceDoneById || "",
+            serviceStaffName: item.serviceDoneBy?.fullName || "",
+          }
+        }
+
+        const itemObj = item.item || {
+          id: item.itemId,
+          itemCode: item.itemCode,
+          itemName: item.description || item.itemName,
+          price1: item.unitPrice,
+          price2: item.unitPrice,
+          price3: item.unitPrice,
+          price4: item.unitPrice,
+          price5: item.unitPrice,
+          hasWarranty: Boolean(item.warrantyDuration),
+          warrantyDurationMonths: 12,
+        }
+
+        return {
+          localId: `product-${Date.now()}-${idx}-${Math.random().toString(36).slice(2)}`,
+          type: "PRODUCT",
+          item: itemObj,
+          itemId: itemObj.id,
+          priceTier: item.priceTier || 1,
+          quantity: String(item.quantity || 1),
+          markupPercent: item.markupPercent !== undefined && item.markupPercent !== null && item.markupPercent !== 0 ? String(item.markupPercent) : "",
+          discountAmount: String(item.discountAmount || 0),
+          warrantyDuration: item.warrantyDuration || parseItemWarranty(itemObj),
+        }
+      })
+
+      setCart(loadedCart)
+      setViewMode("BUILDER")
+      setIsPrintPreviewOpen(false)
+      setNoticeMessage(`Loaded Quotation #${detailed.quotationCode || detailed.id} for editing.`)
+      window.scrollTo({ top: 0, behavior: "smooth" })
+    } catch (err) {
+      console.error("Failed to load quotation for edit:", err)
+      alert("Failed to load quotation for editing.")
+    } finally {
+      setIsLoadingDetails(false)
     }
   }
 
@@ -960,13 +1470,22 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
       return
     }
 
+    if (!selectedSalesPersonId) {
+      setBuilderMessage("Please select a sales person before previewing quotation.")
+      return
+    }
+
     const activeCustomer = customers.find((c) => c.id === selectedCustomerId)
     const assignedSalesPerson = serviceStaffList.find((s) => s.id === selectedSalesPersonId)
     const effectiveSalesman = assignedSalesPerson || user || { fullName: "Staff" }
 
     const previewDoc = {
-      quotationCode: "PREVIEW",
-      createdAt: new Date().toISOString(),
+      id: editingQuotation?.id,
+      quotationCode: editingQuotation?.quotationCode || "PREVIEW",
+      status: editingQuotation?.status || "DRAFT",
+      createdAt: quotationDate
+        ? new Date(`${quotationDate}T12:00:00+08:00`).toISOString()
+        : new Date().toISOString(),
       branch: selectedBranch || user?.branch || { name: branchName },
       customer: activeCustomer || {
         fullName: customerSearch.trim(),
@@ -981,6 +1500,7 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
       subtotalAmount: totals.productGross + totals.serviceGross,
       totalDiscountAmount: totals.totalDiscount,
       pricingTerm,
+      remarks: remarks.trim() || undefined,
       notes: [
         remarks.trim(),
         `[Term: ${PRICING_TERMS[pricingTerm]?.label || pricingTerm}]`,
@@ -1043,6 +1563,11 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
       return
     }
 
+    if (!selectedSalesPersonId) {
+      setBuilderMessage("Please select a sales person before creating a quotation.")
+      return
+    }
+
     setIsCreatingQuotation(true)
     setBuilderMessage("")
 
@@ -1074,17 +1599,17 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
       const assignedSalesPerson = serviceStaffList.find((s) => s.id === selectedSalesPersonId)
       const effectiveSalesman = assignedSalesPerson || user || { fullName: "Staff" }
 
-      const formattedRemarks = [
-        isPcBuild ? "[BUNDLE]" : "",
-        remarks.trim(),
-        `[Term: ${PRICING_TERMS[pricingTerm]?.label || pricingTerm}]`,
-      ].filter(Boolean).join(" ")
+      const userNote = cleanUserRemarks(remarks)
+      const formattedRemarks = isPcBuild
+        ? (userNote ? `[PC BUILD] | ${userNote}` : "[PC BUILD]")
+        : (userNote || undefined)
 
       const quotationPayload = {
         branchId,
         customerId: effectiveCustomerId,
         serviceDoneById,
-        title: isPcBuild ? "Bundle Item Quotation" : (formattedRemarks || undefined),
+        quotationDate: quotationDate || undefined,
+        title: isPcBuild ? "PC Build Quotation" : (formattedRemarks || undefined),
         notes: serializeQuotationNotes(formattedRemarks, {
           installmentCalculation: showFinancingCalc ? installmentCalculation : undefined,
           pricingTerm,
@@ -1124,6 +1649,34 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
         }),
       }
 
+      if (editingQuotation?.id) {
+        const response = await updateQuotation(editingQuotation.id, quotationPayload)
+        const updatedQuote = response?.data || response
+
+        setNoticeMessage(`Quotation ${updatedQuote.quotationCode || editingQuotation.quotationCode || ""} updated successfully!`)
+        setLastSavedCalc(showFinancingCalc ? installmentCalculation : null)
+        setActiveQuotationDoc({
+          ...updatedQuote,
+          salesman: effectiveSalesman.fullName || effectiveSalesman.username,
+        })
+        setIsQuotationPreviewMode(false)
+        setIsQuotationDocOpen(true)
+        setEditingQuotation(null)
+
+        // Reset builder cart
+        setCart([])
+        setRemarks("")
+        setSelectedCustomerId("")
+        setCustomerSearch("")
+        setCustomerPhone("")
+        setCustomerAddress("")
+        setCustomerEmail("")
+        setIsPcBuild(false)
+        setQuotationDate(new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }))
+        loadQuotations()
+        return
+      }
+
       const response = await createQuotation(quotationPayload)
       const createdQuote = response?.data || response
 
@@ -1143,6 +1696,13 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
       // Reset builder cart
       setCart([])
       setRemarks("")
+      setSelectedCustomerId("")
+      setCustomerSearch("")
+      setCustomerPhone("")
+      setCustomerAddress("")
+      setCustomerEmail("")
+      setIsPcBuild(false)
+      setQuotationDate(new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }))
       loadQuotations()
     } catch (err) {
       setBuilderMessage(err?.response?.data?.message || err?.message || "Failed to create quotation.")
@@ -1234,9 +1794,29 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
 
       {/* VIEW MODE: BUILDER (POS CASHIERING STYLE) */}
       {viewMode === "BUILDER" ? (
-        <div className="grid gap-4 xl:grid-cols-[1fr_420px]">
-          {/* Left Column: Customer, Products Search, and Service Lines */}
-          <div className="space-y-4">
+        <div className="space-y-4">
+          {editingQuotation ? (
+            <div className="flex items-center justify-between rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-950 shadow-xs">
+              <div className="flex items-center gap-2">
+                <span className="rounded-md bg-amber-200 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-amber-900">
+                  Editing Mode
+                </span>
+                <span>
+                  Modifying saved <strong>Quotation #{editingQuotation.quotationCode || editingQuotation.id}</strong> ({editingQuotation.status || "DRAFT"})
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleCancelEdit}
+                className="inline-flex items-center gap-1 rounded-xl border border-amber-300 bg-white px-3 py-1.5 text-xs font-bold text-amber-800 shadow-2xs hover:bg-amber-100 transition cursor-pointer"
+              >
+                <X size={13} /> Cancel Edit (New Quote)
+              </button>
+            </div>
+          ) : null}
+          <div className="grid min-w-0 gap-4 lg:grid-cols-12 items-start">
+            {/* Left Column (5 cols): Customer, Products Search, and Service Lines */}
+            <div className="lg:col-span-5 min-w-0 space-y-3">
             {/* 1. Customer Selection Card */}
             <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs space-y-3">
               <div className="flex items-center justify-between">
@@ -1272,14 +1852,14 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
                 <input
                   ref={customerInputRef}
                   aria-label="Customer Name"
-                  maxLength={30}
+                  maxLength={300}
                   className={`w-full rounded-xl border bg-slate-50/50 py-2 pl-3 pr-8 text-xs font-medium outline-none transition focus:bg-white ${
                     !selectedCustomerId && !customerSearch.trim() && builderMessage?.includes("Customer")
                       ? "border-red-400 focus:border-red-500"
                       : "border-slate-200 focus:border-[var(--color-maroon)]"
                   }`}
                   onChange={(e) => {
-                    const val = e.target.value.slice(0, 30)
+                    const val = e.target.value.slice(0, 300)
                     setCustomerSearch(val)
                     setIsCustomerDropdownOpen(true)
                     if (!val.trim()) setSelectedCustomerId("")
@@ -1345,49 +1925,41 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
                   <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Address</span>
                   <input
                     className="mt-0.5 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-2.5 py-1.5 text-xs outline-none transition focus:bg-white focus:border-[var(--color-maroon)]"
-                    maxLength={50}
-                    onChange={(e) => setCustomerAddress(e.target.value.slice(0, 50))}
-                    placeholder="House No., Street Name, Barangay, City/Municipality, Province"
+                    maxLength={300}
+                    onChange={(e) => setCustomerAddress(e.target.value.slice(0, 300))}
+                    placeholder="City / Municipality"
                     value={customerAddress}
                   />
                 </label>
               </div>
 
-              {/* Sales Person / Attributed Staff Selector */}
-              <div className="pt-2 border-t border-slate-100">
-                <label className="block">
+              {/* Sales Person & Quotation Date */}
+              <div className="pt-2 border-t border-slate-100 grid gap-2 sm:grid-cols-2">
+                <div className="block">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block">
-                      Sales Person / Salesman
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1">
+                      Sales Person <span className="text-red-500 font-bold">*</span>
                     </span>
-                    {selectedSalesPersonId && user?.id && selectedSalesPersonId !== user.id ? (
-                      <button
-                        type="button"
-                        onClick={() => setSelectedSalesPersonId(user.id)}
-                        className="text-[10px] font-bold text-[var(--color-maroon)] hover:underline"
-                      >
-                        Reset ({user.fullName})
-                      </button>
-                    ) : null}
                   </div>
-                  <select
+                  <SalesPersonCombobox
+                    value={selectedSalesPersonId}
+                    onChange={(id) => setSelectedSalesPersonId(id)}
+                    staffList={serviceStaffList}
+                    currentUser={user}
+                    placeholder="Search sales person / staff *..."
+                  />
+                </div>
+
+                <label className="block">
+                  <span className="mb-1 text-[10px] font-black uppercase tracking-wider text-slate-500 block">
+                    Quotation Date
+                  </span>
+                  <input
+                    type="date"
+                    value={quotationDate}
+                    onChange={(e) => setQuotationDate(e.target.value)}
                     className="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-2.5 py-1.5 text-xs font-semibold text-slate-800 outline-none transition focus:bg-white focus:border-[var(--color-maroon)]"
-                    value={selectedSalesPersonId || user?.id || ""}
-                    onChange={(e) => setSelectedSalesPersonId(e.target.value)}
-                  >
-                    {user ? (
-                      <option value={user.id}>
-                        {user.fullName}
-                      </option>
-                    ) : null}
-                    {serviceStaffList
-                      .filter((staff) => staff.id !== user?.id)
-                      .map((staff) => (
-                        <option key={staff.id} value={staff.id}>
-                          {staff.fullName}
-                        </option>
-                      ))}
-                  </select>
+                  />
                 </label>
               </div>
 
@@ -1580,18 +2152,17 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
                           </button>
                         ) : null}
                       </div>
-                      <select
-                        className="w-full rounded-lg border border-violet-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-800 outline-none focus:border-violet-500 transition"
+                      <ServiceCatalogLookup
+                        catalog={serviceCatalog}
                         value={selectedServiceCatalogId}
-                        onChange={(e) => handleSelectServiceCatalog(e.target.value)}
-                      >
-                        <option value="">-- Select from Saved Service Catalog or type below --</option>
-                        {serviceCatalog.map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.name} — ₱{Number(s.basePrice || 0).toLocaleString("en-PH", { minimumFractionDigits: 2 })} {s.deviceType ? `(${s.deviceType})` : ""}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(catalogId) => handleSelectServiceCatalog(catalogId)}
+                        onClear={() => {
+                          setSelectedServiceCatalogId("")
+                          setServiceDescription("")
+                          setServiceUnitPrice("")
+                          setServiceMarkup("")
+                        }}
+                      />
                     </div>
                   ) : null}
 
@@ -1667,66 +2238,124 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
             </section>
           </div>
 
-          {/* Right Column: Quotation Cart & Settlement Actions */}
-          <div className="space-y-4">
-            <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs space-y-3">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+          {/* Right Column: Quotation Cart (Roomy, Wide) */}
+          <div className="lg:col-span-7 min-w-0 flex flex-col h-full">
+            <section className="rounded-2xl border border-slate-200 bg-white shadow-2xs overflow-hidden flex flex-col h-full">
+              {/* Cart Header */}
+              <div className="flex items-center justify-between border-b border-slate-100 p-2.5">
                 <div className="flex items-center gap-2">
                   <span className="grid size-7 place-items-center rounded-lg bg-rose-50 text-[var(--color-maroon)]">
                     <FileText size={15} />
                   </span>
                   <div>
                     <h2 className="text-xs font-black uppercase tracking-wider text-slate-800">
-                      Quotation Cart ({cart.length})
+                      Current Cart ({cart.length} {cart.length === 1 ? "Line" : "Lines"})
                     </h2>
                   </div>
                 </div>
 
-                <label className="inline-flex items-center gap-1.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={isPcBuild}
-                    onChange={(e) => setIsPcBuild(e.target.checked)}
-                    className="size-3.5 rounded text-[var(--color-maroon)] focus:ring-0"
-                  />
-                  <span className="text-[11px] font-bold text-slate-700">📦 Bundle Item</span>
-                </label>
+                <div className="flex items-center gap-3">
+                  <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isPcBuild}
+                      onChange={(e) => setIsPcBuild(e.target.checked)}
+                      className="size-3.5 rounded text-[var(--color-maroon)] focus:ring-0"
+                    />
+                    <span className="text-[11px] font-bold text-slate-700">PC Build</span>
+                  </label>
+
+                  {cart.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => setCart([])}
+                      className="text-[11px] font-bold text-slate-400 hover:text-red-600 transition underline cursor-pointer"
+                      title="Clear cart"
+                    >
+                      Clear
+                    </button>
+                  ) : null}
+                </div>
               </div>
 
+              {/* PC Build Requirements Check */}
               {isPcBuild ? (
-                <div className="mx-4 mt-2 rounded-xl border border-rose-200 bg-rose-50/60 p-2.5 space-y-1.5 shadow-2xs">
+                <div className="mx-3 mt-2 rounded-xl border border-rose-200 bg-rose-50/60 p-2 space-y-1.5 shadow-2xs">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[10px] font-black uppercase tracking-wider text-slate-700 flex items-center gap-1">
-                      📦 Bundle / Package Configuration
+                      🖥️ System Unit Requirements
                     </span>
                     {systemUnitCompleteness?.isComplete ? (
                       <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 border border-emerald-300 px-2 py-0.5 text-[9px] font-black text-emerald-800">
-                        <CheckCircle2 size={11} /> Ready ({cart.filter((l) => l.type !== "SERVICE").length} item lines)
+                        <CheckCircle2 size={11} /> Complete ({systemUnitCompleteness?.corePartsCount || 0}/6 parts)
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 rounded-full bg-rose-100 border border-rose-300 px-2 py-0.5 text-[9px] font-black text-rose-800">
-                        <CircleAlert size={11} /> Add bundle items
+                        <AlertCircle size={11} /> Incomplete ({systemUnitCompleteness?.corePartsCount || 0}/3 required)
                       </span>
                     )}
                   </div>
 
-                  <p className="text-[9px] text-slate-600">
-                    💡 All products in this quotation will be grouped and tracked together as a Bundle / Package.
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1">
+                    {CORE_SYSTEM_UNIT_PARTS.map((part) => {
+                      const isPresent = Boolean(
+                        systemUnitCompleteness?.hasPackage ||
+                        systemUnitCompleteness?.foundComponents[part.key]?.length > 0
+                      )
+                      const matchedCount = systemUnitCompleteness?.foundComponents[part.key]?.length || 0
+                      const matchedItem = systemUnitCompleteness?.foundComponents[part.key]?.[0]
+                      const titleText = matchedItem
+                        ? `${part.name}: ${matchedItem.item?.itemName || matchedItem.description || "In cart"}`
+                        : `Required: ${part.name} (Missing)`
+
+                      return (
+                        <div
+                          key={part.key}
+                          className={`flex items-center justify-between rounded-md border px-2 py-1 text-[10px] font-semibold transition ${
+                            isPresent
+                              ? "border-emerald-200 bg-emerald-50/80 text-emerald-900"
+                              : systemUnitCompleteness?.isComplete
+                              ? "border-slate-200 bg-slate-50/50 text-slate-500"
+                              : "border-rose-200 bg-white text-rose-700"
+                          }`}
+                          title={titleText}
+                        >
+                          <span className="truncate">{part.shortName}</span>
+                          {isPresent ? (
+                            <span className="flex items-center gap-0.5 shrink-0 text-emerald-600 font-bold ml-1 text-[9px]">
+                              {matchedCount > 1 ? `x${matchedCount}` : ""}
+                              <Check size={11} />
+                            </span>
+                          ) : (
+                            <span className={`shrink-0 text-[8px] font-black uppercase ml-1 ${
+                              systemUnitCompleteness?.isComplete ? "text-slate-400" : "text-rose-600"
+                            }`}>
+                              {systemUnitCompleteness?.isComplete ? "Opt" : "Need"}
+                            </span>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+
+                  <p className="text-[9px] text-slate-500 italic">
+                    💡 Peripherals (Monitor, Keyboard, Mouse) are optional. Requires at least 3 of the 6 core system unit parts (CPU, Mobo, RAM, Storage, PSU, Case).
                   </p>
                 </div>
               ) : null}
 
               {/* Cart Line Items */}
               {cart.length === 0 ? (
-                <div className="py-8 text-center text-slate-400 text-xs">
-                  <p className="font-bold text-slate-600">Quotation cart is empty</p>
-                  <p className="mt-0.5 text-[11px]">Search products or add service line on the left.</p>
+                <div className="flex-1 min-h-[300px] lg:min-h-0 grid place-content-center p-6 text-center text-slate-400">
+                  <ShoppingCart className="mx-auto text-slate-300" size={36} />
+                  <p className="mt-2 text-sm font-bold text-slate-600">Cart is empty</p>
+                  <p className="mt-0.5 text-xs text-slate-400">Search product or add service line on the left.</p>
                 </div>
               ) : (
-                <div className="max-h-[300px] space-y-2 overflow-y-auto pr-1 text-xs">
+                <div className="flex-1 min-h-[300px] lg:min-h-0 space-y-2 overflow-y-auto p-2.5 text-xs">
                   {cart.map((line, index) => (
                     <article
-                      className="rounded-xl border border-slate-200 bg-slate-50/50 p-2.5 space-y-2 shadow-2xs"
+                      className="rounded-xl border border-slate-200/90 bg-slate-50/50 p-2.5 space-y-2 shadow-2xs"
                       key={line.localId}
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -1737,7 +2366,7 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
                             </span>
                             {isPcBuild && line.type === "PRODUCT" ? (
                               <span className="rounded bg-rose-50 border border-rose-200 px-1.5 py-0.2 text-[9px] font-black text-[var(--color-maroon)]">
-                                Bundle Item
+                                PC Part
                               </span>
                             ) : null}
                           </div>
@@ -1753,9 +2382,10 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
                           ) : null}
                         </div>
                         <button
-                          className="rounded-lg p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 transition shrink-0"
+                          className="rounded-lg p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 transition shrink-0 cursor-pointer"
                           onClick={() => removeCartLine(line.localId)}
                           type="button"
+                          title="Remove item"
                         >
                           <Trash2 size={14} />
                         </button>
@@ -1763,11 +2393,11 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
 
                       {/* Product Line Controls */}
                       {line.type === "PRODUCT" ? (
-                        <div className="grid gap-1.5 grid-cols-4 pt-1 border-t border-slate-200/60">
+                        <div className="grid gap-2 grid-cols-4 pt-1.5 border-t border-slate-200/60">
                           <label className="block">
                             <span className="text-[10px] font-bold uppercase text-slate-500 block">Tier</span>
                             <select
-                              className="mt-0.5 w-full rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-xs font-semibold outline-none"
+                              className="mt-0.5 w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-semibold outline-none focus:border-[var(--color-maroon)]"
                               onChange={(e) => updateCartLine(line.localId, { priceTier: Number(e.target.value) })}
                               value={line.priceTier}
                             >
@@ -1780,20 +2410,9 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
                           </label>
 
                           <label className="block">
-                            <span className="text-[10px] font-bold uppercase text-slate-500 block">Qty</span>
-                            <input
-                              className="mt-0.5 w-full rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-xs font-bold outline-none"
-                              min="1"
-                              onChange={(e) => updateCartLine(line.localId, { quantity: e.target.value })}
-                              type="number"
-                              value={line.quantity}
-                            />
-                          </label>
-
-                          <label className="block">
                             <span className="text-[10px] font-bold uppercase text-slate-500 block">Markup %</span>
                             <input
-                              className="mt-0.5 w-full rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-xs outline-none"
+                              className="mt-0.5 w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs outline-none focus:border-[var(--color-maroon)]"
                               max="99.99"
                               min="0"
                               onChange={(e) => updateCartLine(line.localId, { markupPercent: e.target.value })}
@@ -1805,9 +2424,20 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
                           </label>
 
                           <label className="block">
+                            <span className="text-[10px] font-bold uppercase text-slate-500 block">Qty</span>
+                            <input
+                              className="mt-0.5 w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-bold outline-none focus:border-[var(--color-maroon)]"
+                              min="1"
+                              onChange={(e) => updateCartLine(line.localId, { quantity: e.target.value })}
+                              type="number"
+                              value={line.quantity}
+                            />
+                          </label>
+
+                          <label className="block">
                             <span className="text-[10px] font-bold uppercase text-slate-500 block">Discount</span>
                             <input
-                              className="mt-0.5 w-full rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-xs font-mono outline-none"
+                              className="mt-0.5 w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-mono outline-none focus:border-[var(--color-maroon)]"
                               min="0"
                               onChange={(e) => updateCartLine(line.localId, { discountAmount: e.target.value })}
                               step="0.01"
@@ -1817,11 +2447,11 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
                           </label>
                         </div>
                       ) : (
-                        <div className="grid gap-1.5 grid-cols-4 pt-1 border-t border-slate-200/60">
+                        <div className="grid gap-2 grid-cols-4 pt-1.5 border-t border-slate-200/60">
                           <label className="block">
                             <span className="text-[10px] font-bold uppercase text-slate-500 block">Qty</span>
                             <input
-                              className="mt-0.5 w-full rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-xs"
+                              className="mt-0.5 w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-bold outline-none focus:border-[var(--color-maroon)]"
                               min="1"
                               onChange={(e) => updateCartLine(line.localId, { quantity: e.target.value })}
                               type="number"
@@ -1829,21 +2459,10 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
                             />
                           </label>
                           <label className="block">
-                            <span className="text-[10px] font-bold uppercase text-slate-500 block">Base (₱)</span>
+                            <span className="text-[10px] font-bold uppercase text-slate-500 block">Base Price (₱)</span>
                             <input
-                              className={`mt-0.5 w-full rounded-lg border px-1.5 py-1 text-xs font-mono ${
-                                !canChangePrice && line.type !== "SERVICE"
-                                  ? "border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed"
-                                  : "border-slate-200 bg-white"
-                              }`}
+                              className="mt-0.5 w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-mono outline-none focus:border-[var(--color-maroon)]"
                               min="0"
-                              readOnly={!canChangePrice && line.type !== "SERVICE"}
-                              title={!canChangePrice && line.type !== "SERVICE" ? "Account restricted: Only owner or admin accounts can change price." : ""}
-                              onClick={() => {
-                                if (!canChangePrice && line.type !== "SERVICE") {
-                                  setBuilderMessage("Account restricted: Only owner or admin accounts can change item prices.")
-                                }
-                              }}
                               onChange={(e) => updateCartLine(line.localId, { baseUnitPrice: e.target.value })}
                               step="0.01"
                               type="number"
@@ -1853,20 +2472,9 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
                           <label className="block">
                             <span className="text-[10px] font-bold uppercase text-slate-500 block">Markup %</span>
                             <input
-                              className={`mt-0.5 w-full rounded-lg border px-1.5 py-1 text-xs ${
-                                !canChangePrice && line.type !== "SERVICE"
-                                  ? "border-slate-200 bg-slate-100 text-slate-500 cursor-not-allowed"
-                                  : "border-slate-200 bg-white"
-                              }`}
+                              className="mt-0.5 w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs outline-none focus:border-[var(--color-maroon)]"
                               max="99.99"
                               min="0"
-                              readOnly={!canChangePrice && line.type !== "SERVICE"}
-                              title={!canChangePrice && line.type !== "SERVICE" ? "Account restricted: Only owner or admin accounts can set markup." : ""}
-                              onClick={() => {
-                                if (!canChangePrice && line.type !== "SERVICE") {
-                                  setBuilderMessage("Account restricted: Only owner or admin accounts can change item markup.")
-                                }
-                              }}
                               onChange={(e) => updateCartLine(line.localId, { markupPercent: e.target.value })}
                               placeholder="0"
                               step="0.01"
@@ -1877,7 +2485,7 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
                           <label className="block">
                             <span className="text-[10px] font-bold uppercase text-slate-500 block">Discount</span>
                             <input
-                              className="mt-0.5 w-full rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-xs font-mono"
+                              className="mt-0.5 w-full rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-mono outline-none focus:border-[var(--color-maroon)]"
                               min="0"
                               onChange={(e) => updateCartLine(line.localId, { discountAmount: e.target.value })}
                               step="0.01"
@@ -1892,7 +2500,7 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
                         <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700">
                           <ShieldCheck size={12} /> {line.warrantyDuration || "1 YEAR WARRANTY"}
                         </span>
-                        <span className="font-mono font-black text-slate-900">
+                        <span className="font-mono font-black text-slate-900 text-xs">
                           ₱{money(getLineTotal(line, pricingTerm))}
                         </span>
                       </div>
@@ -1900,9 +2508,16 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
                   ))}
                 </div>
               )}
+            </section>
+          </div>
+        </div>
 
-              {/* Quotation Remarks */}
-              <label className="block pt-1 border-t border-slate-100">
+        {/* Surcharges, Totals, & Actions (Bottom Section) */}
+        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs text-xs space-y-3 mt-4">
+          <div className="grid gap-4 lg:grid-cols-12 items-start">
+            {/* Left Column (5 cols): Remarks, Pricing Terms, Financing Option, Totals Breakdown */}
+            <div className="lg:col-span-5 min-w-0 space-y-3">
+              <label className="block">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">Quotation Remarks / Notes</span>
                 <input
                   className="mt-0.5 w-full rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 text-xs outline-none focus:border-[var(--color-maroon)]"
@@ -1926,7 +2541,7 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
                   <button
                     type="button"
                     onClick={() => setPricingTerm("CASH")}
-                    className={`rounded-xl py-2 px-1 text-center transition ${
+                    className={`rounded-xl py-2 px-1 text-center transition cursor-pointer ${
                       pricingTerm === "CASH"
                         ? "bg-[var(--color-maroon)] text-white shadow-2xs font-bold"
                         : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 font-medium"
@@ -1938,7 +2553,7 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
                   <button
                     type="button"
                     onClick={() => setPricingTerm("SRP")}
-                    className={`rounded-xl py-2 px-1 text-center transition ${
+                    className={`rounded-xl py-2 px-1 text-center transition cursor-pointer ${
                       pricingTerm === "SRP"
                         ? "bg-blue-700 text-white shadow-2xs font-bold"
                         : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 font-medium"
@@ -1950,7 +2565,7 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
                   <button
                     type="button"
                     onClick={() => setPricingTerm("REGULAR")}
-                    className={`rounded-xl py-2 px-1 text-center transition ${
+                    className={`rounded-xl py-2 px-1 text-center transition cursor-pointer ${
                       pricingTerm === "REGULAR"
                         ? "bg-indigo-700 text-white shadow-2xs font-bold"
                         : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 font-medium"
@@ -2014,8 +2629,8 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
                 ) : null}
               </div>
 
-              {/* Totals Summary */}
-              <div className="rounded-xl border border-slate-200 bg-white p-2.5 space-y-1 text-xs">
+              {/* Totals Summary Breakdown */}
+              <div className="rounded-xl border border-slate-200 bg-white p-2.5 space-y-1 text-xs shadow-2xs">
                 <div className="flex justify-between text-slate-600">
                   <span>Products Gross</span>
                   <span className="font-mono">₱{money(totals.productGross)}</span>
@@ -2037,6 +2652,22 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
                   <span className="font-mono text-base font-black text-slate-900">₱{money(totals.grandTotal)}</span>
                 </div>
               </div>
+            </div>
+
+            {/* Right Column (7 cols): Messages & Action Buttons */}
+            <div className="lg:col-span-7 min-w-0 space-y-3">
+              {cart.length > 0 && !selectedCustomerId && !customerSearch.trim() ? (
+                <div className="flex items-center justify-between gap-2 rounded-xl border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-900">
+                  <span>⚠️ Customer name is required to create a quotation.</span>
+                  <button
+                    type="button"
+                    onClick={() => customerInputRef.current?.focus()}
+                    className="font-bold text-[var(--color-maroon)] underline shrink-0 cursor-pointer"
+                  >
+                    Enter Name ↑
+                  </button>
+                </div>
+              ) : null}
 
               {builderMessage ? (
                 <div className="rounded-xl border border-rose-200 bg-rose-50 p-2 text-xs font-bold text-rose-800 flex items-center gap-1.5">
@@ -2045,10 +2676,10 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
                 </div>
               ) : null}
 
-              {/* Builder Action Buttons */}
+              {/* Action Buttons Toolbar: Preview, Save & Print Quote */}
               <div className="grid grid-cols-2 gap-2 pt-1">
                 <button
-                  className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-xs font-bold text-slate-800 shadow-2xs transition hover:bg-slate-50 disabled:opacity-50"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-xs font-bold text-slate-800 shadow-2xs transition hover:bg-slate-50 disabled:opacity-50 cursor-pointer"
                   disabled={cart.length === 0}
                   onClick={handlePreviewQuotation}
                   type="button"
@@ -2058,7 +2689,7 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
                 </button>
 
                 <button
-                  className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[var(--color-maroon)] px-3 py-2.5 text-xs font-black text-white shadow-soft transition hover:bg-[var(--color-maroon-hover)] disabled:opacity-50"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[var(--color-maroon)] px-3 py-2.5 text-xs font-black text-white shadow-soft transition hover:bg-[var(--color-maroon-hover)] disabled:opacity-50 cursor-pointer"
                   disabled={cart.length === 0 || isCreatingQuotation}
                   onClick={handleSaveQuotation}
                   type="button"
@@ -2066,20 +2697,21 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
                   {isCreatingQuotation ? (
                     <>
                       <LoaderCircle className="animate-spin" size={15} />
-                      Saving…
+                      {editingQuotation ? "Updating Quote…" : "Saving Quote…"}
                     </>
                   ) : (
                     <>
                       <FileText size={15} />
-                      Save & Print Quote
+                      {editingQuotation ? "Update & Print Quote" : "Save & Print Quote"}
                     </>
                   )}
                 </button>
               </div>
-            </section>
+            </div>
           </div>
-        </div>
-      ) : null}
+        </section>
+      </div>
+    ) : null}
 
       {/* VIEW MODE: HISTORY TABLE */}
       {viewMode === "HISTORY" ? (
@@ -2254,6 +2886,19 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
                                   </button>
                                 ) : null}
 
+                                {quotation.status !== "CANCELLED" && quotation.status !== "CONVERTED" ? (
+                                  <button
+                                    className="inline-flex items-center gap-1 rounded-xl border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-800 shadow-sm transition hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300 cursor-pointer"
+                                    disabled={isLoadingDetails}
+                                    onClick={() => handleEditQuotation(quotation)}
+                                    title="Edit this saved quotation in the builder"
+                                    type="button"
+                                  >
+                                    <Edit3 size={13} />
+                                    <span>Edit</span>
+                                  </button>
+                                ) : null}
+
                                 <button
                                   className="inline-flex items-center gap-1 rounded-xl border border-[var(--color-border)] bg-[var(--color-card)] px-3 py-1.5 text-xs font-bold text-[var(--color-text-strong)] shadow-sm transition hover:bg-[var(--color-soft)]"
                                   disabled={isLoadingDetails}
@@ -2338,6 +2983,17 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
                                 Convert
                               </button>
                             ) : null}
+                            {quotation.status !== "CANCELLED" && quotation.status !== "CONVERTED" ? (
+                              <button
+                                className="rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs font-bold text-amber-800 shadow-2xs hover:bg-amber-100 cursor-pointer"
+                                disabled={isLoadingDetails}
+                                onClick={() => handleEditQuotation(quotation)}
+                                title="Edit quotation"
+                                type="button"
+                              >
+                                Edit
+                              </button>
+                            ) : null}
                             <button
                               className="rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] px-3 py-1.5 text-xs font-bold text-[var(--color-text-strong)] shadow-2xs hover:bg-[var(--color-soft)]"
                               disabled={isLoadingDetails}
@@ -2378,6 +3034,7 @@ export default function QuotationsPage({ selectedBranch, user, onNavigate }) {
         <QuotationDetailDialog
           onClose={() => setIsPrintPreviewOpen(false)}
           onConvertToSale={handleOpenConvert}
+          onEditQuotation={handleEditQuotation}
           quotation={selectedQuotation}
         />
       ) : null}

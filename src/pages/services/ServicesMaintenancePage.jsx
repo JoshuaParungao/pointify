@@ -37,22 +37,22 @@ const OWNER_ROLES = new Set([
 ])
 
 const DEVICE_TYPE_PRESETS = [
-  "GENERAL EQUIPMENT",
-  "APPLIANCE / DEVICE",
-  "ELECTRONIC UNIT",
-  "MECHANICAL / TOOL",
-  "MEDICAL / OFFICE EQUIPMENT",
-  "COMMERCIAL UNIT",
+  "DESKTOP",
+  "LAPTOP",
+  "GPU",
+  "PRINTER",
+  "PC COMPONENT",
   "OTHER",
 ]
 
 const PART_CATEGORY_PRESETS = [
-  "REPLACEMENT PART",
+  "SCREEN",
+  "BATTERY",
+  "KEYBOARD",
+  "FAN",
+  "IC CHIP",
+  "PORT",
   "CONSUMABLE",
-  "ACCESSORY",
-  "ELECTRICAL / POWER",
-  "MODULE / ASSEMBLY",
-  "FASTENER / SEAL",
   "OTHER",
 ]
 
@@ -62,7 +62,7 @@ function normalizeCategoryName(cat) {
 
 const EMPTY_SERVICE_FORM = {
   name: "",
-  deviceType: "GENERAL EQUIPMENT",
+  deviceType: "DESKTOP",
   repairType: "ORDINARY_REPAIR",
   basePrice: "0",
   markupPercent: "0",
@@ -73,8 +73,8 @@ const EMPTY_SERVICE_FORM = {
 
 const EMPTY_PART_FORM = {
   name: "",
-  deviceType: "GENERAL EQUIPMENT",
-  category: "REPLACEMENT PART",
+  deviceType: "LAPTOP",
+  category: "SCREEN",
   repairType: "ORDINARY_REPAIR",
   costPrice: "0",
   markupAmount: "0",
@@ -252,9 +252,9 @@ function ServiceEditorModal({
             <span className={labelClass}>Service Name *</span>
             <input
               className={inputClass}
-              maxLength="120"
+              maxLength="180"
               onChange={(event) => onChange("name", event.target.value)}
-              placeholder="e.g. Preventive Maintenance & Calibration"
+              placeholder="e.g. Laptop Deep Cleaning & Thermal Repaste"
               required
               value={form.name}
             />
@@ -303,9 +303,9 @@ function ServiceEditorModal({
               >
                 <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-900">
                   <Wrench size={13} className="text-[var(--color-maroon)]" />
-                  <span>Standard Service</span>
+                  <span>Standard Repair</span>
                 </div>
-                <p className="text-[11px] text-slate-500 mt-0.5">Routine maintenance, cleaning, standard setup</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">Cleaning, OS installation, storage/RAM</p>
               </button>
 
               <button
@@ -319,9 +319,9 @@ function ServiceEditorModal({
               >
                 <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-900">
                   <Sparkles size={13} className="text-[var(--color-maroon)]" />
-                  <span>Complex / Specialized</span>
+                  <span>Board Level</span>
                 </div>
-                <p className="text-[11px] text-slate-500 mt-0.5">Internal overhaul, precision repair, calibration</p>
+                <p className="text-[11px] text-slate-500 mt-0.5">Micro-soldering, tracing, IC chips</p>
               </button>
             </div>
           </div>
@@ -496,6 +496,7 @@ function PartDetailModal({ item, onClose }) {
 
 function ManagePartCategoriesModal({
   categories = [],
+  onAddCategory,
   onClose,
   onDeleteCategory,
   onRenameCategory,
@@ -504,6 +505,7 @@ function ManagePartCategoriesModal({
   const [editingCat, setEditingCat] = useState(null)
   const [renameValue, setRenameValue] = useState("")
   const [searchTerm, setSearchTerm] = useState("")
+  const [newCategoryInput, setNewCategoryInput] = useState("")
   const [isProcessing, setIsProcessing] = useState(false)
   const [statusMessage, setStatusMessage] = useState("")
 
@@ -548,6 +550,21 @@ function ManagePartCategoriesModal({
       setStatusMessage("Failed to rename category.")
     } finally {
       setIsProcessing(false)
+    }
+  }
+
+  const handleAddCategory = (e) => {
+    if (e) e.preventDefault()
+    const clean = normalizeCategoryName(newCategoryInput)
+    if (!clean) return
+    if (categories.some((c) => normalizeCategoryName(c) === clean)) {
+      setStatusMessage(`Category "${clean}" already exists.`)
+      return
+    }
+    if (onAddCategory) {
+      onAddCategory(clean)
+      setNewCategoryInput("")
+      setStatusMessage(`Category "${clean}" added.`)
     }
   }
 
@@ -600,6 +617,30 @@ function ManagePartCategoriesModal({
             </button>
           </div>
         ) : null}
+
+        <form
+          className="p-3 border-b border-slate-100 bg-slate-50/60 flex items-center gap-2"
+          onSubmit={handleAddCategory}
+        >
+          <input
+            className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-mono uppercase font-bold text-slate-900 outline-none focus:border-[var(--color-maroon)] focus:ring-1 focus:ring-[var(--color-maroon)] placeholder:text-slate-400 placeholder:font-normal placeholder:capitalize"
+            onChange={(e) => {
+              setNewCategoryInput(e.target.value)
+              setStatusMessage("")
+            }}
+            placeholder="New category name (e.g. MOTHERBOARD, GPU)..."
+            type="text"
+            value={newCategoryInput}
+          />
+          <button
+            className="inline-flex items-center gap-1 rounded-xl bg-[var(--color-maroon)] px-3 py-1.5 text-xs font-bold text-white shadow-2xs hover:bg-[var(--color-maroon-hover)] transition cursor-pointer disabled:opacity-50"
+            disabled={!newCategoryInput.trim() || isProcessing}
+            type="submit"
+          >
+            <Plus size={13} />
+            Add
+          </button>
+        </form>
 
         <div className="p-3 border-b border-slate-100">
           <div className="relative">
@@ -794,7 +835,7 @@ function PartEditorModal({
               className={inputClass}
               maxLength="150"
               onChange={(event) => onChange("name", event.target.value)}
-              placeholder="e.g. Standard Replacement Part / Consumable Material"
+              placeholder="e.g. Laptop 15.6 FHD 144Hz IPS Screen (30-Pin EDP)"
               required
               value={form.name}
             />
@@ -1024,7 +1065,7 @@ export default function ServicesMaintenancePage({ user }) {
   const [partsErrorMessage, setPartsErrorMessage] = useState("")
   const [customPartCategories, setCustomPartCategories] = useState(() => {
     try {
-      const raw = localStorage.getItem("arunafeltz_custom_part_categories")
+      const raw = localStorage.getItem("posynctify_custom_part_categories")
       return raw ? JSON.parse(raw) : []
     } catch {
       return []
@@ -1032,7 +1073,7 @@ export default function ServicesMaintenancePage({ user }) {
   })
   const [deletedCategories, setDeletedCategories] = useState(() => {
     try {
-      const raw = localStorage.getItem("arunafeltz_deleted_part_categories")
+      const raw = localStorage.getItem("posynctify_deleted_part_categories")
       return raw ? JSON.parse(raw) : []
     } catch {
       return []
@@ -1050,7 +1091,7 @@ export default function ServicesMaintenancePage({ user }) {
       if (!prev.includes(normalized) && !prev.includes(altNorm)) return prev
       const updated = prev.filter((c) => c !== normalized && c !== altNorm)
       try {
-        localStorage.setItem("arunafeltz_deleted_part_categories", JSON.stringify(updated))
+        localStorage.setItem("posynctify_deleted_part_categories", JSON.stringify(updated))
       } catch {
         // ignore
       }
@@ -1064,7 +1105,7 @@ export default function ServicesMaintenancePage({ user }) {
       }
       const updated = [...prev, normalized]
       try {
-        localStorage.setItem("arunafeltz_custom_part_categories", JSON.stringify(updated))
+        localStorage.setItem("posynctify_custom_part_categories", JSON.stringify(updated))
       } catch {
         // ignore
       }
@@ -1202,7 +1243,7 @@ export default function ServicesMaintenancePage({ user }) {
         set.delete(altNew)
         const updated = Array.from(set)
         try {
-          localStorage.setItem("arunafeltz_deleted_part_categories", JSON.stringify(updated))
+          localStorage.setItem("posynctify_deleted_part_categories", JSON.stringify(updated))
         } catch {
           // ignore
         }
@@ -1216,7 +1257,7 @@ export default function ServicesMaintenancePage({ user }) {
         )
         const updated = Array.from(new Set([...filtered, normalizedNew]))
         try {
-          localStorage.setItem("arunafeltz_custom_part_categories", JSON.stringify(updated))
+          localStorage.setItem("posynctify_custom_part_categories", JSON.stringify(updated))
         } catch {
           // ignore
         }
@@ -1273,7 +1314,7 @@ export default function ServicesMaintenancePage({ user }) {
       setDeletedCategories((prev) => {
         const updated = Array.from(new Set([...prev, normalized, alt, altSpace]))
         try {
-          localStorage.setItem("arunafeltz_deleted_part_categories", JSON.stringify(updated))
+          localStorage.setItem("posynctify_deleted_part_categories", JSON.stringify(updated))
         } catch {
           // ignore
         }
@@ -1287,7 +1328,7 @@ export default function ServicesMaintenancePage({ user }) {
           return cNorm !== normalized && cNorm !== alt && cNorm !== altSpace
         })
         try {
-          localStorage.setItem("arunafeltz_custom_part_categories", JSON.stringify(updated))
+          localStorage.setItem("posynctify_custom_part_categories", JSON.stringify(updated))
         } catch {
           // ignore
         }
@@ -1344,7 +1385,7 @@ export default function ServicesMaintenancePage({ user }) {
     setServiceEditorError("")
     setServiceForm({
       name: item.name || "",
-      deviceType: item.deviceType || "GENERAL EQUIPMENT",
+      deviceType: item.deviceType || "LAPTOP",
       repairType: item.repairType || "ORDINARY_REPAIR",
       basePrice: item.basePrice != null ? String(item.basePrice) : "0",
       markupPercent: item.markupPercent != null ? String(item.markupPercent) : "0",
@@ -1437,24 +1478,6 @@ export default function ServicesMaintenancePage({ user }) {
     }
   }
 
-  const handleClearAllServices = async () => {
-    if (catalogItems.length === 0) return
-    if (!window.confirm(`Delete all ${catalogItems.length} service rate(s)?`)) {
-      return
-    }
-
-    setIsLoading(true)
-    try {
-      for (const item of catalogItems) {
-        await deleteServiceCatalogItem(item.id).catch(() => null)
-      }
-      await fetchCatalog()
-    } catch (error) {
-      setErrorMessage(error?.response?.data?.message || "Failed to clear service rates.")
-      setIsLoading(false)
-    }
-  }
-
   // Parts Catalog actions
   const openNewPart = () => {
     setEditingPartItem(null)
@@ -1467,8 +1490,8 @@ export default function ServicesMaintenancePage({ user }) {
     setPartEditorError("")
     setPartForm({
       name: item.name || "",
-      deviceType: item.deviceType || "GENERAL EQUIPMENT",
-      category: item.category || "REPLACEMENT PART",
+      deviceType: item.deviceType || "LAPTOP",
+      category: item.category || "SCREEN",
       repairType: item.repairType || "ORDINARY_REPAIR",
       costPrice: item.costPrice != null ? String(item.costPrice) : "0",
       markupAmount: item.markupAmount != null ? String(item.markupAmount) : "0",
@@ -1519,7 +1542,7 @@ export default function ServicesMaintenancePage({ user }) {
 
     const payload = {
       name: partForm.name.trim(),
-      deviceType: partForm.deviceType?.trim() || "GENERAL EQUIPMENT",
+      deviceType: partForm.deviceType?.trim() || "LAPTOP",
       category: categoryClean,
       repairType: partForm.repairType === "BOARD_LEVEL_REPAIR" ? "BOARD_LEVEL_REPAIR" : "ORDINARY_REPAIR",
       costPrice: costNum,
@@ -1561,24 +1584,6 @@ export default function ServicesMaintenancePage({ user }) {
       setPartsErrorMessage(error?.response?.data?.message || "Failed to delete service part.")
     } finally {
       setDeletingPartId(null)
-    }
-  }
-
-  const handleClearAllParts = async () => {
-    if (partsCatalogItems.length === 0) return
-    if (!window.confirm(`Delete all ${partsCatalogItems.length} service part(s)?`)) {
-      return
-    }
-
-    setIsPartsLoading(true)
-    try {
-      for (const item of partsCatalogItems) {
-        await deleteServicePartsCatalogItem(item.id).catch(() => null)
-      }
-      await fetchPartsCatalog()
-    } catch (error) {
-      setPartsErrorMessage(error?.response?.data?.message || "Failed to clear service parts.")
-      setIsPartsLoading(false)
     }
   }
 
@@ -1686,49 +1691,23 @@ export default function ServicesMaintenancePage({ user }) {
 
           {canManageCatalog ? (
             activeTab === "LABOR" ? (
-              <>
-                {catalogItems.length > 0 ? (
-                  <button
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 transition shadow-2xs cursor-pointer"
-                    disabled={isLoading}
-                    onClick={handleClearAllServices}
-                    type="button"
-                  >
-                    <Trash2 size={13} />
-                    Clear All Rates
-                  </button>
-                ) : null}
-                <button
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--color-maroon)] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[var(--color-maroon-hover)] transition shadow-2xs cursor-pointer"
-                  onClick={openNewService}
-                  type="button"
-                >
-                  <Plus size={14} />
-                  New Service Rate
-                </button>
-              </>
+              <button
+                className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--color-maroon)] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[var(--color-maroon-hover)] transition shadow-2xs cursor-pointer"
+                onClick={openNewService}
+                type="button"
+              >
+                <Plus size={14} />
+                New Service Rate
+              </button>
             ) : (
-              <>
-                {partsCatalogItems.length > 0 ? (
-                  <button
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100 transition shadow-2xs cursor-pointer"
-                    disabled={isPartsLoading}
-                    onClick={handleClearAllParts}
-                    type="button"
-                  >
-                    <Trash2 size={13} />
-                    Clear All Parts
-                  </button>
-                ) : null}
-                <button
-                  className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--color-maroon)] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[var(--color-maroon-hover)] transition shadow-2xs cursor-pointer"
-                  onClick={openNewPart}
-                  type="button"
-                >
-                  <Plus size={14} />
-                  New Service Part
-                </button>
-              </>
+              <button
+                className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--color-maroon)] px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-[var(--color-maroon-hover)] transition shadow-2xs cursor-pointer"
+                onClick={openNewPart}
+                type="button"
+              >
+                <Plus size={14} />
+                New Service Part
+              </button>
             )
           ) : null}
         </div>
@@ -2205,7 +2184,7 @@ export default function ServicesMaintenancePage({ user }) {
                     setPartsSearchText(event.target.value)
                     setPartsPage(1)
                   }}
-                  placeholder="Search replacement part, consumable, or material..."
+                  placeholder="Search replacement part (e.g. LCD Screen, IC chip, battery, fan)..."
                   value={partsSearchText}
                 />
                 {partsSearchText ? (
@@ -2387,7 +2366,7 @@ export default function ServicesMaintenancePage({ user }) {
                   No matching service parts found
                 </p>
                 <p className="mt-0.5 text-[11px] text-slate-400">
-                  Add replacement parts, consumables, or materials to your catalog.
+                  Add replacement screens, chips, or materials to your catalog.
                 </p>
               </div>
             ) : (
@@ -2648,6 +2627,7 @@ export default function ServicesMaintenancePage({ user }) {
       {isCategoryManagerOpen ? (
         <ManagePartCategoriesModal
           categories={availablePartCategories}
+          onAddCategory={handleAddCustomCategory}
           onClose={() => setIsCategoryManagerOpen(false)}
           onDeleteCategory={handleDeleteCategory}
           onRenameCategory={handleRenameCategory}

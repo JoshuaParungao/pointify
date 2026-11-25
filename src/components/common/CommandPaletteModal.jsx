@@ -3,7 +3,6 @@ import { createPortal } from "react-dom"
 import {
   ArrowRight,
   Barcode,
-  CheckCircle2,
   FileText,
   HelpCircle,
   Layers,
@@ -11,12 +10,10 @@ import {
   Package,
   Receipt,
   Search,
-  Tag,
   User,
   X,
 } from "lucide-react"
 import { searchOmni } from "../../features/omnisearch/omnisearch.api"
-import { APP_MODULES } from "../../constants/appModules"
 
 function formatMoney(value) {
   const amount = Number(value || 0)
@@ -36,6 +33,15 @@ function formatDate(value) {
     year: "numeric",
   })
 }
+
+const FILE_MAINTENANCE_QUICK_NAV_KEYS = [
+  "items",
+  "categories",
+  "services-maintenance",
+  "customers",
+  "suppliers",
+  "employees",
+]
 
 export default function CommandPaletteModal({
   isOpen,
@@ -75,16 +81,19 @@ export default function CommandPaletteModal({
     }
   }, [isOpen])
 
-  // Filter modules based on query for navigation shortcuts
+  // Filter modules based on query for navigation shortcuts (Selected File Maintenance modules only)
   const matchingModules = useMemo(() => {
+    const fileMaintenanceModules = allowedModules.filter(
+      (m) => FILE_MAINTENANCE_QUICK_NAV_KEYS.includes(m.key)
+    )
     const trimmed = query.trim().toLowerCase()
-    if (!trimmed) return allowedModules.slice(0, 5)
-    return allowedModules.filter(
+    if (!trimmed) return fileMaintenanceModules
+    return fileMaintenanceModules.filter(
       (m) =>
         m.label.toLowerCase().includes(trimmed) ||
         m.key.toLowerCase().includes(trimmed) ||
         (m.group && m.group.toLowerCase().includes(trimmed))
-    ).slice(0, 4)
+    )
   }, [query, allowedModules])
 
   // Debounced search
@@ -385,9 +394,20 @@ export default function CommandPaletteModal({
                             {s.status}
                           </span>
                         </div>
-                        <p className={`mt-0.5 text-xs truncate ${isSelected ? "text-blue-100" : "text-slate-600"}`}>
-                          {s.itemName} ({s.itemCode})
-                        </p>
+                        <div className={`mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs truncate ${isSelected ? "text-blue-100" : "text-slate-600"}`}>
+                          <span className="truncate">{s.itemName} ({s.itemCode})</span>
+                          {s.supplierName ? (
+                            <span
+                              className={`inline-flex items-center gap-1 rounded px-1.5 py-0.2 text-[10px] font-bold ${
+                                isSelected
+                                  ? "bg-white/20 text-blue-100"
+                                  : "bg-slate-100 text-slate-700 border border-slate-200"
+                              }`}
+                            >
+                              Supplier: {s.supplierName}
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
 
                       <div className="text-right shrink-0 text-xs">
@@ -399,13 +419,27 @@ export default function CommandPaletteModal({
                             </p>
                           </>
                         ) : isAvailable ? (
-                          <span className={`font-semibold ${isSelected ? "text-emerald-300" : "text-emerald-600"}`}>
-                            Ready to sell
-                          </span>
+                          <>
+                            <span className={`font-semibold ${isSelected ? "text-emerald-300" : "text-emerald-600"}`}>
+                              Ready to sell
+                            </span>
+                            {s.supplierName ? (
+                              <p className={`text-[10px] font-semibold ${isSelected ? "text-blue-200" : "text-slate-500"}`}>
+                                {s.supplierName}
+                              </p>
+                            ) : null}
+                          </>
                         ) : (
-                          <span className={isSelected ? "text-slate-300" : "text-slate-500"}>
-                            {s.remarks || s.status}
-                          </span>
+                          <>
+                            <span className={isSelected ? "text-slate-300" : "text-slate-500"}>
+                              {s.remarks || s.status}
+                            </span>
+                            {s.supplierName ? (
+                              <p className={`text-[10px] ${isSelected ? "text-blue-200" : "text-slate-400"}`}>
+                                {s.supplierName}
+                              </p>
+                            ) : null}
+                          </>
                         )}
                       </div>
                     </button>
@@ -497,7 +531,8 @@ export default function CommandPaletteModal({
                           <span className="font-bold font-mono text-sm">Quotation #{quoteNum}</span>
                           {q.isPcBuild && (
                             <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] font-bold text-white">
-                              Bundle Item</span>
+                              PC Build
+                            </span>
                           )}
                           <span className={`text-xs px-2 py-0.5 rounded font-bold ${isSelected ? "bg-white/20 text-white" : "bg-slate-100 text-slate-700"}`}>
                             {q.status}
@@ -594,7 +629,7 @@ export default function CommandPaletteModal({
             <span><kbd className="rounded border bg-white px-1.5 py-0.5 font-mono text-[10px] shadow-xs">esc</kbd> to close</span>
           </div>
           <div className="font-semibold text-slate-600">
-            Pointify Omnisearch
+            POSynctify Omnisearch
           </div>
         </div>
       </div>

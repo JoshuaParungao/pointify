@@ -1,4 +1,3 @@
-import { getReceiptBusinessName } from "../../utils/businessProfile"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   AlertCircle,
@@ -14,6 +13,7 @@ import {
   exportStatementOfAccountPdf,
   printBusinessHtml,
 } from "../../utils/businessDocumentExport"
+import { getBranchAddress, getBranchContact } from "../../constants/branchDefaults"
 
 function formatMoney(value) {
   if (value === null || value === undefined || value === 0) return ""
@@ -245,7 +245,7 @@ export default function CustomerStatementOfAccountModal({
 
     exportReportExcel({
       title: `STATEMENT OF ACCOUNT — ${custName.toUpperCase()}`,
-      branchName: selectedBranch?.name || user?.branch?.name || "Pointify Main Branch",
+      branchName: selectedBranch?.name || user?.branch?.name || "POSynctify Parts",
       generatedBy: user?.fullName || user?.username || "Accounting",
       filenamePrefix: `statement_of_account_${cleanName}`,
       headers,
@@ -258,12 +258,10 @@ export default function CustomerStatementOfAccountModal({
     })
   }
 
-  const shopName = getReceiptBusinessName(selectedBranch)
-  const shopAddressLine1 =
-    selectedBranch?.address ||
-    "Kingspire Business Centre, Km.71, Mac Arthur Highway,"
-  const shopAddressLine2 = "San Isidro, City of San Fernando, Pampanga"
-  const shopContact = selectedBranch?.contactNo || "0997-732-7689/ 045-404-0673"
+  const shopName = "POSYNCTIFY STORE & SERVICES"
+  const shopAddressLine1 = getBranchAddress(selectedBranch)
+  const shopAddressLine2 = ""
+  const shopContact = getBranchContact(selectedBranch)
 
   const customerDisplayName = customerInfo?.fullName || "CUSTOMER"
   const customerDisplayAddress = customerInfo?.address || customerInfo?.companyName || "—"
@@ -485,7 +483,7 @@ export default function CustomerStatementOfAccountModal({
                   Pls. disregard if payment has been made and send proof payment. Thank you very much.
                 </p>
                 <div className="pt-6">
-                  <p className="font-bold">Pointify Accounting</p>
+                  <p className="font-bold">POSynctify Accounting</p>
                 </div>
               </div>
             </>

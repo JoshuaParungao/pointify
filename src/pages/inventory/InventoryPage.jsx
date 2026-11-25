@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { AlertCircle, BarChart3, Boxes, CheckCircle2, PackageSearch, Plus, RefreshCw, Search, Sliders, X } from "lucide-react"
 import { useCallback } from "react"
 
@@ -19,7 +19,10 @@ import {
 } from "../../features/inventory/inventory.api"
 
 import { exportInventoryPdf, exportReportExcel } from "../../utils/businessDocumentExport"
-import { formatSpecs } from "../../utils/attributeFilter"
+import {
+  formatMainCategoryName,
+  formatSubcategoryName,
+} from "../../utils/attributeFilter"
 import ExportExcelButton from "../../components/common/ExportExcelButton"
 
 function formatNumber(value) {
@@ -65,9 +68,6 @@ function InventoryMobileCard({ item, canAdjust, onView, onAdjust }) {
           <p className="mt-1 text-xs font-bold text-[var(--color-muted)]">
             {item.itemCode}
           </p>
-          <p className="mt-1 text-xs text-[var(--color-muted)]">
-            {[item.brand, item.modelName].filter(Boolean).join(" • ") || "No brand/model"}
-          </p>
         </div>
 
         <StockBadge item={item} />
@@ -105,7 +105,8 @@ function InventoryMobileCard({ item, canAdjust, onView, onAdjust }) {
 
       <div className="mt-4 text-xs font-semibold leading-6 text-[var(--color-muted)]">
         <p>Branch: {item.branch?.code || item.branch?.name || "No branch"}</p>
-        <p>Category: {item.category?.name || "No category"}</p>
+        <p>Category: {formatMainCategoryName(item.category)}</p>
+        <p>Subcategory: {formatSubcategoryName(item.category)}</p>
         <p>Unit: {item.unit?.name || "No unit"}</p>
         <p>Tracking: {item.isSerialized ? "Serialized" : "Non-serialized"}</p>
       </div>
@@ -120,7 +121,7 @@ function InventoryMobileCard({ item, canAdjust, onView, onAdjust }) {
         </button>
         {canAdjust ? (
           <button
-            className="rounded-2xl border border-[var(--color-maroon)] px-4 py-2 text-xs font-black text-[var(--color-maroon)]"
+            className="rounded-2xl border border-[#7A1F2B] px-4 py-2 text-xs font-black text-[#7A1F2B]"
             onClick={() => onAdjust(item)}
             type="button"
           >
@@ -139,7 +140,6 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
   const [searchText, setSearchText] = useState(initialContext?.search || "")
   const [mainCatFilter, setMainCatFilter] = useState("")
   const [subCatFilter, setSubCatFilter] = useState("")
-  const [brandFilter, setBrandFilter] = useState("")
   const [statusFilter, setStatusFilter] = useState("")
   const [lowStockOnly, setLowStockOnly] = useState("")
   const [categoryOptions, setCategoryOptions] = useState([])
@@ -166,6 +166,9 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
   const [adjustBatchId, setAdjustBatchId] = useState("")
   const [adjustType, setAdjustType] = useState("INCREASE")
   const [adjustQuantity, setAdjustQuantity] = useState("1")
+  const [adjustTransactionDate, setAdjustTransactionDate] = useState(() =>
+    new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
+  )
   const [adjustReferenceNo, setAdjustReferenceNo] = useState("")
   const [adjustRemarks, setAdjustRemarks] = useState("")
   const [adjustSerialNumbersText, setAdjustSerialNumbersText] = useState("")
@@ -185,7 +188,25 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
   const canOpenStockRequest = Boolean(selectedBranch?.id && requestSourceOptions.length > 0)
   const canAdjustStock = ["SUPER_OWNER", "BRANCH_OWNER", "ADMIN", "CASHIER", "TECHNICIAN"].includes(user?.role)
   const canViewInventoryCosts = ["SUPER_OWNER", "BRANCH_OWNER", "ADMIN"].includes(user?.role)
-  const filteredBulkItems = requestCatalogItems
+  const filteredBulkItems = useMemo(() => {
+    const inStockItems = requestCatalogItems.filter(
+      (item) => Number(item.quantityAvailable || 0) > 0
+    )
+    const tokens = bulkSearchText.trim().toLowerCase().split(/\s+/).filter(Boolean)
+    if (tokens.length === 0) return inStockItems
+    return inStockItems.filter((item) => {
+      const haystack = [
+        item.itemCode,
+        item.itemName,
+        item.category?.name,
+        item.category?.parent?.name,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+      return tokens.every((token) => haystack.includes(token))
+    })
+  }, [requestCatalogItems, bulkSearchText])
 
   const [isLoading, setIsLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState("")
@@ -193,6 +214,9 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
   const [requestQuantity, setRequestQuantity] = useState("1")
   const [requestFulfillmentMethod, setRequestFulfillmentMethod] = useState("PICKUP")
   const [requestDeliveryCharge, setRequestDeliveryCharge] = useState("0")
+  const [requestTransferDate, setRequestTransferDate] = useState(() =>
+    new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" })
+  )
   const [requestNotes, setRequestNotes] = useState("")
   const [requestTransferType, setRequestTransferType] = useState("STANDARD") // "STANDARD" | "BORROW"
   const [bulkRequestTransferType, setBulkRequestTransferType] = useState("STANDARD") // "STANDARD" | "BORROW"
@@ -217,7 +241,7 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
   const loadCategories = useCallback(async () => {
     try {
       const response = await getItemCategories({
-        limit: 250,
+        limit: 500,
         ...(viewingBranchId ? { branchId: viewingBranchId } : {}),
       })
       const list = response?.data?.items
@@ -269,10 +293,6 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
         params.categoryId = effectiveCategoryId
       }
 
-      if (brandFilter.trim()) {
-        params.brand = brandFilter.trim()
-      }
-
       const response = await getInventoryOverview(params)
       const result = response?.data || {}
 
@@ -285,7 +305,7 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
     } finally {
       setIsLoading(false)
     }
-  }, [effectiveCategoryId, brandFilter, lowStockOnly, page, pageSize, searchText, statusFilter, viewingBranchId])
+  }, [effectiveCategoryId, lowStockOnly, page, pageSize, searchText, statusFilter, viewingBranchId])
 
   const loadRequestCatalog = useCallback(async () => {
     if (!isBulkRequestOpen || !requestSourceBranchId) {
@@ -299,7 +319,7 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
       const response = await getRequestableStock({
         fromBranchId: requestSourceBranchId,
         search: bulkSearchText.trim() || undefined,
-        limit: 100,
+        limit: 500,
       })
       const result = response?.data || {}
       setRequestCatalogItems(Array.isArray(result.data) ? result.data : [])
@@ -317,7 +337,6 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
     setSearchText("")
     setMainCatFilter("")
     setSubCatFilter("")
-    setBrandFilter("")
     setStatusFilter("")
     setLowStockOnly("")
     setPage(1)
@@ -346,8 +365,6 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
           id: item.id,
           itemCode: item.itemCode,
           itemName: item.itemName,
-          brand: item.brand,
-          modelName: item.modelName,
           availableQuantity,
           quantity: "1",
         },
@@ -380,6 +397,7 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
     setRequestQuantity("1")
     setRequestFulfillmentMethod("PICKUP")
     setRequestDeliveryCharge("0")
+    setRequestTransferDate(new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }))
     setRequestNotes("")
     setRequestTransferType("STANDARD")
   }
@@ -422,6 +440,7 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
     setAdjustBatchId("")
     setAdjustType("INCREASE")
     setAdjustQuantity("1")
+    setAdjustTransactionDate(new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }))
     setAdjustReferenceNo("")
     setAdjustRemarks("")
     setAdjustBatches([])
@@ -475,6 +494,7 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
     setAdjustBatchId("")
     setAdjustType("INCREASE")
     setAdjustQuantity("1")
+    setAdjustTransactionDate(new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Manila" }))
     setAdjustReferenceNo("")
     setAdjustRemarks("")
     setAdjustSerialNumbersText("")
@@ -543,6 +563,7 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
         itemId: adjustItem.id,
         type: adjustType,
         quantity,
+        transactionDate: adjustTransactionDate || undefined,
         referenceNo: adjustReferenceNo.trim() || undefined,
         remarks: adjustRemarks.trim(),
         serialNumbers: adjustItem.isSerialized ? parsedSerials : undefined,
@@ -590,10 +611,6 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
         params.categoryId = effectiveCategoryId
       }
 
-      if (brandFilter.trim()) {
-        params.brand = brandFilter.trim()
-      }
-
       const exportItems = []
       let exportPage = 1
       let totalPages = 1
@@ -625,9 +642,10 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
         ["Search", searchText.trim() || "All inventory items"],
         [
           "Category",
-          categoryOptions.find((c) => c.id === effectiveCategoryId)?.name || "All categories",
+          formatSubcategoryName(categoryOptions.find((c) => c.id === effectiveCategoryId)) !== "—"
+            ? formatSubcategoryName(categoryOptions.find((c) => c.id === effectiveCategoryId))
+            : "All categories",
         ],
-        ["Brand", brandFilter.trim() || "All brands"],
         ["Status", statusFilter || "All statuses"],
         ["Low stock only", lowStockOnly === "true" ? "Yes" : "No"],
       ]
@@ -664,9 +682,6 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
       if (effectiveCategoryId) {
         params.categoryId = effectiveCategoryId
       }
-      if (brandFilter.trim()) {
-        params.brand = brandFilter.trim()
-      }
 
       const exportItems = []
       let exportPage = 1
@@ -689,11 +704,9 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
       const exportColumns = [
         ["Item Code", (row) => row.itemCode || "—"],
         ["Item Name", (row) => row.itemName || "—"],
-        ["Brand", (row) => row.brand || "—"],
-        ["Model", (row) => row.modelName || "—"],
-        ["Category", (row) => row.category?.name || row.categoryName || "—"],
-        ["Unit", (row) => row.unit?.name || row.unitName || "—"],
-        ["Specifications", (row) => formatSpecs(row.attributes)],
+        ["Category", (row) => formatMainCategoryName(row.category, row.categoryName || "—")],
+        ["Subcategory", (row) => formatSubcategoryName(row.category)],
+        ["Unit", (row) => row.unit?.name || row.unitName || (typeof row.unit === "string" ? row.unit : "—")],
         ["Serialized", (row) => (row.isSerialized ? "Yes" : "No")],
         ["Total Stock", (row) => Number(row.totalQuantity || 0)],
         ["Available Stock", (row) => Number(row.quantityAvailable || 0)],
@@ -715,7 +728,6 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
           "Category",
           categoryOptions.find((c) => c.id === effectiveCategoryId)?.name || "All categories",
         ],
-        ["Brand", brandFilter.trim() || "All brands"],
         ["Status", statusFilter || "All statuses"],
         ["Low stock only", lowStockOnly === "true" ? "Yes" : "No"],
       ]
@@ -791,6 +803,7 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
       await createStockTransferRequest({
         fromBranchId: requestSourceBranchId,
         toBranchId: selectedBranch?.id,
+        transferDate: requestTransferDate || undefined,
         fulfillmentMethod: requestFulfillmentMethod,
         ...(requestFulfillmentMethod === "DELIVERY"
           ? { deliveryCharge }
@@ -871,6 +884,7 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
       await createStockTransferRequest({
         fromBranchId: requestSourceBranchId || viewingBranchId,
         toBranchId: selectedBranch?.id,
+        transferDate: requestTransferDate || undefined,
         fulfillmentMethod: requestFulfillmentMethod,
         ...(requestFulfillmentMethod === "DELIVERY"
           ? { deliveryCharge }
@@ -978,7 +992,7 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
             </h1>
             <p className="mt-0.5 text-xs text-slate-500 max-w-2xl">
               {inventoryViewMode === "REPORTS"
-                ? "Comprehensive stock valuation, capital vs retail pricing, serialized product tracking, and movements audit."
+                ? "Comprehensive stock valuation, capital vs retail pricing, serial hardware tracking, and movements audit."
                 : "Monitor available stock, batches, serial count, and low-stock items in real time."}
             </p>
           </div>
@@ -987,7 +1001,7 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
             <div className="flex flex-wrap items-center gap-2">
               {canAdjustStock ? (
                 <button
-                  className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[var(--color-maroon)] px-3.5 text-xs font-bold text-white shadow-2xs hover:bg-[var(--color-maroon-hover)] transition cursor-pointer"
+                  className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[var(--color-maroon)] px-3.5 text-xs font-bold text-white shadow-2xs hover:bg-[#6b0810] transition cursor-pointer"
                   onClick={() => setIsAddStockOpen(true)}
                   type="button"
                 >
@@ -1037,7 +1051,7 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
             <div className="flex items-center gap-2">
               {canAdjustStock ? (
                 <button
-                  className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[var(--color-maroon)] px-3.5 text-xs font-bold text-white shadow-2xs hover:bg-[var(--color-maroon-hover)] transition cursor-pointer"
+                  className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-[var(--color-maroon)] px-3.5 text-xs font-bold text-white shadow-2xs hover:bg-[#6b0810] transition cursor-pointer"
                   onClick={() => setIsAddStockOpen(true)}
                   type="button"
                 >
@@ -1082,6 +1096,10 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
           canViewCost={canViewInventoryCosts}
           onAdjust={() => setAdjustMode("ADJUST")}
           onClose={closeAdjustModal}
+          onBatchUpdated={() => {
+            openAdjustModal(adjustItem, "VIEW")
+            loadInventory()
+          }}
         />
       ) : null}
 
@@ -1093,6 +1111,7 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
           batchId={adjustBatchId}
           type={adjustType}
           quantity={adjustQuantity}
+          transactionDate={adjustTransactionDate}
           referenceNo={adjustReferenceNo}
           remarks={adjustRemarks}
           serialNumbersText={adjustSerialNumbersText}
@@ -1100,6 +1119,7 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
           onBatchChange={setAdjustBatchId}
           onTypeChange={setAdjustType}
           onQuantityChange={setAdjustQuantity}
+          onTransactionDateChange={setAdjustTransactionDate}
           onReferenceNoChange={setAdjustReferenceNo}
           onRemarksChange={setAdjustRemarks}
           onSerialNumbersChange={setAdjustSerialNumbersText}
@@ -1139,7 +1159,7 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
                 setSearchText(event.target.value)
                 setPage(1)
               }}
-              placeholder="Search item code, item name, brand, or model..."
+              placeholder="Search item code or item name..."
               value={searchText}
             />
           </div>
@@ -1203,7 +1223,9 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
               </option>
               {subcategoryOptions.map((sub) => (
                 <option key={sub.id} value={sub.id}>
-                  {sub.name}
+                  {mainCatFilter
+                    ? formatSubcategoryName(sub)
+                    : `${formatSubcategoryName(sub)}${sub.parent?.name ? ` (${sub.parent.name})` : ""}`}
                 </option>
               ))}
             </select>
@@ -1267,7 +1289,7 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
         </div>
 
         {/* Active Filter Chips */}
-        {mainCatFilter || subCatFilter || brandFilter || statusFilter || lowStockOnly ? (
+        {mainCatFilter || subCatFilter || statusFilter || lowStockOnly ? (
           <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-100">
             <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mr-1">
               Active Filters:
@@ -1282,16 +1304,8 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
             ) : null}
             {subCatFilter ? (
               <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
-                Sub: {categoryOptions.find((c) => c.id === subCatFilter)?.name || "Subcategory"}
+                Sub: {formatSubcategoryName(categoryOptions.find((c) => c.id === subCatFilter)) || "Subcategory"}
                 <button onClick={() => { setSubCatFilter(""); setPage(1) }} className="hover:text-red-600">
-                  <X size={12} />
-                </button>
-              </span>
-            ) : null}
-            {brandFilter ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 border border-indigo-200 px-2.5 py-1 text-xs font-semibold text-indigo-800">
-                Brand: {brandFilter}
-                <button onClick={() => { setBrandFilter(""); setPage(1) }} className="hover:text-red-600">
                   <X size={12} />
                 </button>
               </span>
@@ -1364,10 +1378,11 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
                           {item.itemCode}
                         </p>
                         <p className="mt-1 text-xs text-[var(--color-muted)]">
-                          {[item.brand, item.modelName].filter(Boolean).join(" • ") || "No brand/model"}
-                        </p>
-                        <p className="mt-1 text-xs text-[var(--color-muted)]">
-                          {item.category?.name || "No category"} • {item.unit?.name || "No unit"}
+                          {formatMainCategoryName(item.category)}
+                          {formatSubcategoryName(item.category) !== formatMainCategoryName(item.category)
+                            ? ` › ${formatSubcategoryName(item.category)}`
+                            : ""}{" "}
+                          • {item.unit?.name || "No unit"}
                         </p>
                       </td>
 
@@ -1399,7 +1414,7 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
                         <div className="flex flex-wrap gap-2">
                           <button className="rounded-2xl border border-[var(--color-border)] px-4 py-2 text-xs font-black" onClick={() => openAdjustModal(item, "VIEW")} type="button">View details</button>
                           {canAdjustStock && (user?.role === "SUPER_OWNER" || item.branch?.id === selectedBranch?.id) ? (
-                            <button className="rounded-2xl border border-[var(--color-maroon)] px-4 py-2 text-xs font-black text-[var(--color-maroon)]" onClick={() => openAdjustModal(item, "ADJUST")} type="button">Adjust stock</button>
+                            <button className="rounded-2xl border border-[#7A1F2B] px-4 py-2 text-xs font-black text-[#7A1F2B]" onClick={() => openAdjustModal(item, "ADJUST")} type="button">Adjust stock</button>
                           ) : null}
                         </div>
                       </td>
@@ -1458,7 +1473,7 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
             </header>
 
             {/* Scrollable Body */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-3.5">
+            <div className="flex-1 overflow-y-auto overflow-x-hidden p-5 space-y-3.5">
               <div className="grid gap-2.5 sm:grid-cols-2">
                 <label className="block">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 block">Source Branch</span>
@@ -1489,7 +1504,20 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
                 </div>
               </div>
 
-              <div className="grid gap-2.5 sm:grid-cols-2">
+              <div className="grid gap-2.5 sm:grid-cols-3">
+                <label className="block">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 block">
+                    Request Date
+                  </span>
+                  <input
+                    className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-[var(--color-maroon)]"
+                    disabled={isRequesting}
+                    onChange={(event) => setRequestTransferDate(event.target.value)}
+                    type="date"
+                    value={requestTransferDate}
+                  />
+                </label>
+
                 <label className="block">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 block">
                     Fulfillment Method
@@ -1565,19 +1593,19 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
                     }`}
                   >
                     <p className="font-bold">Stock Borrow</p>
-                    <p className="text-[10px] text-purple-700 font-normal mt-0.5">Zero-settlement; return or purchase outright</p>
+                    <p className="text-[10px] text-purple-700 font-normal mt-0.5">Zero-settlement; return or settle later</p>
                   </button>
                 </div>
                 {bulkRequestTransferType === "BORROW" ? (
                   <p className="text-[11px] text-purple-800 bg-purple-50 border border-purple-200 rounded-xl p-2 font-medium">
-                    Notice: Inter-branch stock borrow does not charge internal transfer settlement. Monitored under Borrow Monitoring in Stock Transfers (return or purchase outright).
+                    Notice: Inter-branch stock borrow does not charge internal transfer settlement. Monitored under Borrow Monitoring in Stock Transfers (eligible for stock return or later settlement).
                   </p>
                 ) : null}
               </div>
 
-              <div className="grid gap-3 lg:grid-cols-[1.1fr_0.9fr] items-start pt-1">
+              <div className="grid gap-3 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] items-start pt-1">
                 {/* Available Stock List */}
-                <section className="rounded-xl border border-slate-200 bg-slate-50/50 p-3 space-y-2.5">
+                <section className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-50/50 p-3 space-y-2.5">
                   <div className="flex items-center justify-between">
                     <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">
                       Available Branch Stock
@@ -1595,7 +1623,7 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
                     <input
                       className="w-full rounded-xl border border-slate-200 bg-white py-1.5 pl-8 pr-3 text-xs text-slate-800 outline-none transition focus:border-[var(--color-maroon)]"
                       onChange={(event) => setBulkSearchText(event.target.value)}
-                      placeholder="Search code, name, brand…"
+                      placeholder="Search code or name…"
                       value={bulkSearchText}
                     />
                   </div>
@@ -1612,21 +1640,18 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
                           key={item.id}
                         >
                           <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between">
-                            <div className="min-w-0">
-                              <p className="font-bold text-xs text-slate-900 leading-snug truncate">
+                            <div className="min-w-0 flex-1">
+                              <p className="font-bold text-xs text-slate-900 leading-snug line-clamp-2 break-words">
                                 {item.itemName}
                               </p>
                               <div className="flex items-center gap-1.5 mt-0.5">
                                 <span className="font-mono text-[10px] font-bold text-slate-500">
                                   {item.itemCode}
                                 </span>
-                                <span className="text-[10px] text-slate-400">
-                                  {[item.brand, item.modelName].filter(Boolean).join(" • ")}
-                                </span>
                               </div>
                             </div>
 
-                            <div className="flex items-center justify-between sm:justify-end gap-2 pt-1.5 sm:pt-0 border-t sm:border-t-0 border-slate-100">
+                            <div className="shrink-0 flex items-center justify-between sm:justify-end gap-2 pt-1.5 sm:pt-0 border-t sm:border-t-0 border-slate-100">
                               <span className="text-[11px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md">
                                 Avail: {formatNumber(item.quantityAvailable)}
                               </span>
@@ -1651,7 +1676,7 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
                 </section>
 
                 {/* Selected Products Cart */}
-                <section className="rounded-xl border border-slate-200 bg-white p-3 space-y-2.5 shadow-2xs">
+                <section className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-white p-3 space-y-2.5 shadow-2xs">
                   <div className="flex items-center justify-between border-b border-slate-200 pb-2">
                     <div>
                       <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">
@@ -1680,8 +1705,8 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
                           key={item.id}
                         >
                           <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <p className="font-bold text-xs text-slate-900 truncate">
+                            <div className="min-w-0 flex-1">
+                              <p className="font-bold text-xs text-slate-900 leading-snug line-clamp-2 break-words">
                                 {item.itemName}
                               </p>
                               <p className="text-[10px] text-slate-400">
@@ -1826,29 +1851,44 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
                       }`}
                     >
                       <p className="font-bold">Stock Borrow</p>
-                      <p className="text-[10px] text-purple-700 font-normal mt-0.5">Zero-settlement; return or purchase outright</p>
+                      <p className="text-[10px] text-purple-700 font-normal mt-0.5">Zero-settlement; return or settle later</p>
                     </button>
                   </div>
                   {requestTransferType === "BORROW" ? (
                     <p className="text-[11px] text-purple-800 bg-purple-50 border border-purple-200 rounded-xl p-2 font-medium">
-                      Notice: Inter-branch stock borrow does not charge internal transfer settlement. Monitored under Borrow Monitoring in Stock Transfers (return or purchase outright).
+                      Notice: Inter-branch stock borrow does not charge internal transfer settlement. Monitored under Borrow Monitoring in Stock Transfers (eligible for stock return or later settlement).
                     </p>
                   ) : null}
                 </div>
 
-                <label className="block">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 block">
-                    Quantity
-                  </span>
-                  <input
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-900 outline-none transition focus:border-[var(--color-maroon)]"
-                    disabled={isRequesting}
-                    min="1"
-                    onChange={(event) => setRequestQuantity(event.target.value)}
-                    type="number"
-                    value={requestQuantity}
-                  />
-                </label>
+                <div className="grid gap-2.5 sm:grid-cols-2">
+                  <label className="block">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 block">
+                      Quantity
+                    </span>
+                    <input
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-900 outline-none transition focus:border-[var(--color-maroon)]"
+                      disabled={isRequesting}
+                      min="1"
+                      onChange={(event) => setRequestQuantity(event.target.value)}
+                      type="number"
+                      value={requestQuantity}
+                    />
+                  </label>
+
+                  <label className="block">
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 block">
+                      Request Date
+                    </span>
+                    <input
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 outline-none transition focus:border-[var(--color-maroon)]"
+                      disabled={isRequesting}
+                      onChange={(event) => setRequestTransferDate(event.target.value)}
+                      type="date"
+                      value={requestTransferDate}
+                    />
+                  </label>
+                </div>
 
                 <div className="grid gap-2.5 sm:grid-cols-2">
                   <label className="block">
@@ -1941,7 +1981,7 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
       {pagination ? (
         <section className="flex flex-col gap-3 rounded-3xl border border-[var(--color-border)] bg-[var(--color-card)] p-4 shadow-card sm:flex-row sm:items-center sm:justify-between">
           <div className="text-sm font-semibold text-[var(--color-muted)]">
-            Page {pagination.totalItems === 0 ? 0 : pagination.page} of {pagination.totalPages} • {pagination.totalItems} item(s)
+            Page {pagination.page} of {pagination.totalPages} • {pagination.totalItems} item(s)
           </div>
 
           <div className="flex gap-3">

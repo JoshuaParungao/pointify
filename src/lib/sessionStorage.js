@@ -1,10 +1,10 @@
-const ACCESS_TOKEN_KEY = "pointify_access_token"
+const ACCESS_TOKEN_KEY = "posynctify_access_token"
 const LEGACY_ACCESS_TOKEN_KEY = "arunafeltz_access_token"
-const USER_KEY = "pointify_user"
+const USER_KEY = "posynctify_user"
 const LEGACY_USER_KEY = "arunafeltz_user"
-const SELECTED_BRANCH_KEY = "pointify_selected_branch"
+const SELECTED_BRANCH_KEY = "posynctify_selected_branch"
 const LEGACY_SELECTED_BRANCH_KEY = "arunafeltz_selected_branch"
-const ACTIVE_PAGE_KEY_PREFIX = "pointify_active_page_"
+const ACTIVE_PAGE_KEY_PREFIX = "posynctify_active_page_"
 const LEGACY_ACTIVE_PAGE_KEY_PREFIX = "arunafeltz_active_page_"
 
 export function saveAccessToken(token) {
@@ -120,7 +120,7 @@ export function clearSelectedBranch() {
 export function saveActivePage(userId, pageKey) {
   if (!pageKey) return
   try {
-    const key = userId ? `${ACTIVE_PAGE_KEY_PREFIX}${userId}` : "pointify_active_page_default"
+    const key = userId ? `${ACTIVE_PAGE_KEY_PREFIX}${userId}` : "posynctify_active_page_default"
     localStorage.setItem(key, pageKey)
   } catch (err) {
     console.warn("Storage save page error:", err)
@@ -129,7 +129,7 @@ export function saveActivePage(userId, pageKey) {
 
 export function getActivePage(userId) {
   try {
-    const key = userId ? `${ACTIVE_PAGE_KEY_PREFIX}${userId}` : "pointify_active_page_default"
+    const key = userId ? `${ACTIVE_PAGE_KEY_PREFIX}${userId}` : "posynctify_active_page_default"
     const legacyKey = userId ? `${LEGACY_ACTIVE_PAGE_KEY_PREFIX}${userId}` : "arunafeltz_active_page_default"
     return localStorage.getItem(key) || localStorage.getItem(legacyKey) || null
   } catch {
@@ -139,7 +139,7 @@ export function getActivePage(userId) {
 
 export function removeActivePage(userId) {
   try {
-    const key = userId ? `${ACTIVE_PAGE_KEY_PREFIX}${userId}` : "pointify_active_page_default"
+    const key = userId ? `${ACTIVE_PAGE_KEY_PREFIX}${userId}` : "posynctify_active_page_default"
     const legacyKey = userId ? `${LEGACY_ACTIVE_PAGE_KEY_PREFIX}${userId}` : "arunafeltz_active_page_default"
     localStorage.removeItem(key)
     localStorage.removeItem(legacyKey)

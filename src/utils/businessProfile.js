@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 
-const STORAGE_KEY = "pointify_business_name"
-export const DEFAULT_BUSINESS_NAME = "POINTIFY BUSINESS MANAGEMENT"
+const STORAGE_KEY = "posynctify_business_name"
+export const DEFAULT_BUSINESS_NAME = "POSYNCTIFY BUSINESS MANAGEMENT"
 
 /**
  * Returns the currently active receipt business name.
@@ -45,7 +45,7 @@ export function setReceiptBusinessName(name) {
       localStorage.removeItem(STORAGE_KEY)
     }
     window.dispatchEvent(
-      new CustomEvent("pointify:business_name_changed", {
+      new CustomEvent("posynctify:business_name_changed", {
         detail: clean,
       })
     )
@@ -71,9 +71,9 @@ export function useReceiptBusinessName(branch = null, fallback = DEFAULT_BUSINES
       setBusinessName(newName || getReceiptBusinessName(branch, fallback))
     }
 
-    window.addEventListener("pointify:business_name_changed", handleNameChanged)
+    window.addEventListener("posynctify:business_name_changed", handleNameChanged)
     return () => {
-      window.removeEventListener("pointify:business_name_changed", handleNameChanged)
+      window.removeEventListener("posynctify:business_name_changed", handleNameChanged)
     }
   }, [branch, fallback])
 

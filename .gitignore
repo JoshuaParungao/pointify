@@ -27,7 +27,3 @@ dist-ssr
 *.sw?
 *.backup*
 inspection-*
-
-# Local agent & legacy assets (kept locally, ignored by remote repository)
-POINTIFY_CONTEXT.md
-public/arunafeltzlogo.png

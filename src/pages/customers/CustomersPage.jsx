@@ -336,8 +336,8 @@ function CustomerEditorModal({ activeBranch, customer, mode, onClose, onSaved })
               <input
                 autoFocus
                 className={inputClass}
-                maxLength={30}
-                onChange={(event) => updateField("fullName", event.target.value.slice(0, 30))}
+                maxLength={300}
+                onChange={(event) => updateField("fullName", event.target.value.slice(0, 300))}
                 placeholder="Customer full name"
                 required
                 value={form.fullName}
@@ -413,9 +413,9 @@ function CustomerEditorModal({ activeBranch, customer, mode, onClose, onSaved })
               <FormField label="Address">
                 <textarea
                   className={`${inputClass} min-h-[50px] h-[50px] resize-none`}
-                  maxLength={50}
-                  onChange={(event) => updateField("address", event.target.value.slice(0, 50))}
-                  placeholder="House No., Street Name, Barangay, City/Municipality, Province"
+                  maxLength={300}
+                  onChange={(event) => updateField("address", event.target.value.slice(0, 300))}
+                  placeholder="Customer address"
                   value={form.address}
                 />
               </FormField>

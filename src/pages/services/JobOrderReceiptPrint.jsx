@@ -1,5 +1,5 @@
 import { DEFAULT_SHOP_INFO, extractIntakeRecord } from "./serviceJobForms"
-import { getReceiptBusinessName } from "../../utils/businessProfile"
+import { getBranchAddress, getBranchContact } from "../../constants/branchDefaults"
 
 function formatDate(dateValue) {
   if (!dateValue) return ""
@@ -21,9 +21,9 @@ function PrintSquareBox({ checked = false }) {
 
 export default function JobOrderReceiptPrint({ isBlank = false, job = {} }) {
   const branch = job.branch || {}
-  const shopName = getReceiptBusinessName(branch, DEFAULT_SHOP_INFO.name)
-  const shopAddress = branch.address || DEFAULT_SHOP_INFO.address || "Kingspire Business Centre, Km.71, Mac Arthur Highway, San Isidro, City of San Fernando, Pampanga"
-  const shopContact = branch.contactNo || DEFAULT_SHOP_INFO.contactNo || "0961-873-5798/ 045-404-0673"
+  const shopName = branch.name || DEFAULT_SHOP_INFO.name || "POSYNCTIFY STORE & SERVICES"
+  const shopAddress = getBranchAddress(branch)
+  const shopContact = getBranchContact(branch)
 
   const intake = isBlank ? {} : extractIntakeRecord(job)
 
@@ -49,11 +49,11 @@ export default function JobOrderReceiptPrint({ isBlank = false, job = {} }) {
     return unitTypeFromIntake.includes(kw) || devDesc.includes(kw)
   }
 
-  const isLaptop = isUnit("general") || isUnit("equipment") || isUnit("laptop") || isUnit("notebook")
-  const isMotherboard = isUnit("electronic") || isUnit("digital") || isUnit("motherboard") || isUnit("mobo")
-  const isGpu = isUnit("appliance") || isUnit("graphics") || isUnit("gpu")
-  const isDesktop = isUnit("mechanical") || isUnit("tool") || isUnit("desktop") || isUnit("system unit")
-  const isPrinter = isUnit("medical") || isUnit("office") || isUnit("printer")
+  const isLaptop = isUnit("laptop") || isUnit("notebook")
+  const isMotherboard = isUnit("motherboard") || isUnit("mobo")
+  const isGpu = isUnit("graphics") || isUnit("gpu") || isUnit("video card") || isUnit("rx") || isUnit("rtx") || isUnit("gtx")
+  const isDesktop = isUnit("desktop") || isUnit("system unit") || isUnit("pc") || isUnit("tower")
+  const isPrinter = isUnit("printer")
   const isOtherUnit = !isBlank && !isLaptop && !isMotherboard && !isGpu && !isDesktop && !isPrinter && Boolean(brandModel)
   const otherUnitText = isOtherUnit ? brandModel : ""
 
@@ -162,23 +162,23 @@ export default function JobOrderReceiptPrint({ isBlank = false, job = {} }) {
         <div className="jo-official-checkbox-grid jo-grid-3-col">
           <label className="jo-official-check-item">
             <PrintSquareBox checked={isLaptop} />
-            <span>General Equipment / Unit</span>
+            <span>Laptop</span>
           </label>
           <label className="jo-official-check-item">
             <PrintSquareBox checked={isMotherboard} />
-            <span>Electronic / Digital Device</span>
+            <span>Motherboard</span>
           </label>
           <label className="jo-official-check-item">
             <PrintSquareBox checked={isGpu} />
-            <span>Appliance / Device</span>
+            <span>Graphics Card (GPU)</span>
           </label>
           <label className="jo-official-check-item">
             <PrintSquareBox checked={isDesktop} />
-            <span>Mechanical / Tool</span>
+            <span>Desktop / System Unit</span>
           </label>
           <label className="jo-official-check-item">
             <PrintSquareBox checked={isPrinter} />
-            <span>Medical / Office Equipment</span>
+            <span>Printer</span>
           </label>
           <label className="jo-official-check-item">
             <PrintSquareBox checked={isOtherUnit} />
@@ -275,7 +275,7 @@ export default function JobOrderReceiptPrint({ isBlank = false, job = {} }) {
         </div>
 
         <div className="jo-official-term-item">
-          <strong>Claiming, Storage &amp; Abandoned Units:</strong> Completed or unserviceable units must be claimed within <strong>7 calendar days</strong> after notification. Units left beyond 15 days will incur a <strong>₱50.00 storage fee per day</strong> until claimed. Units unclaimed after <strong>30 days</strong> may be considered abandoned and may be disposed by the store.
+          <strong>Claiming, Storage &amp; Abandoned Units:</strong> Completed or unserviceable units must be claimed within <strong>7 calendar days</strong> after notification. Units left beyond 15 days will incur a <strong>₱50.00 storage fee per day</strong> until claimed. Units unclaimed after <strong>30 days</strong> may be considered abandoned and may be disposed by POSynctify.
         </div>
 
         <div className="jo-official-term-item">
@@ -288,7 +288,7 @@ export default function JobOrderReceiptPrint({ isBlank = false, job = {} }) {
       <section className="jo-official-declaration-section">
         <h2 className="jo-official-declaration-title">CUSTOMER DECLARATION</h2>
         <p className="jo-official-declaration-text">
-          I have read, understood, and agree to the Terms &amp; Conditions stated above. I authorize {shopName} to perform the requested diagnostic, repair, maintenance, calibration, installation, or other related services on my unit.
+          I have read, understood, and agree to the Terms &amp; Conditions stated above. I authorize POSynctify Parts and Accessories Shop to perform the requested diagnostic, repair, maintenance, upgrade, software installation, or other related services on my unit.
         </p>
       </section>
 

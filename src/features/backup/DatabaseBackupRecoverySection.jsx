@@ -22,12 +22,17 @@ import {
   exportDatabaseBackup,
   getScheduledBackups,
   restoreDatabaseBackup,
+  runScheduledBackupNow,
 } from "./backup.api"
 import { resetTransactionalData } from "../settings/settings.api"
+import { verifyUserPassword } from "../auth/auth.api"
 
 export default function DatabaseBackupRecoverySection({ user }) {
   const [scheduledBackups, setScheduledBackups] = useState([])
   const [isLoadingScheduled, setIsLoadingScheduled] = useState(false)
+  const [isTriggering, setIsTriggering] = useState(false)
+  const [triggerMessage, setTriggerMessage] = useState("")
+  const [triggerError, setTriggerError] = useState("")
   const [isExporting, setIsExporting] = useState(false)
   const [exportMessage, setExportMessage] = useState("")
 
@@ -42,11 +47,15 @@ export default function DatabaseBackupRecoverySection({ user }) {
   const [restoreSummary, setRestoreSummary] = useState(null)
   const fileInputRef = useRef(null)
 
-  // Transaction Reset state
+  // Transaction Reset state (Main Admin Super Owner only)
   const [resetConfirmation, setResetConfirmation] = useState("")
   const [isResetting, setIsResetting] = useState(false)
   const [resetMessage, setResetMessage] = useState("")
   const [resetError, setResetError] = useState("")
+  const [isResetUnlocked, setIsResetUnlocked] = useState(false)
+  const [adminPassword, setAdminPassword] = useState("")
+  const [isVerifyingPassword, setIsVerifyingPassword] = useState(false)
+  const [passwordError, setPasswordError] = useState("")
 
   const allowedRoles = new Set(["SUPER_OWNER", "BRANCH_OWNER", "ADMIN"])
   const canAccess = user && allowedRoles.has(user.role)
@@ -64,6 +73,27 @@ export default function DatabaseBackupRecoverySection({ user }) {
       setScheduledBackups([])
     } finally {
       setIsLoadingScheduled(false)
+    }
+  }
+
+  const handleTriggerSnapshot = async () => {
+    setIsTriggering(true)
+    setTriggerMessage("")
+    setTriggerError("")
+    try {
+      const response = await runScheduledBackupNow()
+      setTriggerMessage("Backup snapshot captured and saved to server successfully!")
+      if (response?.data?.backups && Array.isArray(response.data.backups)) {
+        setScheduledBackups(response.data.backups)
+      } else {
+        loadScheduledList()
+      }
+    } catch (err) {
+      setTriggerError(
+        err?.response?.data?.message || err?.message || "Failed to trigger backup snapshot."
+      )
+    } finally {
+      setIsTriggering(false)
     }
   }
 
@@ -102,7 +132,7 @@ export default function DatabaseBackupRecoverySection({ user }) {
       const hh = String(manila.getHours()).padStart(2, "0")
       const min = String(manila.getMinutes()).padStart(2, "0")
       const ss = String(manila.getSeconds()).padStart(2, "0")
-      const filename = `pointify-backup-${yyyy}${mm}${dd}-${hh}${min}${ss}.json`
+      const filename = `posynctify-backup-${yyyy}${mm}${dd}-${hh}${min}${ss}.json`
 
       triggerBlobDownload(blob, filename)
       setExportMessage("Manual backup successfully generated and downloaded.")
@@ -146,7 +176,7 @@ export default function DatabaseBackupRecoverySection({ user }) {
       try {
         const json = JSON.parse(e.target.result)
         if (!json.data || typeof json.data !== "object") {
-          throw new Error("File is not a valid Pointify database backup format.")
+          throw new Error("File is not a valid POSynctify database backup format.")
         }
         setParsedBackup(json)
       } catch (err) {
@@ -216,14 +246,38 @@ export default function DatabaseBackupRecoverySection({ user }) {
     }
   }
 
+  const handleUnlockReset = async (e) => {
+    e.preventDefault()
+    if (!adminPassword) {
+      setPasswordError("Please enter your Main Admin password.")
+      return
+    }
+
+    setIsVerifyingPassword(true)
+    setPasswordError("")
+    try {
+      await verifyUserPassword({ password: adminPassword })
+      setIsResetUnlocked(true)
+      setPasswordError("")
+    } catch (err) {
+      setPasswordError(
+        err?.response?.data?.error?.message ||
+          err?.response?.data?.message ||
+          "Incorrect Main Admin password. Access denied."
+      )
+    } finally {
+      setIsVerifyingPassword(false)
+    }
+  }
+
   const handleResetTransactions = async (e) => {
     e.preventDefault()
-    if (resetConfirmation.trim().toUpperCase() !== "RESET TEST DATA") {
-      setResetError("Please type 'RESET TEST DATA' exactly to confirm.")
+    if (resetConfirmation.trim().toUpperCase() !== "RESET TRANSACTIONS") {
+      setResetError("Please type 'RESET TRANSACTIONS' exactly to confirm.")
       return
     }
     const confirmed = window.confirm(
-      "CRITICAL: Are you absolutely sure you want to reset all data? This will delete all Products, Categories, Units, Inventory, Customers, Suppliers, Job Orders, Sales, Quotations, Cash Transactions, and all staff/sub-accounts. Only Super Owner and Developer accounts and branch structures will be preserved."
+      "CRITICAL: Are you absolutely sure you want to reset all operational data? This will clear all transactions, products, customer records, and inventory history. Only Super Owner accounts, branch structures, and system configurations will be preserved."
     )
     if (!confirmed) return
 
@@ -231,11 +285,18 @@ export default function DatabaseBackupRecoverySection({ user }) {
     setResetError("")
     setResetMessage("")
     try {
-      const response = await resetTransactionalData()
-      setResetMessage(response?.message || "Operational transactions and test data reset successfully.")
+      const response = await resetTransactionalData({ password: adminPassword })
+      setResetMessage(response?.message || "Operational transactions reset successfully.")
       setResetConfirmation("")
+      setIsResetUnlocked(false)
+      setAdminPassword("")
     } catch (err) {
-      setResetError(err?.response?.data?.message || err?.message || "Failed to reset transactions.")
+      setResetError(
+        err?.response?.data?.error?.message ||
+          err?.response?.data?.message ||
+          err?.message ||
+          "Failed to reset transactions."
+      )
     } finally {
       setIsResetting(false)
     }
@@ -313,15 +374,49 @@ export default function DatabaseBackupRecoverySection({ user }) {
                 </p>
               </div>
             </div>
-            <button
-              className="rounded-xl border border-[var(--color-border)] p-2 text-[var(--color-muted)] transition hover:bg-[var(--color-soft)]"
-              onClick={loadScheduledList}
-              title="Refresh list"
-              type="button"
-            >
-              <RefreshCw className={isLoadingScheduled ? "animate-spin" : ""} size={16} />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleTriggerSnapshot}
+                disabled={isTriggering}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--color-maroon)] px-3 py-1.5 text-xs font-bold text-white shadow-soft transition hover:opacity-95 disabled:opacity-50 cursor-pointer"
+                title="Capture an immediate backup snapshot to the server archive"
+              >
+                {isTriggering ? (
+                  <>
+                    <LoaderCircle className="animate-spin" size={13} />
+                    <span>Capturing…</span>
+                  </>
+                ) : (
+                  <>
+                    <Database size={13} />
+                    <span>Capture Snapshot</span>
+                  </>
+                )}
+              </button>
+              <button
+                className="rounded-xl border border-[var(--color-border)] p-2 text-[var(--color-muted)] transition hover:bg-[var(--color-soft)] cursor-pointer"
+                onClick={loadScheduledList}
+                title="Refresh list"
+                type="button"
+              >
+                <RefreshCw className={isLoadingScheduled ? "animate-spin" : ""} size={16} />
+              </button>
+            </div>
           </div>
+
+          {triggerMessage ? (
+            <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800 flex items-center gap-1.5">
+              <CheckCircle2 size={14} className="shrink-0 text-emerald-600" />
+              <span>{triggerMessage}</span>
+            </div>
+          ) : null}
+          {triggerError ? (
+            <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 flex items-center gap-1.5">
+              <ShieldAlert size={14} className="shrink-0 text-rose-600" />
+              <span>{triggerError}</span>
+            </div>
+          ) : null}
 
           <div className="mt-4 flex-1">
             {isLoadingScheduled ? (
@@ -333,9 +428,27 @@ export default function DatabaseBackupRecoverySection({ user }) {
               <div className="grid place-items-center p-8 text-center text-sm text-[var(--color-muted)]">
                 <HardDriveDownload size={36} className="text-slate-300 mb-2" />
                 <p className="font-semibold text-slate-700">No scheduled backup files yet</p>
-                <p className="text-xs mt-1 text-slate-500">
-                  The automated scheduler will capture snapshots daily at 11:00 AM & 6:00 PM PHT.
+                <p className="text-xs mt-1 text-slate-500 max-w-sm">
+                  The automated scheduler captures snapshots daily at 11:00 AM & 6:00 PM PHT. You can also capture an instant snapshot right now.
                 </p>
+                <button
+                  type="button"
+                  onClick={handleTriggerSnapshot}
+                  disabled={isTriggering}
+                  className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[var(--color-maroon)] px-4 py-2 text-xs font-bold text-white shadow-soft transition hover:opacity-95 disabled:opacity-50 cursor-pointer"
+                >
+                  {isTriggering ? (
+                    <>
+                      <LoaderCircle className="animate-spin" size={14} />
+                      <span>Generating Snapshot…</span>
+                    </>
+                  ) : (
+                    <>
+                      <Database size={14} />
+                      <span>Capture Initial Snapshot Now</span>
+                    </>
+                  )}
+                </button>
               </div>
             ) : (
               <div className="max-h-[380px] space-y-2 overflow-y-auto pr-1">
@@ -492,103 +605,166 @@ export default function DatabaseBackupRecoverySection({ user }) {
         </Card>
       </div>
 
-      {/* Reset Operational & Test Data (Clear Transactions & Keep Accounts) */}
-      {(user?.role === "SUPER_OWNER" || user?.role === "ADMIN") && (
+      {/* Reset Operational Transactions (Main Admin Super Owner Only) */}
+      {user?.role === "SUPER_OWNER" && (
         <Card className="flex flex-col border-amber-200 bg-amber-50/20">
           <div className="flex items-center justify-between gap-3 border-b border-amber-200/60 pb-4">
             <div className="flex items-center gap-2.5">
               <ShieldAlert className="text-amber-700" size={20} />
               <div>
-                <h3 className="font-bold text-[var(--color-text-strong)]">Reset Operational & Test Data</h3>
+                <h3 className="font-bold text-[var(--color-text-strong)]">Reset Operational Transactions</h3>
                 <p className="text-xs text-[var(--color-muted)]">
-                  Wipes operational records while preserving all user accounts, branches, rates, and catalog
+                  Wipes operational records while preserving all Super Owner accounts, branches, rates, and catalog
                 </p>
               </div>
             </div>
-            <Badge variant="warning">Maintenance</Badge>
+            <div className="flex items-center gap-2">
+              <Badge variant="warning">Main Admin Only</Badge>
+              {isResetUnlocked ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsResetUnlocked(false)
+                    setAdminPassword("")
+                    setResetConfirmation("")
+                    setResetError("")
+                  }}
+                  className="inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-slate-100 transition shadow-2xs cursor-pointer"
+                >
+                  <Lock size={12} /> Lock
+                </button>
+              ) : null}
+            </div>
           </div>
 
-          <form className="mt-4 flex flex-col justify-between flex-1 gap-4" onSubmit={handleResetTransactions}>
-            <div className="space-y-3 text-xs">
-              <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3.5 text-amber-900 space-y-1.5">
-                <p className="font-semibold flex items-center gap-1.5">
-                  <AlertTriangle size={15} className="text-amber-700 shrink-0" />
-                  What will be deleted vs preserved:
+          {!isResetUnlocked ? (
+            <form className="mt-4 flex flex-col gap-3" onSubmit={handleUnlockReset}>
+              <div className="rounded-2xl border border-amber-200/80 bg-amber-50/70 p-4 text-xs space-y-2.5">
+                <div className="flex items-center gap-2 text-amber-900 font-bold">
+                  <Lock size={16} className="text-amber-800" />
+                  <span>Main Admin Password Verification Required</span>
+                </div>
+                <p className="text-[11px] text-amber-900/80 leading-relaxed">
+                  To prevent accidental data resets, please enter your <strong>Main Admin password</strong> before accessing the operational record reset controls.
                 </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] pt-1">
-                  <div className="rounded-xl bg-white/70 p-2 border border-red-200 text-red-800">
-                    <p className="font-bold text-red-900 mb-0.5">Deleted (Clean Slate):</p>
-                    <ul className="list-disc pl-4 space-y-0.5">
-                      <li>Items, Products, Categories & Units</li>
-                      <li>Customers & Suppliers</li>
-                      <li>Job Orders & Service Payments</li>
-                      <li>Sales, POS Invoices & Quotations</li>
-                      <li>Inventory Batches, Movements & Serials</li>
-                      <li>Cash Drawer Transactions & Handovers</li>
-                      <li>Admin, Cashier & Tech Staff Accounts</li>
-                      <li>Audit Logs</li>
-                    </ul>
-                  </div>
-                  <div className="rounded-xl bg-white/70 p-2 border border-emerald-200 text-emerald-800">
-                    <p className="font-bold text-emerald-900 mb-0.5">Strictly Preserved:</p>
-                    <ul className="list-disc pl-4 space-y-0.5">
-                      <li>Super Owner & Developer Accounts</li>
-                      <li>Branch Structures</li>
-                      <li>System Default Settings</li>
-                    </ul>
+                <div className="pt-1 flex flex-col sm:flex-row gap-2.5">
+                  <input
+                    type="password"
+                    placeholder="Enter Main Admin Password"
+                    value={adminPassword}
+                    onChange={(e) => setAdminPassword(e.target.value)}
+                    disabled={isVerifyingPassword}
+                    className="flex-1 h-10 rounded-xl border border-amber-300 bg-white px-3.5 text-xs outline-none focus:border-amber-600 focus:ring-1 focus:ring-amber-500 font-medium"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isVerifyingPassword || !adminPassword}
+                    className="inline-flex items-center justify-center gap-1.5 h-10 rounded-xl bg-amber-800 px-4 text-xs font-bold text-white shadow-2xs hover:bg-amber-900 transition disabled:opacity-50 cursor-pointer"
+                  >
+                    {isVerifyingPassword ? (
+                      <>
+                        <LoaderCircle className="animate-spin" size={14} />
+                        Verifying…
+                      </>
+                    ) : (
+                      <>
+                        <Lock size={14} />
+                        Unlock Reset Tool
+                      </>
+                    )}
+                  </button>
+                </div>
+                {passwordError ? (
+                  <p className="text-[11px] font-bold text-red-600 flex items-center gap-1 mt-1">
+                    <AlertTriangle size={13} />
+                    {passwordError}
+                  </p>
+                ) : null}
+              </div>
+            </form>
+          ) : (
+            <form className="mt-4 flex flex-col justify-between flex-1 gap-4" onSubmit={handleResetTransactions}>
+              <div className="space-y-3 text-xs">
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3.5 text-amber-900 space-y-1.5">
+                  <p className="font-semibold flex items-center gap-1.5">
+                    <AlertTriangle size={15} className="text-amber-700 shrink-0" />
+                    What will be deleted vs preserved:
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] pt-1">
+                    <div className="rounded-xl bg-white/70 p-2 border border-red-200 text-red-800">
+                      <p className="font-bold text-red-900 mb-0.5">Deleted (Clean Slate):</p>
+                      <ul className="list-disc pl-4 space-y-0.5">
+                        <li>Items, Products, Categories & Units</li>
+                        <li>Customers & Suppliers</li>
+                        <li>Job Orders & Service Payments</li>
+                        <li>Sales, POS Invoices & Quotations</li>
+                        <li>Inventory Batches, Movements & Serials</li>
+                        <li>Cash Drawer Transactions & Handovers</li>
+                        <li>Admin, Cashier & Tech Staff Accounts</li>
+                        <li>Audit Logs</li>
+                      </ul>
+                    </div>
+                    <div className="rounded-xl bg-white/70 p-2 border border-emerald-200 text-emerald-800">
+                      <p className="font-bold text-emerald-900 mb-0.5">Strictly Preserved:</p>
+                      <ul className="list-disc pl-4 space-y-0.5">
+                        <li>Super Owner & Developer Accounts</li>
+                        <li>Branch Structures</li>
+                        <li>System Default Settings</li>
+                      </ul>
+                    </div>
                   </div>
                 </div>
+
+                <label className="block">
+                  <span className="text-xs font-bold uppercase tracking-wide text-[var(--color-muted)] flex items-center gap-1">
+                    Type <strong className="text-amber-800 font-mono">RESET TRANSACTIONS</strong> to confirm
+                  </span>
+                  <input
+                    className="mt-2 h-11 w-full rounded-xl border border-[var(--color-border)] bg-white px-3.5 text-sm font-mono outline-none transition focus:border-amber-600 disabled:bg-[var(--color-soft)]"
+                    disabled={isResetting}
+                    onChange={(e) => setResetConfirmation(e.target.value)}
+                    placeholder="RESET TRANSACTIONS"
+                    type="text"
+                    value={resetConfirmation}
+                  />
+                </label>
+
+                {resetError ? (
+                  <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-xs font-semibold text-red-700 flex items-start gap-2">
+                    <AlertTriangle className="shrink-0 mt-0.5" size={14} />
+                    <span>{resetError}</span>
+                  </div>
+                ) : null}
+
+                {resetMessage ? (
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-semibold text-emerald-800 flex items-start gap-2">
+                    <CheckCircle2 className="shrink-0 mt-0.5" size={14} />
+                    <span>{resetMessage}</span>
+                  </div>
+                ) : null}
               </div>
 
-              <label className="block">
-                <span className="text-xs font-bold uppercase tracking-wide text-[var(--color-muted)] flex items-center gap-1">
-                  Type <strong className="text-amber-800 font-mono">RESET TEST DATA</strong> to confirm
-                </span>
-                <input
-                  className="mt-2 h-11 w-full rounded-xl border border-[var(--color-border)] bg-white px-3.5 text-sm font-mono outline-none transition focus:border-amber-600 disabled:bg-[var(--color-soft)]"
-                  disabled={isResetting}
-                  onChange={(e) => setResetConfirmation(e.target.value)}
-                  placeholder="RESET TEST DATA"
-                  type="text"
-                  value={resetConfirmation}
-                />
-              </label>
-
-              {resetError ? (
-                <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-xs font-semibold text-red-700 flex items-start gap-2">
-                  <AlertTriangle className="shrink-0 mt-0.5" size={14} />
-                  <span>{resetError}</span>
-                </div>
-              ) : null}
-
-              {resetMessage ? (
-                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-semibold text-emerald-800 flex items-start gap-2">
-                  <CheckCircle2 className="shrink-0 mt-0.5" size={14} />
-                  <span>{resetMessage}</span>
-                </div>
-              ) : null}
-            </div>
-
-            <div className="pt-2">
-              <button
-                className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-amber-700 px-4 py-3 text-sm font-bold text-white shadow-soft transition hover:bg-amber-800 disabled:opacity-50"
-                disabled={isResetting || resetConfirmation.trim().toUpperCase() !== "RESET TEST DATA"}
-                type="submit"
-              >
-                {isResetting ? (
-                  <>
-                    <LoaderCircle className="animate-spin" size={18} />
-                    Resetting operational test records…
-                  </>
-                ) : (
-                  <>
-                    <Trash2 size={18} />
-                    Reset Operational Transactions
-                  </>
-                )}
-              </button>
-            </div>
-          </form>
+              <div className="pt-2">
+                <button
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-2xl bg-amber-700 px-4 py-3 text-sm font-bold text-white shadow-soft transition hover:bg-amber-800 disabled:opacity-50 cursor-pointer"
+                  disabled={isResetting || resetConfirmation.trim().toUpperCase() !== "RESET TRANSACTIONS"}
+                  type="submit"
+                >
+                  {isResetting ? (
+                    <>
+                      <LoaderCircle className="animate-spin" size={18} />
+                      Resetting operational records…
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 size={18} />
+                      Reset Operational Transactions
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          )}
         </Card>
       )}
     </div>

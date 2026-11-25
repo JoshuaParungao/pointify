@@ -137,7 +137,7 @@ export default function PayMongoCheckoutModal({
       try {
         const response = await createPayMongoCheckoutSession({
           amount: numericAmount,
-          description: `Pointify Sale - Ref #${referenceNumber || "POS"}`,
+          description: `POSynctify Sale - Ref #${referenceNumber || "POS"}`,
           customerName: customerName || "Walk-in Customer",
           customerEmail: customerEmail || undefined,
           customerPhone: customerPhone || undefined,
@@ -168,7 +168,7 @@ export default function PayMongoCheckoutModal({
 
                 playSuccessChime()
                 sendDesktopNotification(
-                  "Pointify POS: Payment Received!",
+                  "POSynctify POS: Payment Received!",
                   `₱${Number(amount).toLocaleString("en-PH", { minimumFractionDigits: 2 })} paid via ${statusRes.data.paymentMethod || "Digital Wallet"}.`
                 )
               }
@@ -205,7 +205,7 @@ export default function PayMongoCheckoutModal({
   const handleCopyLink = () => {
     const url = isRealCheckoutUrl
       ? session.checkoutUrl
-      : `POINTIFY QR Ph | Merchant: POINTIFY POS | Amount: PHP ${Number(amount || 0).toFixed(2)} | Ref: ${referenceNumber || "DEMO"}`
+      : `POSYNCTIFY QR Ph | Merchant: POSYNCTIFY POS | Amount: PHP ${Number(amount || 0).toFixed(2)} | Ref: ${referenceNumber || "DEMO"}`
     navigator.clipboard.writeText(url)
     setCopiedLink(true)
     setTimeout(() => setCopiedLink(false), 2000)
@@ -228,7 +228,7 @@ export default function PayMongoCheckoutModal({
 
     playSuccessChime()
     sendDesktopNotification(
-      "Pointify POS: Payment Received!",
+      "POSynctify POS: Payment Received!",
       `₱${Number(amount).toLocaleString("en-PH", { minimumFractionDigits: 2 })} received via ${method}.`
     )
 
@@ -280,7 +280,7 @@ export default function PayMongoCheckoutModal({
     const ref = String(referenceNumber || session?.sessionId || "POS-DEMO")
       .replace(/[^a-zA-Z0-9-]/g, "")
       .slice(0, 16)
-    return `00020101021226540015ph.ppmi.qrph0111POINTIFYPOS0215PM-GCASH-DEMO5204599953086085404${amt}5802PH5912POINTIFY POS6006MANILA62${String(
+    return `00020101021226540015ph.ppmi.qrph0111POSYNCTIFYPOS0215PM-GCASH-DEMO5204599953086085404${amt}5802PH5912POSYNCTIFY POS6006MANILA62${String(
       ref.length + 4
     ).padStart(2, "0")}05${String(ref.length).padStart(2, "0")}${ref}6304ABCD`
   })()
@@ -289,7 +289,7 @@ export default function PayMongoCheckoutModal({
     ? session.checkoutUrl
     : activeTab === "QR_PH"
     ? qrPhPayload
-    : `POINTIFY POS - CARD CHECKOUT | REF: ${referenceNumber || session?.sessionId || "DEMO"} | AMOUNT: PHP ${Number(amount || 0).toFixed(2)}`
+    : `POSYNCTIFY POS - CARD CHECKOUT | REF: ${referenceNumber || session?.sessionId || "DEMO"} | AMOUNT: PHP ${Number(amount || 0).toFixed(2)}`
 
   const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(
     qrPayload

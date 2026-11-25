@@ -1,6 +1,6 @@
-# Pointify
+# POSynctify Frontend
 
-React/Vite frontend for the Pointify.
+React/Vite frontend for the POSynctify Cloud POS & Business Management System with Offline-First Auto-Sync, PayMongo QR Ph / E-Wallets, and OCR Quotation Parsing.
 
 ## Local commands
 
@@ -12,6 +12,6 @@ npm.cmd run lint
 npm.cmd run build
 ```
 
-Set `VITE_API_BASE_URL` to the backend URL including `/api`. Vercel production should use `https://api.arunafeltz.com/api`. The variable is embedded at build time, so redeploy after changing it.
+Set `VITE_API_BASE_URL` to the backend URL including `/api`. The variable is embedded at build time, so redeploy after changing it.
 
-The Vercel project root is this directory. Build command: `npm run build`. Output directory: `dist`.
+The project root is this directory. Build command: `npm run build`. Output directory: `dist`.

@@ -3,7 +3,7 @@ import { createPortal } from "react-dom"
 import { AlertCircle, Download, LoaderCircle, Printer, X } from "lucide-react"
 import { getSaleById } from "../../features/sales/sales.api"
 import { exportWarrantyReceiptPdf, groupReceiptItems, printWarrantyReceipt } from "../../utils/businessDocumentExport"
-import { useReceiptBusinessName } from "../../utils/businessProfile"
+import { getBranchAddress, getBranchContact } from "../../constants/branchDefaults"
 
 function formatMoney(value) {
   const amount = Number(value || 0)
@@ -66,7 +66,6 @@ const DEFAULT_TERM_RATES = {
 }
 
 export default function SaleReceiptModal({ sale: initialSale, saleId, onClose }) {
-  const receiptBusinessName = useReceiptBusinessName(initialSale?.branch)
   const [sale, setSale] = useState(initialSale || null)
   const [isLoading, setIsLoading] = useState(!initialSale && Boolean(saleId))
   const [errorMessage, setErrorMessage] = useState("")
@@ -82,11 +81,12 @@ export default function SaleReceiptModal({ sale: initialSale, saleId, onClose })
   }, [onClose])
 
   useEffect(() => {
-    if (!initialSale?.items || initialSale.items.length === 0) {
-      if (targetSaleId) {
+    const saleId = targetSaleId || initialSale?.id
+    if (!initialSale?.items || initialSale.items.length === 0 || (!initialSale?.customer?.address && saleId)) {
+      if (saleId) {
         let active = true
         setIsLoading(true)
-        getSaleById(targetSaleId)
+        getSaleById(saleId)
           .then((res) => {
             if (active) {
               setSale(res?.data || initialSale)
@@ -109,8 +109,8 @@ export default function SaleReceiptModal({ sale: initialSale, saleId, onClose })
     }
   }, [initialSale, targetSaleId])
 
-  const branchAddress = sale?.branch?.address || sale?.branch?.name || "Main Branch"
-  const branchContact = sale?.branch?.contactNo || "—"
+  const branchAddress = getBranchAddress(sale?.branch)
+  const branchContact = getBranchContact(sale?.branch)
 
   const isCredit = Boolean(sale?.creditAccount || sale?.receivable || (sale?.items || []).some((item) => item.baseUnitPriceSnapshot != null))
 
@@ -120,7 +120,10 @@ export default function SaleReceiptModal({ sale: initialSale, saleId, onClose })
       const providerName = formatStatus(provider)
       if ((sale?.payments || []).length > 0) {
         const dpMethods = sale.payments
-          .map((p) => formatStatus(p.paymentMethod))
+          .map((p) => {
+            const m = formatStatus(p.paymentMethod)
+            return p.referenceNo ? `${m} (#${p.referenceNo})` : m
+          })
           .join(", ")
         return `${providerName} (DP: ${dpMethods})`
       }
@@ -128,7 +131,10 @@ export default function SaleReceiptModal({ sale: initialSale, saleId, onClose })
     }
     if ((sale?.payments || []).length > 0) {
       return sale.payments
-        .map((p) => formatStatus(p.paymentMethod))
+        .map((p) => {
+          const m = formatStatus(p.paymentMethod)
+          return p.referenceNo ? `${m} (#${p.referenceNo})` : m
+        })
         .join(", ")
     }
     return "CASH"
@@ -270,8 +276,13 @@ export default function SaleReceiptModal({ sale: initialSale, saleId, onClose })
             <span className="text-[10px] font-black uppercase tracking-wider text-[var(--color-maroon)]">
               Official Sales Document
             </span>
-            <h2 className="text-base font-black text-slate-900 leading-tight" id="sale-receipt-title">
+            <h2 className="text-base font-black text-slate-900 leading-tight flex items-center gap-2" id="sale-receipt-title">
               Warranty Receipt #{sale?.receiptCode || "—"}
+              {sale?.isOfflineSale ? (
+                <span className="text-[10px] bg-amber-100 text-amber-900 font-bold px-2 py-0.5 rounded-full border border-amber-300">
+                  Offline Pending Sync
+                </span>
+              ) : null}
             </h2>
           </div>
 
@@ -325,13 +336,8 @@ export default function SaleReceiptModal({ sale: initialSale, saleId, onClose })
                 {/* Left Store Info */}
                 <div className="md:col-span-6 space-y-1">
                   <h1 className="text-sm font-black tracking-tight text-slate-950 uppercase leading-snug">
-                    {receiptBusinessName}
+                    POSYNCTIFY STORE & SERVICES
                   </h1>
-                  {branch?.name && branch.name !== receiptBusinessName && branch.name !== "Main Branch" ? (
-                    <p className="text-[11px] font-bold text-slate-800 uppercase">
-                      {branch.name}
-                    </p>
-                  ) : null}
                   <p className="text-[11px] text-slate-700 leading-normal">
                     {branchAddress}
                   </p>
@@ -357,12 +363,12 @@ export default function SaleReceiptModal({ sale: initialSale, saleId, onClose })
 
                   <span className="font-bold text-slate-600">Address:</span>
                   <span className="col-span-2">
-                    {sale.customer?.address || "—"}
+                    {sale.customer?.address || sale.customerAddressSnapshot || sale.customerAddress || sale.quotation?.customer?.address || "—"}
                   </span>
 
                   <span className="font-bold text-slate-600">Contact No.:</span>
                   <span className="col-span-2">
-                    {sale.customer?.mobileNumber || sale.customer?.email || "—"}
+                    {sale.customer?.mobileNumber || sale.customer?.email || sale.customer?.contactNo || sale.customerPhone || sale.customerContactSnapshot || sale.quotation?.customer?.mobileNumber || "—"}
                   </span>
 
                   <span className="font-bold text-slate-600">Salesman:</span>
@@ -530,10 +536,13 @@ export default function SaleReceiptModal({ sale: initialSale, saleId, onClose })
               {/* Warranty Disclaimers */}
               <div className="border-t border-slate-200 pt-3 text-center space-y-1">
                 <p className="font-bold text-[11px] text-slate-900 uppercase">
-                  CONSUMABLES, OPENED ITEMS &amp; SERVICE FEES ARE NON-REFUNDABLE UNLESS DEFECTIVE
+                  NO WARRANTY ON SOFTWARE/S (O.S. - WINDOWS and MS OFFICE), IF ANY
                 </p>
                 <p className="text-[10px] text-slate-600">
                   Pls. read all WARRANTY GUIDELINES &amp; PROCEDURES at the back of this page. (BRING–IN WARRANTY)
+                </p>
+                <p className="font-bold text-[10px] text-red-700 uppercase">
+                  ALL PRICES ARE SUBJECT TO CHANGE WITHOUT PRIOR NOTICE
                 </p>
               </div>
 

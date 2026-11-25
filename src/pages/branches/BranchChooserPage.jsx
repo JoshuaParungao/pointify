@@ -4,6 +4,7 @@ import { Building2, LogOut, MapPin, Phone } from "lucide-react"
 import Card from "../../components/ui/Card"
 import Badge from "../../components/ui/Badge"
 import { getBranches } from "../../features/branches/branches.api"
+import { getBranchAddress, getBranchContact } from "../../constants/branchDefaults"
 
 function BranchChooserPage({ onSelectBranch, onLogout, user }) {
   const [branches, setBranches] = useState([])
@@ -43,14 +44,14 @@ function BranchChooserPage({ onSelectBranch, onLogout, user }) {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-center gap-4">
             <img
-              alt="Pointify Logo"
+              alt="POSynctify Logo"
               className="size-14 rounded-2xl object-contain shadow-card bg-white p-1"
-              src="/pointify-logo.png"
+              src="/posynctify-logo.png"
             />
             <div className="min-w-0">
               <Badge tone="maroon">Branch Selection</Badge>
               <h1 className="brand-text mt-1 text-2xl sm:text-3xl font-bold tracking-tight text-[var(--color-text-strong)]">
-                Pointify
+                POSynctify
               </h1>
               <p className="mt-1 text-sm leading-6 text-[var(--color-muted)]">
                 Welcome, {user?.fullName || user?.username || "Super Owner"}. Select a branch to monitor.
@@ -107,11 +108,11 @@ function BranchChooserPage({ onSelectBranch, onLogout, user }) {
                       <div className="mt-4 space-y-2 text-sm text-[var(--color-muted)]">
                         <p className="flex gap-2">
                           <MapPin className="mt-0.5 size-4 shrink-0" />
-                          <span>{branch.address || "No address set"}</span>
+                          <span>{getBranchAddress(branch)}</span>
                         </p>
                         <p className="flex gap-2">
                           <Phone className="mt-0.5 size-4 shrink-0" />
-                          <span>{branch.contactNo || "No contact number set"}</span>
+                          <span>{getBranchContact(branch)}</span>
                         </p>
                       </div>
                     </div>

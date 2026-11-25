@@ -40,7 +40,7 @@ export const APP_MODULES = [
   },
   {
     key: "pc-builds",
-    label: "Bundle Items (Packages)",
+    label: "PC Builds (Sold Systems)",
     group: "Operations",
     roles: BRANCH_OPERATION_ROLES,
   },
@@ -80,13 +80,19 @@ export const APP_MODULES = [
     key: "purchase-orders",
     label: "Purchase Orders",
     group: "Inventory & Purchasing",
-    roles: OWNER_ADMIN_ROLES,
+    roles: BRANCH_OPERATION_ROLES,
   },
   {
     key: "receivings",
     label: "Receiving / Deliveries",
     group: "Inventory & Purchasing",
-    roles: OWNER_ADMIN_ROLES,
+    roles: BRANCH_OPERATION_ROLES,
+  },
+  {
+    key: "supplier-returns",
+    label: "Supplier Returns (B.O.)",
+    group: "Inventory & Purchasing",
+    roles: BRANCH_OPERATION_ROLES,
   },
 
   // --- FINANCE & CREDITS ---
@@ -94,33 +100,33 @@ export const APP_MODULES = [
     key: "cash-box",
     label: "Cash Register & Vault",
     group: "Finance & Credits",
-    roles: [USER_ROLES.SUPER_OWNER, USER_ROLES.BRANCH_OWNER, USER_ROLES.ADMIN],
+    roles: [USER_ROLES.SUPER_OWNER, USER_ROLES.ADMIN],
   },
   {
     key: "credits",
-    label: "Credit Accounts (AR)",
+    label: "Credits & Installments",
     group: "Finance & Credits",
-    roles: [USER_ROLES.SUPER_OWNER, USER_ROLES.BRANCH_OWNER, USER_ROLES.ADMIN],
-  },
-  {
-    key: "incentives",
-    label: "Commission & Incentives",
-    group: "Finance & Credits",
-    roles: [USER_ROLES.SUPER_OWNER, USER_ROLES.BRANCH_OWNER, USER_ROLES.ADMIN],
+    roles: BRANCH_OPERATION_ROLES,
   },
 
-  // --- FILE MAINTENANCE ---
+  // --- FILE MAINTENANCE (MASTER DATA) ---
   {
     key: "items",
-    label: "Item Catalog & Pricing",
+    label: "Products & Pricing (Items)",
     group: "File Maintenance",
     roles: BRANCH_OPERATION_ROLES,
   },
   {
     key: "categories",
-    label: "Categories Maintenance",
+    label: "Categories & Units",
     group: "File Maintenance",
-    roles: OWNER_ADMIN_ROLES,
+    roles: BRANCH_OPERATION_ROLES,
+  },
+  {
+    key: "services-maintenance",
+    label: "Services & Repair Rates",
+    group: "File Maintenance",
+    roles: BRANCH_OPERATION_ROLES,
   },
   {
     key: "customers",
@@ -130,13 +136,7 @@ export const APP_MODULES = [
   },
   {
     key: "suppliers",
-    label: "Supplier Registry",
-    group: "File Maintenance",
-    roles: OWNER_ADMIN_ROLES,
-  },
-  {
-    key: "services-maintenance",
-    label: "Service Catalog Rules",
+    label: "Supplier Directory",
     group: "File Maintenance",
     roles: OWNER_ADMIN_ROLES,
   },
@@ -174,40 +174,17 @@ export const APP_MODULES = [
   },
   {
     key: "audit-logs",
-    label: "Activity Audit Logs",
+    label: "Audit Trail / Activity Logs",
     group: "Reports & Audit",
     roles: OWNER_ADMIN_ROLES,
   },
 ]
 
-export function isUserSenior(user) {
-  if (!user) return false
-  const classification = String(user.incentiveClassification || "").toUpperCase()
-  const role = String(user.role || "").toUpperCase()
-  return (
-    classification === "SENIOR_SALES_AGENT" ||
-    classification === "SENIOR_TECHNICIAN" ||
-    classification.startsWith("SENIOR_") ||
-    role.startsWith("SENIOR_")
-  )
-}
-
-export function canUserAccessPurchases(user) {
-  if (!user) return false
-  const role = typeof user === "string" ? user : user.role
-  if (OWNER_ADMIN_ROLES.includes(role)) return true
-  return isUserSenior(user)
-}
-
 export function getModulesForRole(role) {
   return APP_MODULES.filter((module) => module.roles.includes(role))
 }
 
-export function canRoleAccessModule(userOrRole, moduleKey) {
-  const role = typeof userOrRole === "string" ? userOrRole : userOrRole?.role
-  if (moduleKey === "purchase-orders" || moduleKey === "receivings") {
-    return canUserAccessPurchases(userOrRole)
-  }
+export function canRoleAccessModule(role, moduleKey) {
   return APP_MODULES.some(
     (module) => module.key === moduleKey && module.roles.includes(role),
   )

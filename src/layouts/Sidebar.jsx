@@ -12,8 +12,10 @@ import {
   FileSpreadsheet,
   History,
   Layers,
+  Monitor,
   PackageCheck,
   PackageSearch,
+  PackageX,
   ShieldCheck,
   ShoppingCart,
   SlidersHorizontal,
@@ -29,7 +31,7 @@ import {
 const ICONS = {
   pos: ShoppingCart,
   quotations: ClipboardList,
-  "pc-builds": Boxes,
+  "pc-builds": Monitor,
   services: Wrench,
   warranty: ShieldCheck,
   inventory: Boxes,
@@ -37,6 +39,7 @@ const ICONS = {
   "stock-transfers": ArrowLeftRight,
   "purchase-orders": FileSpreadsheet,
   receivings: PackageCheck,
+  "supplier-returns": PackageX,
   "cash-box": Banknote,
   credits: CreditCard,
   incentives: Award,
@@ -53,7 +56,7 @@ const ICONS = {
   "audit-logs": History,
 }
 
-const STORAGE_KEY = "pointify_sidebar_open_groups"
+const STORAGE_KEY = "posynctify_sidebar_open_groups"
 
 function Sidebar({
   activePage,
@@ -88,7 +91,7 @@ function Sidebar({
       "Inventory & Purchasing": true,
       "Finance & Credits": false,
       "File Maintenance": false,
-      "Reports & Audit": false,
+      "Reports & Audit": true,
       ...(activeGroup ? { [activeGroup]: true } : {}),
     }
   })
@@ -143,18 +146,18 @@ function Sidebar({
         }`}
       >
         <img
-          alt="Pointify Logo"
-          className="size-8 shrink-0 rounded-xl bg-white p-1 object-contain shadow-xs"
-          src="/pointify-logo.png"
+          alt="POSynctify Logo"
+          className="size-8 shrink-0 rounded-xl bg-white/10 p-1 object-contain shadow-xs"
+          src="/posynctify-logo.png"
         />
 
         {!isCollapsed ? (
           <div className="min-w-0 flex-1">
             <p className="brand-text text-sm font-bold leading-tight tracking-tight text-white">
-              Pointify
+              POSynctify
             </p>
             <p className="truncate text-[11px] font-medium text-slate-400">
-              Business Management
+              Business Management System
             </p>
           </div>
         ) : null}
@@ -191,7 +194,7 @@ function Sidebar({
                   <span className="truncate">{group}</span>
                   <div className="flex items-center gap-1.5 shrink-0">
                     {!isOpen && hasActiveItem ? (
-                      <span className="size-1.5 rounded-full bg-[var(--color-primary)]" />
+                      <span className="size-1.5 rounded-full bg-[var(--color-maroon)]" />
                     ) : null}
                     <ChevronDown
                       className={`size-3 text-slate-500 transition-transform duration-200 ${
@@ -216,7 +219,7 @@ function Sidebar({
                           isCollapsed ? "justify-center px-0 py-2" : ""
                         } ${
                           isActive
-                            ? "bg-[var(--color-primary)] text-white font-semibold shadow-xs"
+                            ? "bg-[var(--color-maroon)] text-white font-semibold shadow-xs"
                             : "text-slate-300/85 hover:bg-white/7 hover:text-white"
                         }`}
                         key={item.key}

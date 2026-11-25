@@ -87,13 +87,13 @@ export default function ProductProfitabilityView({ selectedBranch, user, dateRan
       ["Total Base Sales", (r) => Number(r.totalBaseSales || 0)],
       ["Total Actual Sales", (r) => Number(r.totalActualSales || 0)],
       ["Total Mark-up", (r) => Number(r.totalMarkup || 0)],
-      ["Net Base Profit", (r) => Number(r.totalPureTubo || 0)],
-      ["Profit with Markup", (r) => Number(r.totalTuboWithMarkup || 0)],
+      ["Base Margin (Base - Cost)", (r) => Number(r.totalPureTubo || 0)],
+      ["Margin with Mark-up (Total Profit)", (r) => Number(r.totalTuboWithMarkup || 0)],
       ["Margin %", (r) => Number(r.marginPercent || 0).toFixed(2) + "%"],
     ]
 
     exportReportExcel({
-      label: "Product Profitability & Margin Report",
+      label: "Product Profitability Report",
       filename: `Product-Profitability-${new Date().toISOString().slice(0, 10)}`,
       columns: exportColumns,
       records,
@@ -107,11 +107,11 @@ export default function ProductProfitabilityView({ selectedBranch, user, dateRan
       totals: [
         ["Total Products Sold", records.length],
         ["Total Units Sold", summary.totalQuantitySold || 0],
-        ["Total Cost (COGS)", summary.totalPuhunan || 0],
+        ["Total Cost", summary.totalPuhunan || 0],
         ["Total Base Sales", summary.totalBaseSales || 0],
         ["Total Mark-up", summary.totalMarkup || 0],
-        ["Total Base Profit", summary.totalPureTubo || 0],
-        ["Total Profit with Markup", summary.totalTuboWithMarkup || 0],
+        ["Total Base Margin", summary.totalPureTubo || 0],
+        ["Total Profit (Margin w/ Markup)", summary.totalTuboWithMarkup || 0],
         ["Overall Margin", Number(summary.overallMarginPercent || 0).toFixed(2) + "%"],
       ],
     })
@@ -121,10 +121,10 @@ export default function ProductProfitabilityView({ selectedBranch, user, dateRan
     <div className="space-y-6">
       {/* Executive Hero KPI Cards */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        {/* Card 1: Cost */}
+        {/* Card 1: Total Cost */}
         <div className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">1. Total Cost (COGS)</p>
+            <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">1. Total Cost</p>
             <p className="mt-1 font-mono text-lg font-black text-slate-900 sm:text-xl">{peso(summary.totalPuhunan)}</p>
           </div>
           <p className="mt-2 text-[10px] text-slate-400">Total acquisition cost of goods sold</p>
@@ -153,21 +153,21 @@ export default function ProductProfitabilityView({ selectedBranch, user, dateRan
           <p className="mt-2 text-[10px] text-amber-700/80">Additional store price markup</p>
         </div>
 
-        {/* Card 4: Base Profit */}
+        {/* Card 4: Base Margin */}
         <div className="flex flex-col justify-between rounded-2xl border border-blue-200 bg-blue-50/40 p-4 shadow-xs">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-wider text-blue-800">4. Net Base Profit</p>
+            <p className="text-[10px] font-black uppercase tracking-wider text-blue-800">4. Base Margin (Base - Cost)</p>
             <p className="mt-1 font-mono text-lg font-black text-blue-800 sm:text-xl">{peso(summary.totalPureTubo)}</p>
           </div>
           <p className="mt-2 text-[10px] text-blue-700/80">Margin without mark-up</p>
         </div>
 
-        {/* Card 5: Total Profit with Markup */}
+        {/* Card 5: Margin With Mark-up (Total Profit) */}
         <div className="flex flex-col justify-between rounded-2xl border-2 border-emerald-500 bg-gradient-to-br from-emerald-50 to-teal-50/50 p-4 shadow-xs sm:col-span-2 lg:col-span-2">
           <div>
             <div className="flex items-center justify-between">
               <span className="inline-flex items-center gap-1 rounded-full bg-emerald-200/70 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-900">
-                <Sparkles size={11} /> Total Profit (Base + Markup)
+                <Sparkles size={11} /> Total Profit (Base Margin + Mark-up)
               </span>
               <span className="rounded-md bg-white px-2 py-0.5 font-mono text-xs font-black text-emerald-800 shadow-2xs">
                 {Number(summary.overallMarginPercent || 0).toFixed(1)}% Margin
@@ -245,12 +245,12 @@ export default function ProductProfitabilityView({ selectedBranch, user, dateRan
                 <th className="px-4 py-3.5">Product & SKU</th>
                 <th className="px-3 py-3.5">Category</th>
                 <th className="px-3 py-3.5 text-center">Qty Sold</th>
-                <th className="px-3 py-3.5 text-right">Cost Price</th>
+                <th className="px-3 py-3.5 text-right">Unit Cost</th>
                 <th className="px-3 py-3.5 text-right">Base SRP</th>
                 <th className="px-3 py-3.5 text-right">Mark-up</th>
                 <th className="px-3 py-3.5 text-right">Selling Price</th>
-                <th className="px-3 py-3.5 text-right text-blue-700">Base Profit</th>
-                <th className="px-4 py-3.5 text-right text-emerald-800">Profit w/ Markup</th>
+                <th className="px-3 py-3.5 text-right text-blue-700">Base Margin</th>
+                <th className="px-4 py-3.5 text-right text-emerald-800">Profit w/ Mark-up</th>
                 <th className="px-3 py-3.5 text-center">Margin %</th>
               </tr>
             </thead>

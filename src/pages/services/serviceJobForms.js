@@ -2,29 +2,31 @@
 
 export const INTAKE_RECORD_HEADER = "[INTAKE_RECORD_V1]:"
 
-import { getReceiptBusinessName, DEFAULT_BUSINESS_NAME } from "../../utils/businessProfile"
-
 export const DEFAULT_SHOP_INFO = {
-  get name() { return getReceiptBusinessName(null, DEFAULT_BUSINESS_NAME) },
-  address: "Kingspire Business Centre, Km.71, Mac Arthur Highway, San Isidro, City of San Fernando, Pampanga",
-  contactNo: "0997-732-7689 / 045-404-0673",
+  name: "POSYNCTIFY STORE & SERVICES",
+  address: "Kingspire Business Centre, Km. 71 Mac Arthur Highway, San Isidro, City of San Fernando, Pampanga, Philippines, 2000",
+  contactNo: "0961-873-5798 / 045-404-0673",
 }
 
 export const UNIT_TYPES = [
-  "General Equipment / Unit",
-  "Appliance / Device",
-  "Electronic / Digital Device",
-  "Mechanical / Tool",
-  "Medical / Office Equipment",
-  "Commercial / Store Unit",
+  "Laptop",
+  "Desktop",
+  "GPU",
+  "Motherboard",
+  "MacBook",
+  "Printer",
+  "Monitor",
+  "Smartphone / Tablet",
+  "Console",
+  "PC Component",
   "Other",
 ]
 
 export const ACCESSORIES_OPTIONS = [
-  "Power Adapter / Charger",
-  "Battery / Pack",
-  "Case / Bag",
-  "Power Cord / Cable",
+  "Charger",
+  "Battery",
+  "Bag",
+  "Power Cable",
   "Others",
 ]
 
@@ -32,48 +34,53 @@ export const PHYSICAL_CONDITIONS = [
   "Good",
   "Cracked Housing/ Broken Parts",
   "Scratches / Cosmetic Damage",
-  "Missing Fasteners / Screws",
+  "Missing Screws",
   "Liquid Damage/ Corrosion",
-  "Missing Part / Attachment",
-  "Damaged Contacts / Pins",
+  "Missing Component",
+  "Bent Pins",
   "Burnt Smell/ Marks/ Components",
-  "Signs of Previous Service",
+  "Signs of Previous Repair",
   "Broken Ports / Connectors",
   "Other Notes",
 ]
 
 export const PREVIOUS_REPAIR_ACTIONS = [
-  "Diagnosis / Inspection Only",
-  "Component / Part Repair",
-  "Calibration / Configuration",
-  "Cleaning / Preventive Maintenance",
-  "Internal / Board Repair",
+  "Diagnosis Only",
+  "GPU Repair",
+  "BIOS Programming",
+  "Cleaning / Maintenance",
+  "Motherboard Repair",
   "Parts Replacement",
   "Other",
 ]
 
 export const REQUESTED_MAINTENANCE_SERVICES = [
-  "General / Deep Cleaning",
-  "Preventive Maintenance (PMS)",
-  "Part / Component Replacement",
-  "Consumable Refill / Replacement",
-  "Unit / Capacity Upgrade",
-  "System / Firmware Calibration",
-  "Inspection & Safety Check",
-  "Setup & Configuration",
+  "General/ Deep Cleaning",
+  "Thermal Paste Replacement",
+  "RAM Installation/Upgrade",
+  "SSD/HDD Upgrade or Replacement",
+  "CPU Installation/Upgrade",
+  "CPU Cooler Installation/ Upgrade",
+  "GPU Installation/Upgrade",
+  "PSU Installation/Upgrade",
+  "Operating System Installation",
+  "Driver/Software Installation",
+  "Data Migration (Cloning/Data Backup)",
+  "Windows Upgrade",
+  "Windows Reformat/ Clean Installation",
+  "Printer Cleaning / Maintenance",
   "Performance Optimization",
-  "Alignment / Tuning",
   "Other",
 ]
 
 export const SPECIAL_ATTENTION_ITEMS = [
-  "Unusual Noise / Vibration",
-  "Overheating / Thermal Issue",
-  "Power / Electrical Issue",
-  "Slow / Reduced Performance",
-  "Intermittent Operation",
-  "Wear & Tear / Build-up",
-  "Output / Quality Issue",
+  "High CPU/GPU Temperature",
+  "Loud Fan Noise",
+  "Slow Performance",
+  "Overheating",
+  "Frequent Freezing",
+  "Dust Build-up",
+  "Printer Quality Issue",
   "Other",
 ]
 
@@ -438,12 +445,16 @@ export function getEffectiveJobPaymentState(job) {
 
 function detectUnitType(deviceDesc = "") {
   const d = deviceDesc.toLowerCase()
-  if (d.includes("appliance")) return "Appliance / Device"
-  if (d.includes("electronic") || d.includes("digital")) return "Electronic / Digital Device"
-  if (d.includes("mechanical") || d.includes("tool")) return "Mechanical / Tool"
-  if (d.includes("medical") || d.includes("office")) return "Medical / Office Equipment"
-  if (d.includes("commercial") || d.includes("store")) return "Commercial / Store Unit"
-  if (d.trim()) return "General Equipment / Unit"
+  if (d.includes("macbook") || d.includes("imac") || d.includes("apple")) return "MacBook"
+  if (d.includes("laptop") || d.includes("notebook")) return "Laptop"
+  if (d.includes("desktop") || d.includes("system unit")) return "Desktop"
+  if (d.includes("gpu") || d.includes("graphics card") || d.includes("geforce") || d.includes("radeon") || d.includes("rtx") || d.includes("gtx")) return "GPU"
+  if (d.includes("motherboard") || d.includes("mobo")) return "Motherboard"
+  if (d.includes("printer")) return "Printer"
+  if (d.includes("monitor")) return "Monitor"
+  if (d.includes("phone") || d.includes("tablet") || d.includes("ipad") || d.includes("android")) return "Smartphone / Tablet"
+  if (d.includes("console") || d.includes("playstation") || d.includes("ps4") || d.includes("ps5") || d.includes("switch") || d.includes("xbox")) return "Console"
+  if (d.includes("component") || d.includes("ram") || d.includes("psu") || d.includes("ssd") || d.includes("hdd")) return "PC Component"
   return "Other"
 }
 

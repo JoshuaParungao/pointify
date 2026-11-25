@@ -119,7 +119,7 @@ function categorizeItem(description = "") {
   }
   return {
     key: "other",
-    label: "Product / Package Item",
+    label: "Component / Service",
     icon: Package,
     color: "text-slate-600 bg-slate-50 border-slate-200",
   }
@@ -154,27 +154,34 @@ function isPcBuildSale(sale) {
   if (!sale) return false
   const items = Array.isArray(sale.items) ? sale.items : []
   const remarks = String(sale.remarks || "").toLowerCase()
-  if (
-    remarks.includes("[bundle]") ||
-    remarks.includes("[package]") ||
-    remarks.includes("[pc build]") ||
-    remarks.includes("assembled by") ||
-    remarks.includes("prepared by")
-  ) return true
-  if (sale.quotation?.isPcBuild || sale.isPcBuild) return true
+  if (remarks.includes("[pc build]") || remarks.includes("assembled by")) return true
   if (sale.quotation?.serviceDoneBy) return true
   if (items.length >= 3) return true
   const title = String(sale.quotation?.title || "").toLowerCase()
   if (
-    title.includes("bundle") ||
+    title.includes("build") ||
+    title.includes("pc") ||
+    title.includes("rig") ||
     title.includes("package") ||
-    title.includes("set") ||
-    title.includes("kit") ||
-    title.includes("build")
+    title.includes("desktop") ||
+    title.includes("gaming") ||
+    title.includes("system")
   ) {
     return true
   }
-  return false
+  const hasCoreParts = items.some((item) => {
+    const desc = String(item.description || "").toLowerCase()
+    return (
+      desc.includes("ryzen") ||
+      desc.includes("intel") ||
+      desc.includes("motherboard") ||
+      desc.includes("b450") ||
+      desc.includes("b550") ||
+      desc.includes("gtx") ||
+      desc.includes("rtx")
+    )
+  })
+  return hasCoreParts && items.length >= 2
 }
 
 export function getBuilderName(sale) {
@@ -334,7 +341,7 @@ export default function PcBuildsPage({ selectedBranch, user }) {
     setIsExporting(true)
     try {
       const activeFilters = [
-        { label: "Builds View", value: filterMode === "all_builds" ? "Detected Multi-Item Bundles" : "All Sales Transactions" },
+        { label: "Builds View", value: filterMode === "all_builds" ? "Detected Multi-Part PC Builds" : "All Sales Transactions" },
       ]
       if (search.trim()) activeFilters.push({ label: "Search Keyword", value: search.trim() })
       if (selectedBuilderFilter !== "ALL") activeFilters.push({ label: "Assembled / Encoded By", value: selectedBuilderFilter })
@@ -344,13 +351,13 @@ export default function PcBuildsPage({ selectedBranch, user }) {
         "Sale Date",
         "Customer Name",
         "Contact",
-        "Prepared / Assembled By",
-        "Total Items Count",
-        "Bundle Total (₱)",
-        "Item / Product Name",
+        "Assembled / Built By",
+        "Total Parts Count",
+        "Build Total (₱)",
+        "Component Name",
         "Category",
         "Serial Number",
-        "Item Price (₱)",
+        "Component Price (₱)",
         "Warranty Duration",
       ]
 
@@ -400,17 +407,17 @@ export default function PcBuildsPage({ selectedBranch, user }) {
       })
 
       exportReportExcel({
-        title: "ITEM BUNDLES & PACKAGES DIRECTORY REPORT",
+        title: "PC BUILDS & ASSEMBLED SYSTEMS DIRECTORY REPORT",
         branchName: selectedBranch?.name || user?.branch?.name || "All Branches",
         generatedBy: user?.fullName || user?.username || "System",
-        filenamePrefix: "item_bundles_directory",
+        filenamePrefix: "pc_builds_directory",
         headers,
         rows,
         activeFilters,
       })
     } catch (error) {
       console.error(error)
-      setErrorMessage("Failed to export bundles: " + (error.message || "Unknown error"))
+      setErrorMessage("Failed to export PC builds: " + (error.message || "Unknown error"))
     } finally {
       setIsExporting(false)
     }
@@ -431,11 +438,11 @@ export default function PcBuildsPage({ selectedBranch, user }) {
               </span>
             </div>
             <h1 className="mt-1 text-2xl font-black text-slate-900 flex items-center gap-2.5">
-              <Boxes size={24} className="text-[var(--color-maroon)]" />
-              Bundle Items & Packages
+              <Monitor size={24} className="text-[var(--color-maroon)]" />
+              PC Builds & Sold Systems
             </h1>
             <p className="mt-0.5 text-xs text-slate-500 max-w-2xl">
-              Directory of all sold bundle items and packaged sets. Inspect included products, review existing warranties & serials, and access official sales receipts.
+              Directory of all sold PC builds and desktop packages. Inspect individual component specs, review existing per-part hardware warranties & serials, and access official sales receipts.
             </p>
           </div>
 
@@ -461,24 +468,24 @@ export default function PcBuildsPage({ selectedBranch, user }) {
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-              Total Bundles Sold
+              Total PC Builds Sold
             </span>
             <div className="grid size-8 place-items-center rounded-xl bg-slate-100 text-slate-700">
-              <Boxes size={16} />
+              <Monitor size={16} />
             </div>
           </div>
           <p className="mt-2 font-mono text-2xl font-black text-slate-900">
             {metrics.totalBuilds}
           </p>
           <p className="mt-0.5 text-[11px] text-slate-500">
-            Sold packages & bundle sets
+            Sold & assembled rigs
           </p>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-              Bundle Items Revenue
+              PC Builds Revenue
             </span>
             <div className="grid size-8 place-items-center rounded-xl bg-emerald-50 text-emerald-700">
               <Receipt size={16} />
@@ -495,7 +502,7 @@ export default function PcBuildsPage({ selectedBranch, user }) {
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-              Items Included
+              Components Installed
             </span>
             <div className="grid size-8 place-items-center rounded-xl bg-slate-100 text-slate-700">
               <Cpu size={16} />
@@ -505,14 +512,14 @@ export default function PcBuildsPage({ selectedBranch, user }) {
             {metrics.totalPartsCount}
           </p>
           <p className="mt-0.5 text-[11px] text-slate-500">
-            Individual product lines
+            Individual hardware lines
           </p>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-              Serialized Products
+              Serialized Hardware
             </span>
             <div className="grid size-8 place-items-center rounded-xl bg-amber-50 text-amber-700">
               <ShieldCheck size={16} />
@@ -544,7 +551,7 @@ export default function PcBuildsPage({ selectedBranch, user }) {
           <input
             className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-xs text-slate-800 outline-none focus:border-[var(--color-maroon)] placeholder:text-slate-400 font-medium"
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by receipt code, customer, product name, brand, or serial number…"
+            placeholder="Search by receipt code, customer, CPU, GPU, RAM, SSD, or serial number…"
             value={search}
           />
         </div>
@@ -555,7 +562,7 @@ export default function PcBuildsPage({ selectedBranch, user }) {
             onChange={(e) => setFilterMode(e.target.value)}
             value={filterMode}
           >
-            <option value="all_builds">📦 Bundles Only ({metrics.totalBuilds})</option>
+            <option value="all_builds">🖥️ PC Builds Only ({metrics.totalBuilds})</option>
             <option value="all_sales">🧾 All Sales & Orders ({sales.length})</option>
           </select>
 
@@ -595,23 +602,23 @@ export default function PcBuildsPage({ selectedBranch, user }) {
         </div>
       </section>
 
-      {/* Main Bundles Feed */}
+      {/* Main PC Builds Feed */}
       <section className="space-y-3.5">
         {isLoading ? (
           <div className="flex flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white p-12 text-slate-400 shadow-xs">
             <LoaderCircle size={32} className="animate-spin text-[var(--color-maroon)]" />
             <p className="mt-3 text-xs font-bold text-slate-600">
-              Loading item bundles and sales feed…
+              Loading PC builds and sales feed…
             </p>
           </div>
         ) : filteredBuilds.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-12 text-center shadow-xs">
-            <Boxes className="mx-auto text-slate-300" size={42} />
+            <Monitor className="mx-auto text-slate-300" size={42} />
             <p className="mt-2.5 text-sm font-bold text-slate-800">
-              No matching item bundles found
+              No matching PC builds found
             </p>
             <p className="text-xs text-slate-500">
-              Try adjusting your search query or check back when new bundle packages are sold at the POS.
+              Try adjusting your search query or check back when new system builds are sold at the POS.
             </p>
           </div>
         ) : (
@@ -669,7 +676,7 @@ export default function PcBuildsPage({ selectedBranch, user }) {
                   <div className="flex items-center gap-3">
                     <div className="text-right">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                        Bundle Total
+                        Build Total
                       </span>
                       <p className="font-mono text-base font-black text-slate-900">
                         {formatMoney(sale.grandTotal)}
@@ -703,14 +710,14 @@ export default function PcBuildsPage({ selectedBranch, user }) {
                   </div>
                 </div>
 
-                {/* Bundle Specifications & Items Breakdown */}
+                {/* Build Specifications & Parts Breakdown */}
                 {isExpanded ? (
                   <div className="p-4 sm:p-5 space-y-4">
                     <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1">
                           <Cpu size={14} className="text-[var(--color-maroon)]" />
-                          Bundle Specifications ({items.length} Items)
+                          Component Specifications ({items.length} Parts)
                         </span>
                         <span className="text-[11px] text-slate-500">
                           · Cashier: {sale.cashier?.fullName || "Counter"}
@@ -718,25 +725,25 @@ export default function PcBuildsPage({ selectedBranch, user }) {
                         {builderName ? (
                           <span className="text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md flex items-center gap-1">
                             <Wrench size={11} />
-                            Prepared by: {builderName}
+                            Assembled by: {builderName}
                           </span>
                         ) : null}
                       </div>
                       <div className="flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
                         <ShieldCheck size={13} />
-                        <span>Per-Item Warranty Tracked</span>
+                        <span>Existing Per-Part Hardware Warranty Tracked</span>
                       </div>
                     </div>
 
-                    {/* Items Table */}
+                    {/* Parts Table */}
                     <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-2xs">
                       <table className="w-full text-left text-xs">
                         <thead className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-600">
                           <tr>
                             <th className="px-4 py-2.5">Category</th>
-                            <th className="px-4 py-2.5">Product &amp; Description</th>
+                            <th className="px-4 py-2.5">Part Model & Description</th>
                             <th className="px-4 py-2.5">Serial Number (S/N)</th>
-                            <th className="px-4 py-2.5">Warranty Term (By Item)</th>
+                            <th className="px-4 py-2.5">Warranty Term (By Part)</th>
                             <th className="px-4 py-2.5 text-center">Qty</th>
                             <th className="px-4 py-2.5 text-right">Price</th>
                             <th className="px-4 py-2.5 text-right">Line Total</th>
