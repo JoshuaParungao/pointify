@@ -303,7 +303,6 @@ function App() {
     setUser(null)
     setSelectedBranch(null)
     setActivePage("pos")
-    setShowLogin(false)
   }
 
   const renderPage = () => {

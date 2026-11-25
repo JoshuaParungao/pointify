@@ -5185,10 +5185,10 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
 
   // Auto-cache catalog and customers when loaded
   useEffect(() => {
-    if (items && items.length > 0) {
-      cacheCatalogItems(items).catch(() => {})
+    if (itemResults && itemResults.length > 0) {
+      cacheCatalogItems(itemResults).catch(() => {})
     }
-  }, [items])
+  }, [itemResults])
 
   useEffect(() => {
     if (customers && customers.length > 0) {
@@ -5200,8 +5200,8 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
   useEffect(() => {
     if (!navigator.onLine) {
       getCachedCatalog().then((cached) => {
-        if (cached && cached.length > 0 && (!items || items.length === 0)) {
-          setItems(cached)
+        if (cached && cached.length > 0 && (!itemResults || itemResults.length === 0)) {
+          setItemResults(cached)
         }
       }).catch(() => {})
       getCachedCustomers().then((cached) => {
