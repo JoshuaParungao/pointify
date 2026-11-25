@@ -5908,7 +5908,12 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
 
       const salePayload = {
         branchId,
-        customerId: effectiveCustomerId,
+        customerId: effectiveCustomerId || undefined,
+        customerName: effectiveName || undefined,
+        customerAddress: effectiveAddress || undefined,
+        customerPhone: effectivePhone || undefined,
+        customerEmail: effectiveEmail || undefined,
+        customerCompany: effectiveCompany || undefined,
         saleDate: saleDate || undefined,
         serviceCharge: Number(serviceCharge || 0),
         remarks: formattedRemarks,

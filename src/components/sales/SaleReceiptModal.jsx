@@ -89,7 +89,11 @@ export default function SaleReceiptModal({ sale: initialSale, saleId, onClose })
         getSaleById(saleId)
           .then((res) => {
             if (active) {
-              setSale(res?.data || initialSale)
+              const fetched = res?.data || initialSale
+              setSale({
+                ...fetched,
+                customer: fetched?.customer || initialSale?.customer || null,
+              })
             }
           })
           .catch((err) => {
