@@ -1,4 +1,5 @@
 import apiClient from "../../lib/apiClient"
+import { processJobOrderOffline } from "../offline/offlineSync.service"
 
 export async function getServiceJobs(params = {}) {
   const response = await apiClient.get("/service-jobs", { params })
@@ -15,9 +16,21 @@ export async function getServiceJobById(id) {
   return response.data
 }
 
-export async function createServiceJob(payload) {
-  const response = await apiClient.post("/service-jobs", payload)
-  return response.data
+export async function createServiceJob(payload, extra = {}) {
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    const offlineJob = await processJobOrderOffline(payload, extra)
+    return { success: true, data: offlineJob, isOffline: true }
+  }
+  try {
+    const response = await apiClient.post("/service-jobs", payload)
+    return response.data
+  } catch (err) {
+    if (typeof navigator !== "undefined" && (!navigator.onLine || !err.response || err.code === "ERR_NETWORK")) {
+      const offlineJob = await processJobOrderOffline(payload, extra)
+      return { success: true, data: offlineJob, isOffline: true }
+    }
+    throw err
+  }
 }
 
 export async function updateServiceJobStatus(id, payload) {

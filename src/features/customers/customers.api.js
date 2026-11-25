@@ -1,8 +1,22 @@
 import apiClient from "../../lib/apiClient"
+import { processCustomerOffline } from "../offline/offlineSync.service"
+import { getCachedCustomers } from "../../lib/offlineDb"
 
 export async function getCustomers(params = {}) {
-  const response = await apiClient.get("/customers", { params })
-  return response.data
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    const cached = await getCachedCustomers().catch(() => [])
+    return { success: true, data: cached, isOffline: true }
+  }
+  try {
+    const response = await apiClient.get("/customers", { params })
+    return response.data
+  } catch (err) {
+    if (typeof navigator !== "undefined" && (!navigator.onLine || !err.response || err.code === "ERR_NETWORK")) {
+      const cached = await getCachedCustomers().catch(() => [])
+      return { success: true, data: cached, isOffline: true }
+    }
+    throw err
+  }
 }
 
 export async function getCustomerById(id) {
@@ -16,8 +30,20 @@ export async function getCustomerHistory(id, params = {}) {
 }
 
 export async function createCustomer(payload) {
-  const response = await apiClient.post("/customers", payload)
-  return response.data
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    const offlineCust = await processCustomerOffline(payload)
+    return { success: true, data: offlineCust, isOffline: true }
+  }
+  try {
+    const response = await apiClient.post("/customers", payload)
+    return response.data
+  } catch (err) {
+    if (typeof navigator !== "undefined" && (!navigator.onLine || !err.response || err.code === "ERR_NETWORK")) {
+      const offlineCust = await processCustomerOffline(payload)
+      return { success: true, data: offlineCust, isOffline: true }
+    }
+    throw err
+  }
 }
 
 export async function updateCustomerById(id, payload) {

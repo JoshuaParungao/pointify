@@ -5,6 +5,8 @@ import {
   Bell,
   BellRing,
   Building2,
+  CloudOff,
+  CloudUpload,
   Edit3,
   ExternalLink,
   Eye,
@@ -25,6 +27,8 @@ import { useTheme } from "../context/ThemeContext"
 import { updateCurrentUserProfile } from "../features/auth/auth.api"
 import { getAlertSummary } from "../features/reports/reports.api"
 import { saveUser } from "../lib/sessionStorage"
+import { subscribeToSyncChanges, syncAllOfflineRecords } from "../features/offline/offlineSync.service"
+import { getOfflineQueueCount } from "../lib/offlineDb"
 
 function Topbar({
   activeLabel,
@@ -53,6 +57,46 @@ function Topbar({
   })
   const [isSavingProfile, setIsSavingProfile] = useState(false)
   const [profileError, setProfileError] = useState("")
+
+  const [offlinePendingCount, setOfflinePendingCount] = useState(0)
+  const [isOnlineState, setIsOnlineState] = useState(() => typeof navigator !== "undefined" ? navigator.onLine : true)
+  const [isSyncingState, setIsSyncingState] = useState(false)
+
+  useEffect(() => {
+    const updateCount = async () => {
+      const cnt = await getOfflineQueueCount().catch(() => 0)
+      setOfflinePendingCount(cnt)
+    }
+    updateCount()
+
+    const handleOnline = () => {
+      setIsOnlineState(true)
+      syncAllOfflineRecords().then(updateCount).catch(() => {})
+    }
+    const handleOffline = () => {
+      setIsOnlineState(false)
+    }
+
+    window.addEventListener("online", handleOnline)
+    window.addEventListener("offline", handleOffline)
+
+    const unsubscribe = subscribeToSyncChanges((evt) => {
+      if (evt?.type === "SYNC_START") setIsSyncingState(true)
+      if (evt?.type === "SYNC_END") {
+        setIsSyncingState(false)
+        setOfflinePendingCount(evt.pending || 0)
+      }
+      if (evt?.type === "ENQUEUED") {
+        setOfflinePendingCount(evt.count || 0)
+      }
+    })
+
+    return () => {
+      window.removeEventListener("online", handleOnline)
+      window.removeEventListener("offline", handleOffline)
+      unsubscribe()
+    }
+  }, [])
 
   const openProfileModal = () => {
     const fallbackParts = String(user?.fullName || "").trim().split(/\s+/).filter(Boolean)
@@ -355,6 +399,43 @@ function Topbar({
               </kbd>
             </button>
           </div>
+
+          {/* Real-time Offline & Cloud Sync Indicator */}
+          {(!isOnlineState || offlinePendingCount > 0) && (
+            <button
+              type="button"
+              onClick={() => {
+                if (isOnlineState) syncAllOfflineRecords()
+              }}
+              className={`inline-flex items-center gap-1.5 rounded-2xl px-3 py-1.5 text-xs font-bold transition shadow-xs cursor-pointer ${
+                !isOnlineState
+                  ? "bg-amber-100 text-amber-900 border border-amber-300 dark:bg-amber-950/70 dark:text-amber-300 dark:border-amber-800"
+                  : "bg-blue-100 text-blue-900 border border-blue-300 dark:bg-blue-950/70 dark:text-blue-300 dark:border-blue-800 animate-pulse"
+              }`}
+              title={
+                !isOnlineState
+                  ? "Offline Mode: Changes saved locally. Will auto-sync when internet is restored."
+                  : "Click to sync offline changes to cloud now"
+              }
+            >
+              {!isOnlineState ? (
+                <>
+                  <CloudOff className="size-3.5 text-amber-700 dark:text-amber-400" />
+                  <span>Offline {offlinePendingCount > 0 ? `(${offlinePendingCount})` : ""}</span>
+                </>
+              ) : isSyncingState ? (
+                <>
+                  <RefreshCw className="size-3.5 animate-spin text-blue-600 dark:text-blue-400" />
+                  <span>Syncing...</span>
+                </>
+              ) : (
+                <>
+                  <CloudUpload className="size-3.5 text-blue-600 dark:text-blue-400" />
+                  <span>Sync ({offlinePendingCount})</span>
+                </>
+              )}
+            </button>
+          )}
 
           <button
             aria-label={resolvedTheme === "dark" ? "Switch to light mode" : "Switch to dark mode"}

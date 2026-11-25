@@ -1,4 +1,5 @@
 import apiClient from "../../lib/apiClient"
+import { processQuotationOffline } from "../offline/offlineSync.service"
 
 export async function getQuotations(params = {}) {
   const response = await apiClient.get("/quotations", { params })
@@ -15,9 +16,21 @@ export async function getQuotationById(id) {
   return response.data
 }
 
-export async function createQuotation(payload) {
-  const response = await apiClient.post("/quotations", payload)
-  return response.data
+export async function createQuotation(payload, extra = {}) {
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    const offlineQuote = await processQuotationOffline(payload, extra)
+    return { success: true, data: offlineQuote, isOffline: true }
+  }
+  try {
+    const response = await apiClient.post("/quotations", payload)
+    return response.data
+  } catch (err) {
+    if (typeof navigator !== "undefined" && (!navigator.onLine || !err.response || err.code === "ERR_NETWORK")) {
+      const offlineQuote = await processQuotationOffline(payload, extra)
+      return { success: true, data: offlineQuote, isOffline: true }
+    }
+    throw err
+  }
 }
 
 export async function updateQuotation(id, payload) {
