@@ -4506,17 +4506,26 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
     setCartMessage("")
 
     try {
-      const [batchResponse, serialResponse] = await Promise.all([
-        getInventoryBatches({ branchId, itemId: item.id, status: "ACTIVE", limit: 100 }),
-        item.isSerialized
-          ? getInventorySerials({ branchId, itemId: item.id, status: "AVAILABLE", limit: 100 })
-          : Promise.resolve(null),
-      ])
+      let batches = []
+      let serials = []
 
-      const batches = getInventoryRows(batchResponse).filter(
-        (batch) => Number(batch.quantityAvailable || 0) > 0,
-      )
-      const serials = item.isSerialized ? getInventoryRows(serialResponse) : []
+      try {
+        const [batchResponse, serialResponse] = await Promise.all([
+          getInventoryBatches({ branchId, itemId: item.id, status: "ACTIVE", limit: 100 }),
+          item.isSerialized
+            ? getInventorySerials({ branchId, itemId: item.id, status: "AVAILABLE", limit: 100 })
+            : Promise.resolve(null),
+        ])
+
+        batches = getInventoryRows(batchResponse).filter(
+          (batch) => Number(batch.quantityAvailable || 0) > 0,
+        )
+        serials = item.isSerialized ? getInventoryRows(serialResponse) : []
+      } catch (stockErr) {
+        console.warn("Offline or network issue fetching batches, proceeding with offline stock line:", stockErr)
+        batches = []
+        serials = []
+      }
 
       const localId = `product-${Date.now()}-${Math.random().toString(36).slice(2)}`
       const isCustomSerial = !preselectedSerial
@@ -5073,16 +5082,23 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
           const itemRes = await getItemById(ocrLine.matchedItemId)
           const item = itemRes?.data || itemRes
           if (item?.id) {
-            const [batchRes, serialRes] = await Promise.all([
-              getInventoryBatches({ branchId, itemId: item.id, status: "ACTIVE", limit: 100 }),
-              item.isSerialized
-                ? getInventorySerials({ branchId, itemId: item.id, status: "AVAILABLE", limit: 100 })
-                : Promise.resolve(null),
-            ])
-            const batches = getInventoryRows(batchRes).filter(
-              (batch) => Number(batch.quantityAvailable || 0) > 0,
-            )
-            const serials = item.isSerialized ? getInventoryRows(serialRes) : []
+            let batches = []
+            let serials = []
+            try {
+              const [batchRes, serialRes] = await Promise.all([
+                getInventoryBatches({ branchId, itemId: item.id, status: "ACTIVE", limit: 100 }),
+                item.isSerialized
+                  ? getInventorySerials({ branchId, itemId: item.id, status: "AVAILABLE", limit: 100 })
+                  : Promise.resolve(null),
+              ])
+              batches = getInventoryRows(batchRes).filter(
+                (batch) => Number(batch.quantityAvailable || 0) > 0,
+              )
+              serials = item.isSerialized ? getInventoryRows(serialRes) : []
+            } catch {
+              batches = []
+              serials = []
+            }
 
             const tiers = availablePriceTiers(item)
             const matchedTier = tiers.find(
