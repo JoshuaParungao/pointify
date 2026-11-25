@@ -4,7 +4,7 @@ import { Building2, LogOut, MapPin, Phone } from "lucide-react"
 import Card from "../../components/ui/Card"
 import Badge from "../../components/ui/Badge"
 import { getBranches } from "../../features/branches/branches.api"
-import { getBranchAddress, getBranchContact } from "../../constants/branchDefaults"
+import { getBranchAddress, getBranchContact, getBranchDisplayName } from "../../constants/branchDefaults"
 
 function BranchChooserPage({ onSelectBranch, onLogout, user }) {
   const [branches, setBranches] = useState([])
@@ -99,10 +99,10 @@ function BranchChooserPage({ onSelectBranch, onLogout, user }) {
 
                     <div className="min-w-0">
                       <p className="text-lg font-bold text-[var(--color-text-strong)]">
-                        {branch.code}
+                        {getBranchDisplayName(branch)}
                       </p>
                       <p className="mt-1 text-sm font-semibold text-[var(--color-text)]">
-                        {branch.name}
+                        {branch.code === "MAIN" ? "BR-01" : branch.code === "MAB" ? "BR-02" : branch.code}
                       </p>
 
                       <div className="mt-4 space-y-2 text-sm text-[var(--color-muted)]">

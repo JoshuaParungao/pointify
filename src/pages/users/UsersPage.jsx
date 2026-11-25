@@ -1091,7 +1091,7 @@ function UsersPage({ selectedBranch, user }) {
             onClick={handleExportUsersExcel}
           />
           <button
-            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#7A1F2B] px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#641824] disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#1E60FF] px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#0d4fe0] disabled:cursor-not-allowed disabled:opacity-60"
             disabled={assignableRoles.length === 0 || branches.length === 0}
             onClick={() => setEditor({ mode: "create", target: null })}
             type="button"

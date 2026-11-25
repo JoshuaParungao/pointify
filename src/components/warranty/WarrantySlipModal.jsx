@@ -288,7 +288,7 @@ export function generateWarrantySlipDocument(claim, slipType = "CLAIM", options 
       .shop-title {
         font-size: 12pt;
         font-weight: 900;
-        color: #7a1f2b;
+        color: #1e60ff;
         letter-spacing: 0.02em;
         text-transform: uppercase;
         line-height: 1.2;

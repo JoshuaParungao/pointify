@@ -46,7 +46,7 @@ export default function StockMovementHistoryPanel({ movements = [], isLoading = 
           "p",
           {
             className:
-              "text-xs font-black uppercase tracking-[0.2em] text-[#7A1F2B]",
+              "text-xs font-black uppercase tracking-[0.2em] text-[#1E60FF]",
           },
           "Stock movement history"
         ),

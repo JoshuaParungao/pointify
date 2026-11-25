@@ -121,7 +121,7 @@ function InventoryMobileCard({ item, canAdjust, onView, onAdjust }) {
         </button>
         {canAdjust ? (
           <button
-            className="rounded-2xl border border-[#7A1F2B] px-4 py-2 text-xs font-black text-[#7A1F2B]"
+            className="rounded-2xl border border-[#1E60FF] px-4 py-2 text-xs font-black text-[#1E60FF]"
             onClick={() => onAdjust(item)}
             type="button"
           >
@@ -1414,7 +1414,7 @@ export default function InventoryPage({ initialContext, selectedBranch, user }) 
                         <div className="flex flex-wrap gap-2">
                           <button className="rounded-2xl border border-[var(--color-border)] px-4 py-2 text-xs font-black" onClick={() => openAdjustModal(item, "VIEW")} type="button">View details</button>
                           {canAdjustStock && (user?.role === "SUPER_OWNER" || item.branch?.id === selectedBranch?.id) ? (
-                            <button className="rounded-2xl border border-[#7A1F2B] px-4 py-2 text-xs font-black text-[#7A1F2B]" onClick={() => openAdjustModal(item, "ADJUST")} type="button">Adjust stock</button>
+                            <button className="rounded-2xl border border-[#1E60FF] px-4 py-2 text-xs font-black text-[#1E60FF]" onClick={() => openAdjustModal(item, "ADJUST")} type="button">Adjust stock</button>
                           ) : null}
                         </div>
                       </td>

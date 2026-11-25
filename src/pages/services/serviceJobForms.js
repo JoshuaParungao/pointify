@@ -4,8 +4,8 @@ export const INTAKE_RECORD_HEADER = "[INTAKE_RECORD_V1]:"
 
 export const DEFAULT_SHOP_INFO = {
   name: "POSYNCTIFY STORE & SERVICES",
-  address: "Kingspire Business Centre, Km. 71 Mac Arthur Highway, San Isidro, City of San Fernando, Pampanga, Philippines, 2000",
-  contactNo: "0961-873-5798 / 045-404-0673",
+  address: "Branch 1 Commercial Center, Main District",
+  contactNo: "0961-000-0001",
 }
 
 export const UNIT_TYPES = [

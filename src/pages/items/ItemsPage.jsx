@@ -1455,7 +1455,7 @@ function ItemMobileCard({ canManagePrices, canViewCost, categories = [], item, o
 
       {canManagePrices ? (
         <button
-          className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-[#7A1F2B] bg-white px-4 py-3 text-sm font-bold text-[#7A1F2B] transition hover:bg-[#F4F1EC]"
+          className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-[#1E60FF] bg-white px-4 py-3 text-sm font-bold text-[#1E60FF] transition hover:bg-[#F4F1EC]"
           onClick={() => onEditPrices(item)}
           type="button"
         >
@@ -2311,7 +2311,7 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
 
                             {canManagePrices ? (
                               <button
-                                className="inline-flex items-center justify-center gap-1 rounded-xl border border-[#7A1F2B] bg-white px-3 py-2 text-xs font-bold text-[#7A1F2B] transition hover:bg-[#F4F1EC]"
+                                className="inline-flex items-center justify-center gap-1 rounded-xl border border-[#1E60FF] bg-white px-3 py-2 text-xs font-bold text-[#1E60FF] transition hover:bg-[#F4F1EC]"
                                 onClick={() => openPriceEditor(item)}
                                 type="button"
                               >
@@ -2362,7 +2362,7 @@ function ItemsPage({ initialContext, onNavigate, selectedBranch, user }) {
             </button>
 
             <button
-              className="rounded-2xl border border-[#7A1F2B] bg-white px-4 py-3 text-sm font-bold text-[#7A1F2B] transition hover:bg-[#F4F1EC] disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-2xl border border-[#1E60FF] bg-white px-4 py-3 text-sm font-bold text-[#1E60FF] transition hover:bg-[#F4F1EC] disabled:cursor-not-allowed disabled:opacity-50"
               disabled={!pagination.hasNextPage || isLoading}
               onClick={() => setPage((currentPage) => currentPage + 1)}
               type="button"
