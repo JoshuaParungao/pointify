@@ -1136,22 +1136,22 @@ function SaleDetailDialog({
     }
   }
 
-  const [previewCustomerName, setPreviewCustomerName] = useState(sale?.customer?.fullName || "")
-  const [previewCustomerAddress, setPreviewCustomerAddress] = useState(sale?.customer?.address || "")
+  const [previewCustomerName, setPreviewCustomerName] = useState(sale?.customer?.fullName || sale?.customerName || "")
+  const [previewCustomerAddress, setPreviewCustomerAddress] = useState(sale?.customer?.address || sale?.customerAddress || "")
   const [previewCustomerPhone, setPreviewCustomerPhone] = useState(
-    sale?.customer?.mobileNumber || sale?.customer?.phone || ""
+    sale?.customer?.mobileNumber || sale?.customer?.phone || sale?.customerPhone || ""
   )
-  const [previewCustomerEmail, setPreviewCustomerEmail] = useState(sale?.customer?.email || "")
-  const [previewCustomerCompany, setPreviewCustomerCompany] = useState(sale?.customer?.companyName || "")
+  const [previewCustomerEmail, setPreviewCustomerEmail] = useState(sale?.customer?.email || sale?.customerEmail || "")
+  const [previewCustomerCompany, setPreviewCustomerCompany] = useState(sale?.customer?.companyName || sale?.customerCompany || "")
   const [previewRemarks, setPreviewRemarks] = useState(cleanUserRemarks(sale?.remarks || ""))
   const [checkoutError, setCheckoutError] = useState("")
 
   useEffect(() => {
-    setPreviewCustomerName(sale?.customer?.fullName || "")
-    setPreviewCustomerAddress(sale?.customer?.address || "")
-    setPreviewCustomerPhone(sale?.customer?.mobileNumber || sale?.customer?.phone || "")
-    setPreviewCustomerEmail(sale?.customer?.email || "")
-    setPreviewCustomerCompany(sale?.customer?.companyName || "")
+    setPreviewCustomerName(sale?.customer?.fullName || sale?.customerName || "")
+    setPreviewCustomerAddress(sale?.customer?.address || sale?.customerAddress || "")
+    setPreviewCustomerPhone(sale?.customer?.mobileNumber || sale?.customer?.phone || sale?.customerPhone || "")
+    setPreviewCustomerEmail(sale?.customer?.email || sale?.customerEmail || "")
+    setPreviewCustomerCompany(sale?.customer?.companyName || sale?.customerCompany || "")
     setPreviewRemarks(cleanUserRemarks(sale?.remarks || ""))
     setCheckoutError("")
   }, [sale])
@@ -1542,22 +1542,22 @@ function SaleDetailDialog({
 
                     <span className="font-bold text-slate-600">Customer Name:</span>
                     <span className="col-span-2 font-bold uppercase">
-                      {(isCheckoutPreview ? previewCustomerName : sale.customer?.fullName) || "WALK-IN CUSTOMER"}
-                      {(isCheckoutPreview ? previewCustomerCompany : sale.customer?.companyName) ? (
+                      {(isCheckoutPreview ? previewCustomerName : (sale.customer?.fullName || sale.customerName || sale.customerNameSnapshot)) || "WALK-IN CUSTOMER"}
+                      {(isCheckoutPreview ? previewCustomerCompany : (sale.customer?.companyName || sale.customerCompany)) ? (
                         <span className="ml-1.5 text-slate-500 font-semibold normal-case">
-                          ({isCheckoutPreview ? previewCustomerCompany : sale.customer?.companyName})
+                          ({isCheckoutPreview ? previewCustomerCompany : (sale.customer?.companyName || sale.customerCompany)})
                         </span>
                       ) : null}
                     </span>
 
                     <span className="font-bold text-slate-600">Address:</span>
                     <span className="col-span-2">
-                      {(isCheckoutPreview ? previewCustomerAddress : (sale.customer?.address || sale.customerAddressSnapshot || sale.customerAddress || sale.quotation?.customer?.address)) || "—"}
+                      {(isCheckoutPreview ? previewCustomerAddress : (sale.customer?.address || sale.customerAddress || sale.customerAddressSnapshot || sale.quotation?.customer?.address)) || "—"}
                     </span>
 
                     <span className="font-bold text-slate-600">Contact No.:</span>
                     <span className="col-span-2">
-                      {(isCheckoutPreview ? previewCustomerPhone : (sale.customer?.mobileNumber || sale.customer?.email || sale.customer?.contactNo || sale.customerPhone || sale.customerContactSnapshot || sale.quotation?.customer?.mobileNumber)) || "—"}
+                      {(isCheckoutPreview ? previewCustomerPhone : (sale.customer?.mobileNumber || sale.customer?.contactNo || sale.customerPhone || sale.customerContactSnapshot || sale.customer?.email || sale.quotation?.customer?.mobileNumber)) || "—"}
                     </span>
 
                     <span className="font-bold text-slate-600">Salesman:</span>
@@ -6121,10 +6121,17 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
 
       const receiptSale = {
         ...sale,
+        customerName: effectiveName || sale?.customerName,
+        customerAddress: effectiveAddress || sale?.customerAddress,
+        customerPhone: effectivePhone || sale?.customerPhone,
+        customerCompany: effectiveCompany || sale?.customerCompany,
+        customerEmail: effectiveEmail || sale?.customerEmail,
         cashier: effectiveCashier,
         customer: {
           ...(sale.customer || {}),
-          fullName: effectiveName || sale.customer?.fullName || "Walk-in Customer",
+          fullName: (effectiveName && !["walk-in", "walk-in customer"].includes(effectiveName.toLowerCase()))
+            ? effectiveName
+            : (sale.customer?.fullName || "Walk-in Customer"),
           address: effectiveAddress || sale.customer?.address || null,
           mobileNumber: effectivePhone || sale.customer?.mobileNumber || null,
           companyName: effectiveCompany || sale.customer?.companyName || null,

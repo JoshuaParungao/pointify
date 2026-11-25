@@ -1,9 +1,9 @@
 // POSynctify IndexedDB Offline Database Helper
-// Provides resilient client-side storage for catalog caching and global offline outbox queues
-// Covers: Sales, Customers, Quotations, and Service Job Orders
+// Comprehensive offline client-side storage & outbox queues
+// Modules: Sales, Customers, Quotations, Service Jobs, Suppliers, Purchase Orders, and Receivings
 
 const DB_NAME = "posynctify_offline_pos_db"
-const DB_VERSION = 2
+const DB_VERSION = 3
 
 function openDatabase() {
   return new Promise((resolve, reject) => {
@@ -31,32 +31,68 @@ function openDatabase() {
         customerStore.createIndex("mobileNumber", "mobileNumber", { unique: false })
       }
 
-      // 3. Outbox sales store (pending offline transactions)
+      // 3. Outbox sales store
       if (!db.objectStoreNames.contains("offlineSales")) {
         const salesStore = db.createObjectStore("offlineSales", { keyPath: "clientSaleId" })
         salesStore.createIndex("status", "status", { unique: false })
         salesStore.createIndex("createdAt", "createdAt", { unique: false })
       }
 
-      // 4. Outbox customers store (pending offline customer registrations)
+      // 4. Outbox customers store
       if (!db.objectStoreNames.contains("offlineCustomers")) {
         const custStore = db.createObjectStore("offlineCustomers", { keyPath: "clientCustomerId" })
         custStore.createIndex("status", "status", { unique: false })
         custStore.createIndex("createdAt", "createdAt", { unique: false })
       }
 
-      // 5. Outbox quotations store (pending offline quotations)
+      // 5. Outbox quotations store
       if (!db.objectStoreNames.contains("offlineQuotations")) {
         const quoteStore = db.createObjectStore("offlineQuotations", { keyPath: "clientQuotationId" })
         quoteStore.createIndex("status", "status", { unique: false })
         quoteStore.createIndex("createdAt", "createdAt", { unique: false })
       }
 
-      // 6. Outbox service job orders store (pending offline repair intakes)
+      // 6. Outbox service job orders store
       if (!db.objectStoreNames.contains("offlineJobOrders")) {
         const jobStore = db.createObjectStore("offlineJobOrders", { keyPath: "clientJobOrderId" })
         jobStore.createIndex("status", "status", { unique: false })
         jobStore.createIndex("createdAt", "createdAt", { unique: false })
+      }
+
+      // 7. Suppliers cache store
+      if (!db.objectStoreNames.contains("suppliers")) {
+        const supStore = db.createObjectStore("suppliers", { keyPath: "id" })
+        supStore.createIndex("name", "name", { unique: false })
+        supStore.createIndex("contactPerson", "contactPerson", { unique: false })
+      }
+
+      // 8. Outbox suppliers store
+      if (!db.objectStoreNames.contains("offlineSuppliers")) {
+        const offSupStore = db.createObjectStore("offlineSuppliers", { keyPath: "clientSupplierId" })
+        offSupStore.createIndex("status", "status", { unique: false })
+        offSupStore.createIndex("createdAt", "createdAt", { unique: false })
+      }
+
+      // 9. Outbox purchase orders store
+      if (!db.objectStoreNames.contains("offlinePurchaseOrders")) {
+        const offPoStore = db.createObjectStore("offlinePurchaseOrders", { keyPath: "clientPoId" })
+        offPoStore.createIndex("status", "status", { unique: false })
+        offPoStore.createIndex("createdAt", "createdAt", { unique: false })
+      }
+
+      // 10. Outbox purchase receivings store
+      if (!db.objectStoreNames.contains("offlineReceivings")) {
+        const offRecStore = db.createObjectStore("offlineReceivings", { keyPath: "clientReceivingId" })
+        offRecStore.createIndex("status", "status", { unique: false })
+        offRecStore.createIndex("createdAt", "createdAt", { unique: false })
+      }
+
+      // 11. Cached serials store (for offline serial monitoring & lookup)
+      if (!db.objectStoreNames.contains("cachedSerials")) {
+        const serialStore = db.createObjectStore("cachedSerials", { keyPath: "id" })
+        serialStore.createIndex("serialNumber", "serialNumber", { unique: false })
+        serialStore.createIndex("itemId", "itemId", { unique: false })
+        serialStore.createIndex("status", "status", { unique: false })
       }
     }
 
@@ -138,6 +174,95 @@ export async function putCachedCustomer(customer) {
     store.put(customer)
     tx.oncomplete = () => resolve(customer)
     tx.onerror = () => reject(tx.error)
+  })
+}
+
+// ----------------- SUPPLIER OPERATIONS -----------------
+
+export async function cacheSuppliers(suppliers = []) {
+  if (!Array.isArray(suppliers) || suppliers.length === 0) return
+  const db = await openDatabase()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("suppliers", "readwrite")
+    const store = tx.objectStore("suppliers")
+
+    for (const s of suppliers) {
+      if (s && s.id) {
+        store.put(s)
+      }
+    }
+
+    tx.oncomplete = () => resolve(suppliers.length)
+    tx.onerror = () => reject(tx.error)
+  })
+}
+
+export async function getCachedSuppliers() {
+  const db = await openDatabase()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("suppliers", "readonly")
+    const store = tx.objectStore("suppliers")
+    const request = store.getAll()
+
+    request.onsuccess = () => resolve(request.result || [])
+    request.onerror = () => reject(request.error)
+  })
+}
+
+export async function putCachedSupplier(supplier) {
+  if (!supplier?.id) return
+  const db = await openDatabase()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("suppliers", "readwrite")
+    const store = tx.objectStore("suppliers")
+    store.put(supplier)
+    tx.oncomplete = () => resolve(supplier)
+    tx.onerror = () => reject(tx.error)
+  })
+}
+
+// ----------------- CACHED SERIALS OPERATIONS -----------------
+
+export async function cacheSerials(serials = []) {
+  if (!Array.isArray(serials) || serials.length === 0) return
+  const db = await openDatabase()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("cachedSerials", "readwrite")
+    const store = tx.objectStore("cachedSerials")
+
+    for (const s of serials) {
+      if (s && s.id) {
+        store.put(s)
+      }
+    }
+
+    tx.oncomplete = () => resolve(serials.length)
+    tx.onerror = () => reject(tx.error)
+  })
+}
+
+export async function getCachedSerials(searchTerm = "") {
+  const db = await openDatabase()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("cachedSerials", "readonly")
+    const store = tx.objectStore("cachedSerials")
+    const request = store.getAll()
+
+    request.onsuccess = () => {
+      const all = request.result || []
+      if (!searchTerm || !searchTerm.trim()) {
+        return resolve(all)
+      }
+      const term = searchTerm.trim().toLowerCase()
+      const filtered = all.filter(
+        (s) =>
+          String(s.serialNumber || "").toLowerCase().includes(term) ||
+          String(s.item?.itemName || "").toLowerCase().includes(term) ||
+          String(s.item?.itemCode || "").toLowerCase().includes(term)
+      )
+      resolve(filtered)
+    }
+    request.onerror = () => reject(request.error)
   })
 }
 
@@ -333,17 +458,172 @@ export async function updateOfflineJobOrder(clientJobOrderId, patch) {
   })
 }
 
+// ----------------- OFFLINE SUPPLIERS QUEUE -----------------
+
+export async function enqueueOfflineSupplier(supRecord) {
+  const db = await openDatabase()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("offlineSuppliers", "readwrite")
+    const store = tx.objectStore("offlineSuppliers")
+    store.put(supRecord)
+
+    tx.oncomplete = () => resolve(supRecord)
+    tx.onerror = () => reject(tx.error)
+  })
+}
+
+export async function getPendingOfflineSuppliers() {
+  const db = await openDatabase()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("offlineSuppliers", "readonly")
+    const store = tx.objectStore("offlineSuppliers")
+    const request = store.getAll()
+
+    request.onsuccess = () => {
+      const all = request.result || []
+      const pending = all.filter((s) => s.status === "PENDING" || s.status === "FAILED")
+      resolve(pending)
+    }
+    request.onerror = () => reject(request.error)
+  })
+}
+
+export async function updateOfflineSupplier(clientSupplierId, patch) {
+  const db = await openDatabase()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("offlineSuppliers", "readwrite")
+    const store = tx.objectStore("offlineSuppliers")
+    const getReq = store.get(clientSupplierId)
+
+    getReq.onsuccess = () => {
+      const record = getReq.result
+      if (!record) return resolve(null)
+      const updated = { ...record, ...patch, updatedAt: new Date().toISOString() }
+      store.put(updated)
+      resolve(updated)
+    }
+    tx.onerror = () => reject(tx.error)
+  })
+}
+
+// ----------------- OFFLINE PURCHASE ORDERS QUEUE -----------------
+
+export async function enqueueOfflinePurchaseOrder(poRecord) {
+  const db = await openDatabase()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("offlinePurchaseOrders", "readwrite")
+    const store = tx.objectStore("offlinePurchaseOrders")
+    store.put(poRecord)
+
+    tx.oncomplete = () => resolve(poRecord)
+    tx.onerror = () => reject(tx.error)
+  })
+}
+
+export async function getPendingOfflinePurchaseOrders() {
+  const db = await openDatabase()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("offlinePurchaseOrders", "readonly")
+    const store = tx.objectStore("offlinePurchaseOrders")
+    const request = store.getAll()
+
+    request.onsuccess = () => {
+      const all = request.result || []
+      const pending = all.filter((p) => p.status === "PENDING" || p.status === "FAILED")
+      resolve(pending)
+    }
+    request.onerror = () => reject(request.error)
+  })
+}
+
+export async function updateOfflinePurchaseOrder(clientPoId, patch) {
+  const db = await openDatabase()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("offlinePurchaseOrders", "readwrite")
+    const store = tx.objectStore("offlinePurchaseOrders")
+    const getReq = store.get(clientPoId)
+
+    getReq.onsuccess = () => {
+      const record = getReq.result
+      if (!record) return resolve(null)
+      const updated = { ...record, ...patch, updatedAt: new Date().toISOString() }
+      store.put(updated)
+      resolve(updated)
+    }
+    tx.onerror = () => reject(tx.error)
+  })
+}
+
+// ----------------- OFFLINE PURCHASE RECEIVINGS QUEUE -----------------
+
+export async function enqueueOfflineReceiving(recRecord) {
+  const db = await openDatabase()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("offlineReceivings", "readwrite")
+    const store = tx.objectStore("offlineReceivings")
+    store.put(recRecord)
+
+    tx.oncomplete = () => resolve(recRecord)
+    tx.onerror = () => reject(tx.error)
+  })
+}
+
+export async function getPendingOfflineReceivings() {
+  const db = await openDatabase()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("offlineReceivings", "readonly")
+    const store = tx.objectStore("offlineReceivings")
+    const request = store.getAll()
+
+    request.onsuccess = () => {
+      const all = request.result || []
+      const pending = all.filter((r) => r.status === "PENDING" || r.status === "FAILED")
+      resolve(pending)
+    }
+    request.onerror = () => reject(request.error)
+  })
+}
+
+export async function updateOfflineReceiving(clientReceivingId, patch) {
+  const db = await openDatabase()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("offlineReceivings", "readwrite")
+    const store = tx.objectStore("offlineReceivings")
+    const getReq = store.get(clientReceivingId)
+
+    getReq.onsuccess = () => {
+      const record = getReq.result
+      if (!record) return resolve(null)
+      const updated = { ...record, ...patch, updatedAt: new Date().toISOString() }
+      store.put(updated)
+      resolve(updated)
+    }
+    tx.onerror = () => reject(tx.error)
+  })
+}
+
 // ----------------- QUEUE SUMMARY COUNT -----------------
 
 export async function getOfflineQueueCount() {
   try {
-    const [sales, custs, quotes, jobs] = await Promise.all([
+    const [sales, custs, quotes, jobs, sups, pos, recs] = await Promise.all([
       getPendingOfflineSales().catch(() => []),
       getPendingOfflineCustomers().catch(() => []),
       getPendingOfflineQuotations().catch(() => []),
       getPendingOfflineJobOrders().catch(() => []),
+      getPendingOfflineSuppliers().catch(() => []),
+      getPendingOfflinePurchaseOrders().catch(() => []),
+      getPendingOfflineReceivings().catch(() => []),
     ])
-    return sales.length + custs.length + quotes.length + jobs.length
+    return (
+      sales.length +
+      custs.length +
+      quotes.length +
+      jobs.length +
+      sups.length +
+      pos.length +
+      recs.length
+    )
   } catch {
     return 0
   }

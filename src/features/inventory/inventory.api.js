@@ -1,19 +1,57 @@
 import apiClient from "../../lib/apiClient"
+import { cacheSerials, getCachedSerials } from "../../lib/offlineDb"
 
 export async function getInventoryOverview(params = {}) {
-const response = await apiClient.get("/inventory/overview", { params })
-return response.data
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    return { success: true, data: { items: [], metrics: {} }, isOffline: true }
+  }
+  try {
+    const response = await apiClient.get("/inventory/overview", { params })
+    return response.data
+  } catch (err) {
+    if (typeof navigator !== "undefined" && (!navigator.onLine || !err.response || err.code === "ERR_NETWORK")) {
+      return { success: true, data: { items: [], metrics: {} }, isOffline: true }
+    }
+    throw err
+  }
 }
 
 export async function getInventoryBatches(params = {}) {
-const response = await apiClient.get("/inventory/batches", { params })
-return response.data
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    return { success: true, data: [], isOffline: true }
+  }
+  try {
+    const response = await apiClient.get("/inventory/batches", { params })
+    return response.data
+  } catch (err) {
+    if (typeof navigator !== "undefined" && (!navigator.onLine || !err.response || err.code === "ERR_NETWORK")) {
+      return { success: true, data: [], isOffline: true }
+    }
+    throw err
+  }
 }
 
 export async function getInventorySerials(params = {}) {
-const response = await apiClient.get("/inventory/serials", { params })
-return response.data
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    const cached = await getCachedSerials(params.search || params.serialNumber || "").catch(() => [])
+    return { success: true, data: cached, isOffline: true }
+  }
+  try {
+    const response = await apiClient.get("/inventory/serials", { params })
+    const list = response.data?.data || response.data
+    if (Array.isArray(list)) {
+      cacheSerials(list).catch(() => {})
+    }
+    return response.data
+  } catch (err) {
+    if (typeof navigator !== "undefined" && (!navigator.onLine || !err.response || err.code === "ERR_NETWORK")) {
+      const cached = await getCachedSerials(params.search || params.serialNumber || "").catch(() => [])
+      return { success: true, data: cached, isOffline: true }
+    }
+    throw err
+  }
 }
+
 
 
 export async function getInventoryMovements(params = {}) {

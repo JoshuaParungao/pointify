@@ -81,12 +81,17 @@ export default function SaleReceiptModal({ sale: initialSale, saleId, onClose })
   }, [onClose])
 
   useEffect(() => {
-    const saleId = targetSaleId || initialSale?.id
-    if (!initialSale?.items || initialSale.items.length === 0 || (!initialSale?.customer?.address && saleId)) {
-      if (saleId) {
+    const sId = targetSaleId || initialSale?.id
+    if (String(sId).startsWith("OFF-") || String(sId).startsWith("offline-sale-") || (typeof navigator !== "undefined" && !navigator.onLine)) {
+      setSale(initialSale)
+      setIsLoading(false)
+      return
+    }
+    if (!initialSale?.items || initialSale.items.length === 0) {
+      if (sId) {
         let active = true
         setIsLoading(true)
-        getSaleById(saleId)
+        getSaleById(sId)
           .then((res) => {
             if (active) {
               const fetched = res?.data || initialSale
@@ -98,7 +103,11 @@ export default function SaleReceiptModal({ sale: initialSale, saleId, onClose })
           })
           .catch((err) => {
             if (active) {
-              setErrorMessage(err?.response?.data?.message || err?.message || "Failed to load full sale receipt.")
+              if (initialSale) {
+                setSale(initialSale)
+              } else {
+                setErrorMessage(err?.response?.data?.message || err?.message || "Failed to load full sale receipt.")
+              }
             }
           })
           .finally(() => {
@@ -357,10 +366,10 @@ export default function SaleReceiptModal({ sale: initialSale, saleId, onClose })
 
                   <span className="font-bold text-slate-600">Customer:</span>
                   <span className="col-span-2 font-bold uppercase">
-                    {sale.customer?.fullName || "WALK-IN CUSTOMER"}
-                    {sale.customer?.companyName ? (
+                    {sale.customer?.fullName || sale.customerName || sale.customerNameSnapshot || "WALK-IN CUSTOMER"}
+                    {(sale.customer?.companyName || sale.customerCompany) ? (
                       <span className="ml-1.5 text-slate-500 font-semibold normal-case">
-                        ({sale.customer.companyName})
+                        ({sale.customer?.companyName || sale.customerCompany})
                       </span>
                     ) : null}
                   </span>
