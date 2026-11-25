@@ -3781,6 +3781,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
   })
   const [paymentSettings, setPaymentSettings] = useState(() => ({
     cash: true,
+    paymongo: true,
     gcash: true,
     bankTransfer: true,
     cardTerminal: true,
@@ -4042,6 +4043,7 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
   const availableImmediateMethods = useMemo(() => {
     const list = []
     if (paymentSettings.cash !== false) list.push(["CASH", "Cash (Physical)"])
+    if (paymentSettings.paymongo !== false) list.push(["PAYMONGO", "PayMongo Digital (QR Ph / GCash / Maya / Card)"])
     if (paymentSettings.gcash !== false) list.push(["GCASH", "GCash (Online)"])
     if (paymentSettings.bankTransfer !== false) list.push(["BANK_TRANSFER", "Bank Transfer (Any Bank)"])
     if (paymentSettings.cardTerminal !== false) list.push(["CARD", "Card / Payment Terminal"])
@@ -5990,13 +5992,6 @@ function PosSalesPage({ initialContext, onNavigate, selectedBranch, user }) {
                   referenceNo: overridePaymentDetails?.referenceNo || paymentReference.trim() || (paymentMethod === "PAYMONGO" ? `PM-${Date.now().toString().slice(-6)}` : undefined),
                   remarks: overridePaymentDetails?.remarks || [
                     paymentMethod === "PAYMONGO" ? "[PayMongo Digital QR Ph]" : "",
-                    paymentBankName ? `Bank: ${paymentBankName.trim()}` : "",
-                    paymentChequeDate && (paymentMethod === "CHEQUE" || settlementMethod === "CHEQUE") ? `Cheque Date: ${paymentChequeDate}` : "",
-                    paymentRemarks.trim(),
-                  ].filter(Boolean).join(" | ") || undefined,
-                  amount: settlementAmount,
-                  referenceNo: paymentReference.trim() || undefined,
-                  remarks: [
                     paymentBankName ? `Bank: ${paymentBankName.trim()}` : "",
                     paymentChequeDate && (paymentMethod === "CHEQUE" || settlementMethod === "CHEQUE") ? `Cheque Date: ${paymentChequeDate}` : "",
                     paymentRemarks.trim(),

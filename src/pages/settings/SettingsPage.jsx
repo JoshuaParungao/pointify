@@ -96,6 +96,7 @@ const PRICE_TIER_DEFAULT_LABELS = {
 
 const PAYMENT_METHODS_DEFAULT_VALUE = {
   cash: true,
+  paymongo: true,
   gcash: true,
   bankTransfer: true,
   cardTerminal: true,
@@ -2434,6 +2435,7 @@ function PaymentMethodsSetupCard({ setting, onSaved, canManageSettings = false }
 
   const paymentOptions = [
     { key: "cash", label: "Cash", description: "Accept physical cash payments." },
+    { key: "paymongo", label: "PayMongo Digital (QR Ph / GCash / Maya / Card)", description: "Accept digital payments via PayMongo QR Ph and e-wallets." },
     { key: "gcash", label: "GCash", description: "Accept wallet payments with reference number." },
     { key: "bankTransfer", label: "Bank Transfer", description: "Accept bank payments with bank name and reference number." },
     { key: "cardTerminal", label: "Card / Payment Terminal", description: "Accept card terminal payments with approval code." },
