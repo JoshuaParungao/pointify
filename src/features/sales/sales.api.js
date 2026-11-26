@@ -39,3 +39,8 @@ export async function swapSaleSerial(id, payload) {
   const response = await apiClient.post(`/sales/${id}/swap-serial`, payload)
   return response.data
 }
+
+export async function emailWarrantyReceipt(id, payload = {}) {
+  const response = await apiClient.post(`/sales/${id}/email-receipt`, payload)
+  return response.data
+}

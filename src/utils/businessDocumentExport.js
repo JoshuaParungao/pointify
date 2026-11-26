@@ -1730,6 +1730,10 @@ export function exportWarrantyReceiptPdf(sale, options = {}) {
     }
   }
 
+  if (options.returnBase64) {
+    return doc.output("datauristring")
+  }
+
   if (options.autoPrint) {
     doc.autoPrint()
     const blobUrl = doc.output("bloburl")
@@ -1738,6 +1742,7 @@ export function exportWarrantyReceiptPdf(sale, options = {}) {
     const filename = `Warranty-Receipt-${safeReceiptCode || "receipt"}.pdf`
     doc.save(filename)
   }
+  return doc
 }
 
 export function printWarrantyReceipt(sale, options = {}) {

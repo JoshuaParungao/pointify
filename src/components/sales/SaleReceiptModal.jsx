@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { createPortal } from "react-dom"
-import { AlertCircle, Download, LoaderCircle, Printer, X } from "lucide-react"
-import { getSaleById } from "../../features/sales/sales.api"
+import { AlertCircle, CheckCircle2, Download, LoaderCircle, Mail, Printer, Send, X } from "lucide-react"
+import { emailWarrantyReceipt, getSaleById } from "../../features/sales/sales.api"
 import { exportWarrantyReceiptPdf, groupReceiptItems, printWarrantyReceipt } from "../../utils/businessDocumentExport"
 import { getBranchAddress, getBranchContact } from "../../constants/branchDefaults"
 
@@ -69,8 +69,49 @@ export default function SaleReceiptModal({ sale: initialSale, saleId, onClose })
   const [sale, setSale] = useState(initialSale || null)
   const [isLoading, setIsLoading] = useState(!initialSale && Boolean(saleId))
   const [errorMessage, setErrorMessage] = useState("")
+  const [isEmailOpen, setIsEmailOpen] = useState(false)
+  const [recipientEmail, setRecipientEmail] = useState("")
+  const [isSendingEmail, setIsSendingEmail] = useState(false)
+  const [emailFeedback, setEmailFeedback] = useState(null)
 
   const targetSaleId = saleId || initialSale?.id
+
+  useEffect(() => {
+    if (sale) {
+      setRecipientEmail(sale.customer?.email || sale.customerEmail || "")
+    }
+  }, [sale])
+
+  const handleSendEmail = async () => {
+    if (!recipientEmail || !recipientEmail.trim()) {
+      setEmailFeedback({ type: "error", message: "Pakilagay ang email address ng customer." })
+      return
+    }
+    setIsSendingEmail(true)
+    setEmailFeedback(null)
+    try {
+      const pdfBase64 = exportWarrantyReceiptPdf(sale, { returnBase64: true })
+      const res = await emailWarrantyReceipt(sale.id, {
+        recipientEmail: recipientEmail.trim(),
+        pdfBase64,
+      })
+      setEmailFeedback({
+        type: "success",
+        message: res.message || `Tagumpay na naipadala ang Warranty E-Receipt sa ${recipientEmail.trim()}!`,
+      })
+      setTimeout(() => {
+        setIsEmailOpen(false)
+        setEmailFeedback(null)
+      }, 3000)
+    } catch (err) {
+      setEmailFeedback({
+        type: "error",
+        message: err?.response?.data?.message || err?.message || "Hindi maipadala ang email. Pakisuri ang koneksyon.",
+      })
+    } finally {
+      setIsSendingEmail(false)
+    }
+  }
 
   useEffect(() => {
     const handleKeyDown = (event) => {
@@ -303,6 +344,14 @@ export default function SaleReceiptModal({ sale: initialSale, saleId, onClose })
             {sale ? (
               <>
                 <button
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-3.5 py-2 text-xs font-bold text-blue-700 shadow-xs transition hover:bg-blue-100"
+                  onClick={() => setIsEmailOpen(!isEmailOpen)}
+                  title="Send Warranty E-Receipt to Customer via Email"
+                  type="button"
+                >
+                  <Mail size={15} /> Email Receipt
+                </button>
+                <button
                   className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-xs transition hover:bg-slate-100"
                   onClick={() => exportWarrantyReceiptPdf(sale)}
                   title="Export as PDF file"
@@ -330,6 +379,55 @@ export default function SaleReceiptModal({ sale: initialSale, saleId, onClose })
             </button>
           </div>
         </header>
+
+        {isEmailOpen ? (
+          <div className="border-b border-blue-200 bg-blue-50/70 p-4 sm:px-8 flex flex-col sm:flex-row items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2 duration-150">
+            <div className="flex items-center gap-2.5 w-full sm:w-auto">
+              <span className="grid size-8 place-items-center rounded-lg bg-blue-600 text-white shrink-0">
+                <Mail size={16} />
+              </span>
+              <div>
+                <p className="text-xs font-bold text-slate-900">Send Warranty E-Receipt via Email</p>
+                <p className="text-[11px] text-slate-500">Ipadadala ang branded receipt at attached PDF copy diretso sa customer.</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <input
+                className="w-full sm:w-64 rounded-xl border border-blue-300 bg-white px-3 py-1.5 text-xs text-slate-800 outline-none focus:border-blue-600 focus:ring-1 focus:ring-blue-600 transition"
+                disabled={isSendingEmail}
+                onChange={(e) => setRecipientEmail(e.target.value)}
+                placeholder="customer@example.com"
+                type="email"
+                value={recipientEmail}
+              />
+              <button
+                className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 px-3.5 py-1.5 text-xs font-bold text-white shadow-xs transition disabled:opacity-50 shrink-0 cursor-pointer"
+                disabled={isSendingEmail || !recipientEmail.trim()}
+                onClick={handleSendEmail}
+                type="button"
+              >
+                {isSendingEmail ? (
+                  <>
+                    <LoaderCircle className="animate-spin" size={14} />
+                    Sending…
+                  </>
+                ) : (
+                  <>
+                    <Send size={14} /> Send
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {emailFeedback ? (
+          <div className={`mx-6 sm:mx-8 mt-4 p-3 rounded-xl text-xs font-semibold flex items-center gap-2 ${emailFeedback.type === "success" ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-800 border border-red-200"}`}>
+            {emailFeedback.type === "success" ? <CheckCircle2 size={16} className="text-emerald-600 shrink-0" /> : <AlertCircle size={16} className="text-red-600 shrink-0" />}
+            <span>{emailFeedback.message}</span>
+          </div>
+        ) : null}
 
         <div className="overflow-y-auto p-6 sm:p-8 flex-1">
           {isLoading ? (
