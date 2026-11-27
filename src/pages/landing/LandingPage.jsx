@@ -55,7 +55,7 @@ export default function LandingPage({ onGoToLogin }) {
   const demoAccounts = [
     {
       role: "Super Owner (Full Access)",
-      identifier: "Joshua Parungao",
+      identifier: "joshua.parungao",
       pass: "password123",
       desc: "Unrestricted administrative privileges: Six-Layer financial reports, AR aging, interest & markup rates, employee governance, audit trails, and multi-branch settings.",
       badgeTone: "bg-blue-100 text-blue-800 border-blue-200",
