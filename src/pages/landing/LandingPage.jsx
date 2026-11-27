@@ -57,14 +57,14 @@ export default function LandingPage({ onGoToLogin }) {
       role: "Super Owner (Full Access)",
       identifier: "Joshua Parungao",
       pass: "password123",
-      desc: "Unrestricted administrative privileges: Six-Layer executive reports, AR aging, interest & markup rates, employee rules, audit logs, and branch settings.",
+      desc: "Unrestricted administrative privileges: Six-Layer financial reports, AR aging, interest & markup rates, employee governance, audit trails, and multi-branch settings.",
       badgeTone: "bg-blue-100 text-blue-800 border-blue-200",
     },
     {
-      role: "Cashier (Frontline Sales)",
+      role: "Cashier (Frontline Operations)",
       identifier: "kyle.musngi",
       pass: "password123",
-      desc: "Speed-optimized POS register: Barcode scanning, PayMongo QR Ph generation, AR credit lookup, offline checkout, and warranty e-receipt dispatch.",
+      desc: "Speed-optimized point of sale: Barcode scanning, PayMongo QR Ph generation, AR credit lookup, offline checkout, and automated warranty e-receipt dispatch.",
       badgeTone: "bg-emerald-100 text-emerald-800 border-emerald-200",
     },
   ]
@@ -72,11 +72,11 @@ export default function LandingPage({ onGoToLogin }) {
   const coreModules = [
     {
       icon: Calculator,
-      title: "Ledger Accounts & Dynamic Markups",
-      category: "Accounting & Pricing",
+      title: "Double-Entry Ledger & Dynamic Markups",
+      category: "Accounting & Margin Management",
       badge: "Real-Time Ledger",
       badgeColor: "bg-blue-100 text-blue-800 border-blue-200",
-      desc: "Complete double-entry customer and supplier ledger tracking debit/credit invoice entries, running balances, and auto-generated Statements of Account (SOA). Features dynamic cost markup calculation (Cost Price + Markup % = Base SRP) with live margin safeguards.",
+      desc: "Complete double-entry customer and supplier ledger tracking debit/credit invoice entries, running balances, and auto-generated Statements of Account (SOA). Features automated cost markup logic (Cost Price + Markup % = Base SRP) with live margin safeguards.",
       highlights: [
         "Running customer & supplier ledger balances",
         "Automated Cost vs Base SRP vs Markup % logic",
@@ -85,93 +85,93 @@ export default function LandingPage({ onGoToLogin }) {
     },
     {
       icon: Percent,
-      title: "Accounts Receivable (AR) & Flexible Interest",
-      category: "Credit & Financing",
-      badge: "Configurable % Yield",
+      title: "Accounts Receivable & Customizable Financing Interest",
+      category: "Credit & Financing Management",
+      badge: "Configurable Yield",
       badgeColor: "bg-indigo-100 text-indigo-800 border-indigo-200",
-      desc: "Flexible in-house and third-party credit financing (Home Credit, Salmon, Skyro, In-House Installments) across 3 to 24 month terms. Interest rate percentages are 100% customizable per term, with automated amortization schedules, collection receipts, and default warnings.",
+      desc: "Flexible in-house and third-party credit financing (Home Credit, Salmon, Skyro, In-House Installments) across 3 to 24 month terms. Interest rate percentages are fully customizable per term, with automated amortization schedules, collection receipts, and default warnings.",
       highlights: [
-        "Configurable monthly/term interest percentage",
-        "Multi-term options: Straight, 3, 6, 9, 12, 18, 24 mos",
-        "Partial payments, collection receipts & default alerts",
+        "Configurable monthly & term interest percentages",
+        "Amortization options: Straight, 3, 6, 9, 12, 18, 24 mos",
+        "Partial settlements, official collection receipts & aging alerts",
       ],
     },
     {
       icon: BarChart3,
-      title: "Nahimay na Financial Intelligence Suite",
-      category: "Executive Analytics",
-      badge: "Six-Layer Matrix",
+      title: "Six-Layer Financial Intelligence Suite",
+      category: "Executive Business Analytics",
+      badge: "Granular Analytics",
       badgeColor: "bg-purple-100 text-purple-800 border-purple-200",
-      desc: "Deconstructs business health into fine-grained granular reports: Six-Layer Executive Profitability (Cost, Base Margin, Markup, Financing Interest, Net Profit), AR Aging Buckets (Current to 120+ days overdue), Product Profitability per SKU, and Cash vs AR settlement cashflows.",
+      desc: "Deconstructs business performance into deep financial intelligence: Six-Layer Executive Profitability (Cost of Goods, Base Margin, Markup, Financing Interest, Consolidated Profit), AR Aging Buckets (Current to 120+ days overdue), SKU-level profitability, and Cash vs AR settlement cashflows.",
       highlights: [
         "Six-Layer Profitability: COGS, Markup & Financing yield",
-        "AR Aging breakdown (0-30, 31-60, 61-90, 91-120+ days)",
-        "Daily Cash Box Drawer sessions (X and Z-Readings)",
+        "Aging buckets: Current, 1-30, 31-60, 61-90, 91-120, 120+ days",
+        "Daily Cash Box Drawer sessions (X and Z-Reading audits)",
       ],
     },
     {
       icon: UserCheck,
-      title: "Employee Rules & Tiered Incentive Engine",
-      category: "HR & Commission Rules",
-      badge: "Versioned Rules",
+      title: "Employee Governance & Incentive Rules",
+      category: "Workforce & Commission Management",
+      badge: "Versioned Policies",
       badgeColor: "bg-emerald-100 text-emerald-800 border-emerald-200",
-      desc: "Comprehensive employee governance enforcing operational rules per role (Super Owner, Admin, Cashier, Technician). Includes strict cashier drawer limits, manager overrides for voids/refunds, and automated tiered incentive rules for sales staff and repair technician milestones.",
+      desc: "Comprehensive role governance enforcing operational security across Super Owners, Branch Admins, Cashiers, and Technicians. Features strict cashier drawer limits, manager overrides for voids/refunds, and automated tiered commission schedules for sales staff and repair technician milestones.",
       highlights: [
-        "Strict cashier rules: Manager approval for voids & refunds",
+        "Strict cashier rules: Manager approval required for voids & refunds",
         "Configurable technician labor commission rules",
-        "Shift logs, attendance audit & performance payouts",
+        "Shift audit logs, attendance tracking & automated incentive payouts",
       ],
     },
     {
       icon: RefreshCw,
-      title: "Offline-First Engine (IndexedDB Outbox)",
-      category: "High-Availability Architecture",
+      title: "Offline-First Architecture (IndexedDB)",
+      category: "High-Availability Engine",
       badge: "Zero-Downtime",
       badgeColor: "bg-cyan-100 text-cyan-800 border-cyan-200",
-      desc: "Ensures total operational continuity during internet disconnects. Caches product catalogs, active pricing, and customer records locally in browser IndexedDB. Transactions write to an offline outbox queue and automatically reconcile with PostgreSQL upon reconnection.",
+      desc: "Ensures uninterrupted checkout continuity during network disconnects. Caches product catalogs, active pricing, and customer records locally in browser IndexedDB. Transactions write to an offline outbox queue and automatically reconcile with PostgreSQL upon reconnection.",
       highlights: [
-        "Local IndexedDB database caching with zero lag",
-        "Optimistic checkout without server latency",
-        "Conflict-safe background sync queue",
+        "Local IndexedDB database caching with zero input latency",
+        "Optimistic checkout without server round-trip delays",
+        "Conflict-safe background synchronization queue",
       ],
     },
     {
       icon: QrCode,
       title: "PayMongo QR Ph & Omnichannel Payments",
-      category: "Fintech Integration",
+      category: "Digital Financial Gateway",
       badge: "Real-Time Settlement",
       badgeColor: "bg-amber-100 text-amber-800 border-amber-200",
-      desc: "Full integration with the national QR Ph standard powered by PayMongo API. Generates dynamic scannable QR codes for GCash, Maya, ShopeePay, and bank apps, with support for cash drawer management, split tenders (Cash + QR), and AR credit lookup.",
+      desc: "Full integration with the national QR Ph standard powered by PayMongo API. Generates dynamic scannable QR codes for GCash, Maya, ShopeePay, and bank applications, with support for cash drawer management, split tenders (Cash + QR), and AR credit lookup.",
       highlights: [
         "Dynamic customer-facing QR Ph codes",
-        "Multi-tender split payments (Cash + QR + Card)",
-        "Automated webhook status polling",
+        "Multi-tender split payments (Cash + Digital QR + Card)",
+        "Automated payment status verification & webhook handling",
       ],
     },
     {
       icon: Mail,
-      title: "Automated Warranty E-Receipts (Gmail SMTP)",
+      title: "Automated Warranty E-Receipts (SMTP Dispatch)",
       category: "Customer Communication",
       badge: "Unrestricted Delivery",
       badgeColor: "bg-teal-100 text-teal-800 border-teal-200",
-      desc: "Instant client-side PDF document compiler coupled with server-side transactional Gmail SMTP. Automatically dispatches branded non-fiscal warranty receipts with individual serial numbers, store terms, and digital claim slips directly to customer inboxes.",
+      desc: "Instant client-side PDF document compiler coupled with transactional SMTP server delivery. Automatically dispatches branded non-fiscal warranty receipts with individual serial numbers, store terms, and digital claim slips directly to customer inboxes.",
       highlights: [
-        "Deliverable to any global email domain without sandbox blocks",
-        "Embedded item serial numbers & RMA duration",
-        "Downloadable official PDF attachment",
+        "Deliverable to any institutional or global email address",
+        "Embedded item serial numbers & warranty duration guidelines",
+        "Downloadable official PDF receipt attachment",
       ],
     },
     {
       icon: Sparkles,
-      title: "Smart OCR Quotation-to-Cart Parser",
-      category: "Computer Vision",
-      badge: "AI Automation",
+      title: "Computer Vision OCR Quotation Parser",
+      category: "Document Automation",
+      badge: "AI Extraction",
       badgeColor: "bg-pink-100 text-pink-800 border-pink-200",
-      desc: "Transforms physical and digital supplier estimates into active POS transactions. Upload a printed quotation or invoice snapshot, and the OCR parser extracts matching product titles, quantities, and pricing straight into the cashier cart.",
+      desc: "Transforms physical and digital supplier estimates into active point of sale transactions. Upload a printed quotation or invoice snapshot, and the OCR parser extracts matching product titles, quantities, and pricing straight into the cashier cart.",
       highlights: [
-        "Instant document-to-cart conversion",
+        "Instant physical document-to-cart conversion",
         "Eliminates manual cashier re-entry errors",
-        "Live fuzzy matching against inventory SKUs",
+        "Live fuzzy matching against current inventory SKUs",
       ],
     },
     {
@@ -180,11 +180,11 @@ export default function LandingPage({ onGoToLogin }) {
       category: "Inventory & Supply Chain",
       badge: "Unit Traceability",
       badgeColor: "bg-rose-100 text-rose-800 border-rose-200",
-      desc: "Complete end-to-end unit tracking across branches. Records item serial numbers during Purchase Order receiving, monitors stock transfers between warehouses, locks serials during sale, and tracks warranty claims for supplier replacement.",
+      desc: "Complete end-to-end unit tracking across all store branches. Records individual serial numbers during Purchase Order receiving, monitors stock transfers between warehouses, locks serials during sale, and tracks warranty claims for supplier replacement.",
       highlights: [
-        "Unique serial lifecycle from PO to Sale",
-        "Inter-branch stock transfer manifests",
-        "Low stock threshold alerts & automated reorder levels",
+        "Unique serial lifecycle from Purchase Order to Customer Sale",
+        "Inter-branch stock transfer manifests & in-transit tracking",
+        "Automated low-stock threshold alerts & reorder suggestions",
       ],
     },
   ]
@@ -192,102 +192,102 @@ export default function LandingPage({ onGoToLogin }) {
   const businessTypes = [
     {
       id: "retail",
-      label: "Without Services (Pure Retail & Wholesale)",
-      shortTitle: "Pure Retail & Wholesale",
+      label: "Standard Retail & Wholesale (Without Services)",
+      shortTitle: "Retail & Wholesale",
       icon: Store,
       tagline: "High-speed checkout, customer AR credit ledger, and dynamic cost markups",
       description:
-        "Engineered for businesses focused entirely on merchandise, where fast barcode scanning, customer credit limits, volume pricing tiers, and supplier purchasing govern daily revenue.",
+        "Engineered for merchandise-driven businesses where rapid barcode scanning, customer credit limits, multi-tier pricing, and supplier procurement govern daily operations.",
       idealFor: [
-        "Computer Parts & Electronics Retail",
-        "Hardware & Construction Supplies",
+        "Computer Hardware & Peripherals Retail",
+        "Industrial & Construction Supplies",
         "Convenience Stores & Groceries",
-        "Boutiques, Footwear & Apparel",
+        "Apparel, Footwear & Dry Goods",
         "Wholesale Distributors & General Merchandise",
       ],
       features: [
         {
           title: "Customer Ledger & AR Credit Accounts",
-          desc: "Set customer credit limits, track unpaid invoices, generate Statement of Accounts (SOA), and accept partial installment payments.",
+          desc: "Manage customer credit limits, track unpaid balances, generate Statement of Accounts (SOA), and record partial installment collections.",
         },
         {
           title: "Dynamic Markups & Wholesale Tier Pricing",
-          desc: "Configure profit markup percentages over supplier cost price, with automatic unit conversions (boxes, packs, and individual pieces).",
+          desc: "Configure profit markup percentages over supplier cost price, with automated unit conversions across wholesale packs, boxes, and individual units.",
         },
         {
           title: "Strict Cashier Rules & Cash Drawer Audits",
-          desc: "Employee rules mandate manager passcodes for voids/refunds; tracks cash drawer opening floats and daily X/Z readings.",
+          desc: "Employee governance mandates manager authorization for voids/refunds; records opening cash floats and daily X/Z readings with cash variance tracking.",
         },
         {
-          title: "Procurement & Multi-Branch Stock Transfers",
-          desc: "Manage Purchase Orders, supplier receivings with serial tagging, and inter-branch warehouse transfer manifests.",
+          title: "Procurement & Inter-Branch Stock Transfers",
+          desc: "Manage Purchase Orders, supplier receivings with serial tagging, and inter-branch warehouse transfer manifests with real-time audit logs.",
         },
       ],
     },
     {
       id: "service",
-      label: "With Services & Repairs (Job Orders)",
+      label: "Repair & Diagnostic Centers (With Services)",
       shortTitle: "Repair & Service Centers",
       icon: Wrench,
-      tagline: "End-to-end technical job orders, milestone tracking, and technician incentives",
+      tagline: "End-to-end technical job orders, milestone progression, and technician incentives",
       description:
-        "Engineered for service-driven shops that intake customer equipment, diagnose faults, bill replacement parts, and reward technicians via structured commission rules.",
+        "Engineered for service-driven shops that intake customer equipment, diagnose technical faults, bill replacement spare parts, and reward technicians through structured commission policies.",
       idealFor: [
-        "IT & Laptop Repair Shops",
-        "Mobile Phone & Tablet Service Centers",
-        "Motorcycle & Automotive Repair Garages",
-        "Electronics & Appliance Repair Labs",
-        "Custom Rig & PC Building Studios",
+        "IT, Laptop & Electronics Repair Centers",
+        "Mobile Phone & Tablet Service Workshops",
+        "Automotive & Motorcycle Service Garages",
+        "Home Appliance & Electronics Laboratories",
+        "Custom PC Assembly & Diagnostic Studios",
       ],
       features: [
         {
           title: "Diagnostic Intake & Claim Slips",
-          desc: "Record customer device serial, physical scratches/dents, symptoms, and accessories with printed job order claim stubs.",
+          desc: "Record customer device serial number, physical cosmetic condition, reported symptoms, and accessories with printed job order claim stubs.",
         },
         {
-          title: "Milestone Stage Progression Pipeline",
-          desc: "Live status updates: Received → Diagnosis → In Repair → Quality Testing → Ready for Customer Pickup.",
+          title: "Milestone Progression Pipeline",
+          desc: "Live stage progression: Received → Diagnostic Phase → In Repair → Quality Assurance Testing → Ready for Customer Pickup.",
         },
         {
-          title: "Technician Incentive & Commission Rules",
-          desc: "Configure automated employee labor commissions and performance incentives per completed service job order.",
+          title: "Technician Incentive & Commission Policies",
+          desc: "Automated calculation of employee labor commissions and performance incentives per completed service job order milestone.",
         },
         {
           title: "Live Inventory Parts Billing",
-          desc: "Pull replacement spare parts directly from the warehouse inventory catalog straight into the service repair invoice.",
+          desc: "Allocate replacement spare parts directly from the active warehouse inventory catalog straight into the service repair invoice.",
         },
       ],
     },
     {
       id: "hybrid",
-      label: "Hybrid (Retail + Service Center)",
+      label: "Hybrid Operations (Retail + Service Center)",
       shortTitle: "Hybrid Enterprises",
       icon: Boxes,
       tagline: "The complete ecosystem: sell merchandise over the counter while servicing equipment",
       description:
-        "The ultimate architecture for modern businesses doing both: retailing parts from the sales counter while operating a busy repair, assembly, and maintenance bench in the back.",
+        "The unified solution for modern businesses operating both models: selling merchandise from the front retail counter while maintaining a high-volume repair and assembly facility.",
       idealFor: [
-        "PC Hubs (Parts Retail + Custom PC Assembly & Board Repair)",
-        "Bicycle & E-Scooter Shops (Accessories + Tuning & Tune-up Labor)",
-        "Mobile Phone Outlets (Gadget Sales + Screen/Battery Replacement)",
-        "Security Systems (CCTV & Alarm Hardware Sales + Installation Services)",
+        "PC Hubs (Hardware Retail + Custom PC Building & Component Repair)",
+        "Bicycle & E-Mobility Centers (Parts Retail + Maintenance & Tuning Labor)",
+        "Mobile Phone Outlets (Gadget Sales + Screen/Battery Replacement Bench)",
+        "Security & Network Solutions (CCTV Hardware Sales + Installation Labor)",
       ],
       features: [
         {
           title: "Unified Billing (Parts + Labor)",
-          desc: "Combine over-the-counter retail items and service repair labor on a single customer invoice and payment transaction.",
+          desc: "Combine over-the-counter retail items and service repair labor on a single customer invoice with synchronized tax and discount computation.",
         },
         {
           title: "Consolidated Six-Layer Profit Matrix",
-          desc: "Nahimay na executive breakdown comparing retail product profit margins against service technician labor revenue.",
+          desc: "Comprehensive executive breakdown comparing retail product profit margins directly against service technician labor revenue.",
         },
         {
           title: "Flexible Financing on Goods & Repairs",
-          desc: "Customers can finance high-ticket purchases (e.g. laptop + repair) on installment terms with custom interest rates.",
+          desc: "Customers can finance high-ticket hardware and repair services on installment terms with customizable interest rate percentages.",
         },
         {
-          title: "Unified Employee Role Governance",
-          desc: "Frontline cashiers handle settlements and AR collections while technicians focus strictly on diagnostic job orders.",
+          title: "Departmental Role Governance",
+          desc: "Frontline cashiers manage payment settlements and AR collections while technicians focus strictly on diagnostic job orders.",
         },
       ],
     },
@@ -296,7 +296,7 @@ export default function LandingPage({ onGoToLogin }) {
   const selectedBusiness = businessTypes.find((b) => b.id === activeTab) || businessTypes[0]
 
   const stack = [
-    { name: "React 19 & Vite", role: "Fast Reactive Frontend SPA", icon: Globe },
+    { name: "React 19 & Vite", role: "Fast Reactive Client Application", icon: Globe },
     { name: "Node.js & Express", role: "Modular Backend REST APIs", icon: Server },
     { name: "PostgreSQL & Prisma", role: "Relational Schema & Migrations", icon: Database },
     { name: "IndexedDB API", role: "Offline-First Local Storage Engine", icon: Cpu },
@@ -320,7 +320,7 @@ export default function LandingPage({ onGoToLogin }) {
                 POS<span className="text-[#1e60ff]">ynctify</span>
               </span>
               <span className="hidden sm:inline-block ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-bold text-blue-700 border border-blue-200">
-                Cloud & Offline v2.0
+                Cloud POS & Business Management
               </span>
             </div>
           </div>
@@ -328,13 +328,13 @@ export default function LandingPage({ onGoToLogin }) {
           <div className="flex items-center gap-3 sm:gap-6">
             <nav className="hidden md:flex items-center gap-5 text-xs font-semibold text-slate-600">
               <a href="#flexibility" className="hover:text-blue-600 transition">
-                Business Flexibility
+                Operational Flexibility
               </a>
               <a href="#core-modules" className="hover:text-blue-600 transition">
                 Core Capabilities
               </a>
               <a href="#demo-logins" className="hover:text-blue-600 transition">
-                Live Demo Logins
+                Demo Credentials
               </a>
               <a href="#architecture" className="hover:text-blue-600 transition">
                 DevOps Architecture
@@ -360,19 +360,19 @@ export default function LandingPage({ onGoToLogin }) {
           {/* Status Badge */}
           <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50/90 px-3.5 py-1 text-xs font-bold text-blue-700 shadow-xs mb-6">
             <span className="size-2 rounded-full bg-blue-600 animate-pulse" />
-            Full-Stack POS & Enterprise Management Platform
+            Full-Stack Point of Sale & Business Management Platform
           </div>
 
           {/* Hero Heading */}
-          <h1 className="mx-auto max-w-4xl text-3xl font-black tracking-tight text-slate-950 sm:text-5xl lg:text-6xl leading-[1.12]">
-            Adaptive Enterprise POS & ERP for{" "}
+          <h1 className="mx-auto max-w-4xl text-3xl font-black tracking-tight text-slate-950 sm:text-5xl lg:text-6xl leading-[1.14]">
+            Universal Point of Sale & Management for{" "}
             <span className="bg-gradient-to-r from-[#1e60ff] via-blue-600 to-indigo-600 bg-clip-text text-transparent">
               Retail, Wholesale & Services
             </span>
           </h1>
 
           <p className="mx-auto mt-6 max-w-3xl text-sm leading-relaxed text-slate-600 sm:text-base">
-            Architected to adapt to <strong>any business structure</strong> — from high-turnover retail shops to technical service repair benches. Features a <strong>Customer AR Ledger</strong>, <strong>configurable financing interest rates</strong>, <strong>granular Six-Layer financial reports</strong>, and <strong>strict employee rule governance</strong>.
+            Architected to adapt to <strong>diverse business models</strong> — from high-throughput retail stores to technical service and repair facilities. Integrates a <strong>Customer AR Ledger</strong>, <strong>configurable financing interest rates</strong>, <strong>granular Six-Layer financial reports</strong>, and <strong>strict employee rule governance</strong>.
           </p>
 
           {/* Primary Action Buttons */}
@@ -389,7 +389,7 @@ export default function LandingPage({ onGoToLogin }) {
               className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white px-6 py-3.5 text-sm font-bold text-slate-700 shadow-xs transition hover:bg-slate-100 active:scale-98"
             >
               <SlidersHorizontal size={16} className="text-blue-600" />
-              <span>See How It Adapts</span>
+              <span>Explore Adaptability</span>
             </a>
           </div>
 
@@ -397,13 +397,13 @@ export default function LandingPage({ onGoToLogin }) {
           <div className="mt-12 mx-auto max-w-5xl grid grid-cols-2 md:grid-cols-4 gap-3 text-left">
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Financial Suite</span>
-              <p className="text-lg font-black text-slate-900 mt-0.5">6-Layer Matrix</p>
-              <p className="text-[11px] text-slate-500">Nahimay na profit & AR aging</p>
+              <p className="text-lg font-black text-slate-900 mt-0.5">Six-Layer Matrix</p>
+              <p className="text-[11px] text-slate-500">Item margins & AR aging buckets</p>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Credit Financing</span>
               <p className="text-lg font-black text-slate-900 mt-0.5">Custom % Interest</p>
-              <p className="text-[11px] text-slate-500">In-House, HomeCredit, Salmon</p>
+              <p className="text-[11px] text-slate-500">In-House, Home Credit, Salmon</p>
             </div>
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Staff Governance</span>
@@ -419,19 +419,19 @@ export default function LandingPage({ onGoToLogin }) {
         </div>
       </section>
 
-      {/* SECTION: Extreme Business Flexibility (With or Without Services) */}
+      {/* SECTION: Business Flexibility (With or Without Services) */}
       <section id="flexibility" className="border-t border-slate-200 bg-white py-16 sm:py-24">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-3xl mx-auto mb-10">
             <div className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700 border border-blue-200 mb-3">
               <SlidersHorizontal size={13} />
-              Universal Business Architecture
+              Modular System Architecture
             </div>
             <h2 className="text-2xl sm:text-4xl font-black tracking-tight text-slate-950">
-              One Engine: With Services or Without Services
+              Configured for Any Business: With or Without Services
             </h2>
             <p className="mt-3 text-xs sm:text-sm text-slate-600 leading-relaxed">
-              Standard POS platforms are built either strictly for supermarkets or strictly for repair shops. POSynctify bridges both worlds with customizable modules you can toggle to match your exact business model.
+              Designed with modular workflows that can be enabled or disabled to align precisely with your business operations.
             </p>
           </div>
 
@@ -457,40 +457,37 @@ export default function LandingPage({ onGoToLogin }) {
             })}
           </div>
 
-          {/* Active Model Deep Dive Box */}
+          {/* Active Model Deep Dive Box - FIXED CLEAN LAYOUT */}
           <div className="rounded-3xl border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-blue-50/30 p-6 sm:p-10 shadow-sm">
-            <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 pb-8 border-b border-slate-200">
-              <div className="space-y-2 max-w-2xl">
-                <span className="text-xs font-bold uppercase tracking-wider text-blue-600">
-                  {selectedBusiness.label}
-                </span>
-                <h3 className="text-xl sm:text-2xl font-black text-slate-950">
-                  {selectedBusiness.tagline}
-                </h3>
-                <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-                  {selectedBusiness.description}
-                </p>
-              </div>
+            {/* Top Info Header */}
+            <div className="space-y-3 pb-6 border-b border-slate-200">
+              <span className="inline-block text-xs font-bold uppercase tracking-wider text-blue-600">
+                {selectedBusiness.label}
+              </span>
+              <h3 className="text-xl sm:text-2xl font-black text-slate-950 max-w-4xl leading-snug">
+                {selectedBusiness.tagline}
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed max-w-3xl">
+                {selectedBusiness.description}
+              </p>
 
-              {/* Ideal For Badges */}
-              <div className="bg-white rounded-2xl border border-slate-200 p-4 shrink-0 w-full lg:w-auto">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
-                  Ideal Industry Fit:
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {selectedBusiness.idealFor.map((ind) => (
-                    <span
-                      key={ind}
-                      className="rounded-lg bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-700"
-                    >
-                      {ind}
-                    </span>
-                  ))}
-                </div>
+              {/* Target Sectors Badge Bar */}
+              <div className="pt-2 flex flex-wrap items-center gap-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  Target Sectors:
+                </span>
+                {selectedBusiness.idealFor.map((ind) => (
+                  <span
+                    key={ind}
+                    className="rounded-lg bg-white border border-slate-200 px-3 py-1 text-[11px] font-medium text-slate-700 shadow-2xs"
+                  >
+                    {ind}
+                  </span>
+                ))}
               </div>
             </div>
 
-            {/* Feature Cards for the chosen model */}
+            {/* Feature Cards Grid */}
             <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {selectedBusiness.features.map((feat) => (
                 <div
@@ -515,10 +512,10 @@ export default function LandingPage({ onGoToLogin }) {
           <div className="text-center max-w-3xl mx-auto mb-14">
             <h2 className="text-xs font-bold uppercase tracking-wider text-blue-600">Technical Depth</h2>
             <p className="mt-1 text-2xl sm:text-4xl font-black tracking-tight text-slate-950">
-              Core Architecture & Enterprise Modules
+              Core Architecture & Functional Modules
             </p>
             <p className="mt-2 text-xs sm:text-sm text-slate-600">
-              Meticulously engineered from schema design to front-end execution to handle complex accounting, credit terms, multi-branch inventory, and employee incentives.
+              Engineered end-to-end to manage accounting ledgers, credit terms, multi-branch inventory, and employee incentives.
             </p>
           </div>
 
@@ -566,12 +563,12 @@ export default function LandingPage({ onGoToLogin }) {
       <section id="demo-logins" className="border-t border-slate-200 bg-white py-16 sm:py-20">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-2xl mx-auto mb-12">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-blue-600">Instant Access</h2>
+            <h2 className="text-xs font-bold uppercase tracking-wider text-blue-600">Evaluation Access</h2>
             <p className="mt-1 text-2xl sm:text-3xl font-black tracking-tight text-slate-950">
               Evaluator & Recruiter Demo Credentials
             </p>
             <p className="mt-2 text-xs sm:text-sm text-slate-600">
-              Test the live production deployment directly with preconfigured roles.
+              Explore the live production deployment with preconfigured system roles.
             </p>
           </div>
 
@@ -639,10 +636,10 @@ export default function LandingPage({ onGoToLogin }) {
           <div className="text-center max-w-2xl mx-auto mb-12">
             <h2 className="text-xs font-bold uppercase tracking-wider text-blue-600">DevOps & Stack</h2>
             <p className="mt-1 text-2xl sm:text-3xl font-black tracking-tight text-slate-950">
-              Full-Stack Infrastructure
+              Production Architecture
             </p>
             <p className="mt-2 text-xs sm:text-sm text-slate-600">
-              Modern containerized cloud microservices orchestrating fast reactive clients with hardened relational storage.
+              Containerized cloud services orchestrating responsive clients with structured relational storage.
             </p>
           </div>
 
@@ -668,11 +665,11 @@ export default function LandingPage({ onGoToLogin }) {
         </div>
       </section>
 
-      {/* SECTION: Prominent Full-Stack Developer & DevOps Engineer Footer */}
+      {/* SECTION: Full-Stack Developer & DevOps Engineer Footer */}
       <footer className="border-t border-slate-200 bg-slate-950 text-white py-14">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-12 gap-8 pb-10 border-b border-slate-800">
-            {/* Left Brand Col */}
+            {/* Left Brand Column */}
             <div className="md:col-span-5 space-y-3">
               <div className="flex items-center gap-3">
                 <img
@@ -685,7 +682,7 @@ export default function LandingPage({ onGoToLogin }) {
                 </span>
               </div>
               <p className="text-xs text-slate-400 leading-relaxed max-w-sm">
-                Next-generation cloud POS and business ERP engineered for high adaptability across retail, wholesale, and repair service centers. Zero downtime with native offline data sync, customer ledger, customizable interest financing, and fine-grained financial reporting.
+                Cloud Point of Sale & Business Management System engineered for operational flexibility across retail, wholesale, and repair service centers. Zero-downtime offline data synchronization, customer ledger accounting, customizable interest credit financing, and granular financial reporting.
               </p>
             </div>
 
@@ -700,7 +697,7 @@ export default function LandingPage({ onGoToLogin }) {
                 </li>
                 <li>
                   <a href="#flexibility" className="hover:text-white transition">
-                    &bull; Business Flexibility
+                    &bull; Operational Flexibility
                   </a>
                 </li>
                 <li>
@@ -716,7 +713,7 @@ export default function LandingPage({ onGoToLogin }) {
               </ul>
             </div>
 
-            {/* Right Developer Col */}
+            {/* Right Developer Column */}
             <div className="md:col-span-4 rounded-2xl border border-slate-800 bg-slate-900/90 p-5 space-y-3">
               <div className="flex items-center gap-2">
                 <span className="size-2 rounded-full bg-emerald-400 animate-ping" />
@@ -731,7 +728,7 @@ export default function LandingPage({ onGoToLogin }) {
                 </p>
               </div>
               <p className="text-[11.5px] text-slate-400 leading-relaxed">
-                Architected, designed, engineered, and deployed end-to-end — spanning PostgreSQL database modeling, customer ledger & AR interest engine, offline-first IndexedDB synchronization, RESTful API design, PayMongo QR Ph integration, and automated Linux VPS container deployment via Coolify & Docker.
+                Architected, designed, engineered, and deployed end-to-end — spanning PostgreSQL database modeling, customer ledger & AR credit interest engine, offline-first IndexedDB synchronization, RESTful API microservices, PayMongo QR Ph integration, and automated Linux VPS container deployment via Coolify & Docker.
               </p>
               <div className="flex items-center gap-3 pt-1 text-xs">
                 <a
@@ -753,7 +750,7 @@ export default function LandingPage({ onGoToLogin }) {
           <div className="pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
             <p>&copy; {new Date().getFullYear()} POSynctify. All rights reserved.</p>
             <p className="text-[11px]">
-              Engineered with React &bull; Node.js &bull; PostgreSQL &bull; Docker &bull; Coolify
+              Point of Sale & Business Management System &bull; React &bull; Node.js &bull; PostgreSQL &bull; Docker &bull; Coolify
             </p>
           </div>
         </div>
