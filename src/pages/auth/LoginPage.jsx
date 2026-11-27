@@ -79,8 +79,8 @@ function LoginPage({ onLogin, onBack }) {
         <div className="flex items-center gap-3">
           <img
             alt="POSynctify Logo"
-            className="size-12 rounded-2xl object-contain shadow-sm"
-            src="/posynctify-logo.png"
+            className="size-12 rounded-2xl object-contain shadow-sm bg-white p-0.5"
+            src="/icon.jpg"
           />
           <div>
             <h1 className="text-xl font-black text-[var(--color-text-strong)]">

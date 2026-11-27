@@ -46,7 +46,7 @@ function BranchChooserPage({ onSelectBranch, onLogout, user }) {
             <img
               alt="POSynctify Logo"
               className="size-14 rounded-2xl object-contain shadow-card bg-white p-1"
-              src="/posynctify-logo.png"
+              src="/icon.jpg"
             />
             <div className="min-w-0">
               <Badge tone="maroon">Branch Selection</Badge>

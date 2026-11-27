@@ -147,8 +147,8 @@ function Sidebar({
       >
         <img
           alt="POSynctify Logo"
-          className="size-8 shrink-0 rounded-xl bg-white/10 p-1 object-contain shadow-xs"
-          src="/posynctify-logo.png"
+          className="size-8 shrink-0 rounded-xl bg-white/10 p-0.5 object-contain shadow-xs"
+          src="/icon.jpg"
         />
 
         {!isCollapsed ? (
